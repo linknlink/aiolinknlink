@@ -20,6 +20,7 @@ classifiers = [
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Typing :: Typed",
 ]
 dependencies = ["cryptography>=41.0.0"]
@@ -73,6 +74,6 @@ ignore = [
 "tests/*" = ["D"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.14"
 strict = true
 packages = ["aiolinknlink"]
