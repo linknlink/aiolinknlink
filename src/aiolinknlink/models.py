@@ -104,6 +104,26 @@ class UltraRadarStatus:
     did: str
     sensitivity: int
     received_at: datetime
+    trigger_speed: int | None = None
+    install_mode: int | None = None
+    height: int | None = None
+    install_direction: int | None = None
+    z_range: UltraRadarZRange | None = None
+    default_absence_delay: int | None = None
+    zone_absence_delays: tuple[
+        int | None,
+        int | None,
+        int | None,
+        int | None,
+    ] = (None, None, None, None)
+
+
+@dataclass(frozen=True, slots=True)
+class UltraRadarZRange:
+    """Device-read Ultra2 radar Z-axis detection range in meters."""
+
+    minimum: float
+    maximum: float
 
 
 @dataclass(frozen=True, slots=True)

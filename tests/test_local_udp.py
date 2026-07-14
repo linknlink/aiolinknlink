@@ -281,6 +281,13 @@ async def test_radar_configuration_reuses_subscription_socket() -> None:
     )
     client.get_radar_status.return_value = radar_status
     client.set_radar_sensitivity.return_value = radar_status
+    client.set_radar_trigger_speed.return_value = radar_status
+    client.set_radar_install_mode.return_value = radar_status
+    client.set_radar_height.return_value = radar_status
+    client.set_radar_install_direction.return_value = radar_status
+    client.set_radar_z_range.return_value = radar_status
+    client.set_radar_default_absence_delay.return_value = radar_status
+    client.set_radar_zone_absence_delay.return_value = radar_status
     subscription = UltraPositionSubscription(
         client,
         session,
@@ -293,8 +300,22 @@ async def test_radar_configuration_reuses_subscription_socket() -> None:
         await subscription.wait_confirmed(1)
         assert await subscription.get_radar_status() is radar_status
         assert await subscription.set_radar_sensitivity(2) is radar_status
+        assert await subscription.set_radar_trigger_speed(1) is radar_status
+        assert await subscription.set_radar_install_mode(0) is radar_status
+        assert await subscription.set_radar_height(240) is radar_status
+        assert await subscription.set_radar_install_direction(1) is radar_status
+        assert await subscription.set_radar_z_range(-2.0, 2.0) is radar_status
+        assert await subscription.set_radar_default_absence_delay(60) is radar_status
+        assert await subscription.set_radar_zone_absence_delay(2, 90) is radar_status
         assert client.get_radar_status.call_args.kwargs["exchange"] is not None
         assert client.set_radar_sensitivity.call_args.kwargs["exchange"] is not None
+        assert client.set_radar_trigger_speed.call_args.kwargs["exchange"] is not None
+        assert client.set_radar_install_mode.call_args.kwargs["exchange"] is not None
+        assert client.set_radar_height.call_args.kwargs["exchange"] is not None
+        assert client.set_radar_install_direction.call_args.kwargs["exchange"] is not None
+        assert client.set_radar_z_range.call_args.kwargs["exchange"] is not None
+        assert client.set_radar_default_absence_delay.call_args.kwargs["exchange"] is not None
+        assert client.set_radar_zone_absence_delay.call_args.kwargs["exchange"] is not None
     finally:
         await subscription.stop()
 

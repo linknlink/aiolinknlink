@@ -28,6 +28,7 @@ dependencies = [
 ]
 
 [project.urls]
+Changelog = "https://github.com/linknlink/aiolinknlink/blob/main/CHANGELOG.md"
 Homepage = "https://github.com/linknlink/aiolinknlink"
 Repository = "https://github.com/linknlink/aiolinknlink"
 Issues = "https://github.com/linknlink/aiolinknlink/issues"
@@ -57,6 +58,9 @@ testpaths = ["tests"]
 [tool.coverage.run]
 branch = true
 source = ["aiolinknlink"]
+
+[tool.coverage.report]
+fail_under = 95
 
 [tool.ruff]
 line-length = 120

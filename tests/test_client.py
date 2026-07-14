@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from dataclasses import replace
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
@@ -17,6 +19,7 @@ from aiolinknlink import (
     UltraDevice,
     UltraProtocolError,
     UltraRadarStatus,
+    UltraRadarZRange,
     derive_ultra2_protocol_mac,
     derive_ultra2_radar_did,
 )
@@ -33,6 +36,19 @@ DEVICE = UltraDevice(
     port=80,
     mac="e0:4b:41:01:67:bb",
     type_id=TYPE_ULTRA2,
+)
+
+RADAR_STATUS = UltraRadarStatus(
+    did=derive_ultra2_radar_did(DEVICE.mac),
+    sensitivity=2,
+    received_at=datetime.now(UTC),
+    trigger_speed=1,
+    install_mode=0,
+    height=240,
+    install_direction=1,
+    z_range=UltraRadarZRange(minimum=-2.5, maximum=1.75),
+    default_absence_delay=60,
+    zone_absence_delays=(60, 90, 120, 180),
 )
 
 
@@ -108,6 +124,16 @@ async def test_get_radar_status_uses_peripheral_did() -> None:
         {
             "did": derive_ultra2_radar_did(DEVICE.mac),
             "level_of_sensitivity": 2,
+            "triger_speed": 1,
+            "install_mode": 0,
+            "height": 240,
+            "install_direction": 1,
+            "z_range": '{"min":-2.5,"max":1.75}',
+            "delaytime": 60,
+            "duration1": 60,
+            "duration2": 90,
+            "duration3": 120,
+            "duration4": 180,
             "status": 0,
         },
     )
@@ -118,6 +144,13 @@ async def test_get_radar_status_uses_peripheral_did() -> None:
 
     assert status.did == "e04b410167bbdbac00000000dbac0001"
     assert status.sensitivity == 2
+    assert status.trigger_speed == 1
+    assert status.install_mode == 0
+    assert status.height == 240
+    assert status.install_direction == 1
+    assert status.z_range == UltraRadarZRange(minimum=-2.5, maximum=1.75)
+    assert status.default_absence_delay == 60
+    assert status.zone_absence_delays == (60, 90, 120, 180)
     command = emotion.parse_subdevice_frame(send_command.call_args.args[1])
     assert emotion.parse_subdevice_json_payload(command)["did"] == status.did
 
@@ -149,6 +182,116 @@ async def test_set_radar_sensitivity_requires_matching_readback() -> None:
         await client.set_radar_sensitivity(session, 1)
     with pytest.raises(ValueError, match="must be 0, 1, or 2"):
         await client.set_radar_sensitivity(session, 3)
+
+
+@pytest.mark.parametrize(
+    ("method", "arguments", "field", "value", "readback"),
+    [
+        (
+            "set_radar_trigger_speed",
+            (2,),
+            "triger_speed",
+            2,
+            replace(RADAR_STATUS, trigger_speed=2),
+        ),
+        (
+            "set_radar_install_mode",
+            (1,),
+            "install_mode",
+            1,
+            replace(RADAR_STATUS, install_mode=1),
+        ),
+        (
+            "set_radar_height",
+            (260,),
+            "height",
+            260,
+            replace(RADAR_STATUS, height=260),
+        ),
+        (
+            "set_radar_install_direction",
+            (0,),
+            "install_direction",
+            0,
+            replace(RADAR_STATUS, install_direction=0),
+        ),
+        (
+            "set_radar_default_absence_delay",
+            (75,),
+            "delaytime",
+            75,
+            replace(RADAR_STATUS, default_absence_delay=75),
+        ),
+        (
+            "set_radar_zone_absence_delay",
+            (3, 150),
+            "duration3",
+            150,
+            replace(RADAR_STATUS, zone_absence_delays=(60, 90, 150, 180)),
+        ),
+    ],
+)
+async def test_set_radar_scalar_fields_require_matching_readback(
+    method: str,
+    arguments: tuple[int, ...],
+    field: str,
+    value: int,
+    readback: UltraRadarStatus,
+) -> None:
+    """Each public setter writes one firmware field and returns a fresh status."""
+    client = UltraClient()
+    session = UltraSession(device=DEVICE, session_key=b"0123456789abcdef")
+    client.send_command = AsyncMock(return_value=b"set-response")
+    client.get_radar_status = AsyncMock(return_value=readback)
+
+    assert await getattr(client, method)(session, *arguments) is readback
+    command = emotion.parse_subdevice_frame(client.send_command.call_args.args[1])
+    assert emotion.parse_subdevice_json_payload(command) == {
+        "did": RADAR_STATUS.did,
+        field: value,
+    }
+
+
+async def test_set_radar_z_range_uses_firmware_json_and_tolerant_readback() -> None:
+    """Z limits use the firmware JSON field and tolerate float serialization."""
+    client = UltraClient()
+    session = UltraSession(device=DEVICE, session_key=b"0123456789abcdef")
+    client.send_command = AsyncMock(return_value=b"set-response")
+    readback = replace(
+        RADAR_STATUS,
+        z_range=UltraRadarZRange(minimum=-2.5, maximum=1.25001),
+    )
+    client.get_radar_status = AsyncMock(return_value=readback)
+
+    assert await client.set_radar_z_range(session, -2.5, 1.25) is readback
+    command = emotion.parse_subdevice_frame(client.send_command.call_args.args[1])
+    payload = emotion.parse_subdevice_json_payload(command)
+    assert payload["did"] == RADAR_STATUS.did
+    assert json.loads(payload["z_range"]) == {"min": -2.5, "max": 1.25}
+
+    with pytest.raises(ValueError, match="less than"):
+        await client.set_radar_z_range(session, 1.0, 1.0)
+    with pytest.raises(ValueError, match="between"):
+        await client.set_radar_z_range(session, -7.0, 1.0)
+
+
+async def test_get_radar_status_rejects_invalid_optional_fields() -> None:
+    """Malformed device-read configuration must not reach callers as valid state."""
+    client = UltraClient()
+    session = UltraSession(device=DEVICE, session_key=b"0123456789abcdef")
+    response = emotion.build_subdevice_frame(
+        emotion.CMD_STATUS_RESPONSE,
+        {
+            "did": RADAR_STATUS.did,
+            "level_of_sensitivity": 2,
+            "z_range": "not-json",
+            "status": 0,
+        },
+    )
+    client.send_command = AsyncMock(return_value=response)
+
+    with pytest.raises(UltraProtocolError, match="invalid radar z_range"):
+        await client.get_radar_status(session)
 
 
 async def test_send_command_allows_more_time_for_confirmed_variant(

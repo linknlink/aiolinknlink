@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import socket
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from datetime import UTC, datetime
 from typing import TypeAlias
@@ -320,6 +320,73 @@ class UltraPositionSubscription:
             return await self._client.set_radar_sensitivity(
                 self._session,
                 sensitivity,
+                exchange=self._listener.exchange,
+            )
+
+    async def set_radar_trigger_speed(self, trigger_speed: int) -> UltraRadarStatus:
+        """Set and read back radar trigger speed on the shared UDP socket."""
+        return await self._run_radar_operation(
+            self._client.set_radar_trigger_speed,
+            trigger_speed,
+        )
+
+    async def set_radar_install_mode(self, install_mode: int) -> UltraRadarStatus:
+        """Set and read back radar installation mode on the shared UDP socket."""
+        return await self._run_radar_operation(
+            self._client.set_radar_install_mode,
+            install_mode,
+        )
+
+    async def set_radar_height(self, height: int) -> UltraRadarStatus:
+        """Set and read back installation height on the shared UDP socket."""
+        return await self._run_radar_operation(self._client.set_radar_height, height)
+
+    async def set_radar_install_direction(self, install_direction: int) -> UltraRadarStatus:
+        """Set and read back cable orientation on the shared UDP socket."""
+        return await self._run_radar_operation(
+            self._client.set_radar_install_direction,
+            install_direction,
+        )
+
+    async def set_radar_z_range(self, minimum: float, maximum: float) -> UltraRadarStatus:
+        """Set and read back the Z-axis detection range on the shared UDP socket."""
+        return await self._run_radar_operation(
+            self._client.set_radar_z_range,
+            minimum,
+            maximum,
+        )
+
+    async def set_radar_default_absence_delay(self, seconds: int) -> UltraRadarStatus:
+        """Set and read back the default absence delay on the shared UDP socket."""
+        return await self._run_radar_operation(
+            self._client.set_radar_default_absence_delay,
+            seconds,
+        )
+
+    async def set_radar_zone_absence_delay(
+        self,
+        zone: int,
+        seconds: int,
+    ) -> UltraRadarStatus:
+        """Set and read back one zone's absence delay on the shared UDP socket."""
+        return await self._run_radar_operation(
+            self._client.set_radar_zone_absence_delay,
+            zone,
+            seconds,
+        )
+
+    async def _run_radar_operation(
+        self,
+        operation: Callable[..., Awaitable[UltraRadarStatus]],
+        *args: object,
+    ) -> UltraRadarStatus:
+        """Serialize one radar operation through the persistent UDP socket."""
+        if not self._running:
+            raise UltraError("position subscription is not running")
+        async with self._operation_lock:
+            return await operation(
+                self._session,
+                *args,
                 exchange=self._listener.exchange,
             )
 

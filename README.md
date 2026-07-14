@@ -2,7 +2,9 @@
 
 `aiolinknlink` is an asynchronous Python client for direct local communication with LinknLink eMotion Ultra2 devices.
 
-The library implements LinknLink DNA discovery, authentication, encrypted UDP transport, local multi-target radar position subscriptions, and device-verified radar sensitivity control. It communicates directly with devices on the local network and does not require a cloud service or MQTT broker.
+The library implements LinknLink DNA discovery, authentication, encrypted UDP transport, local multi-target radar position subscriptions, and device-verified radar configuration. It communicates directly with devices on the local network and does not require a cloud service or MQTT broker.
+
+Supported radar configuration includes sensitivity, trigger speed, installation mode, installation height, cable direction, Z-axis detection limits, the default absence delay, and Zone 1-4 absence delays. Every write API performs a separate device status read and raises an error when the read-back does not match.
 
 ## Requirements
 
@@ -32,6 +34,7 @@ async def main() -> None:
         await subscription.wait_confirmed(60)
         radar_status = await subscription.get_radar_status()
         print(radar_status.sensitivity)
+        print(radar_status.z_range)
         await asyncio.sleep(60)
     finally:
         await subscription.stop()

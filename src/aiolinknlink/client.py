@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import math
 import socket
 import time
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 
 from .models import (
     UltraDevice,
     UltraLocalUDPConfig,
     UltraRadarStatus,
+    UltraRadarZRange,
     UltraSession,
 )
 from .protocol import dna, emotion
@@ -28,6 +31,9 @@ TYPE_ULTRA2_RADAR = 0xACDB
 DEFAULT_TIMEOUT = 5.0
 DEFAULT_AUTH_TIMEOUT = 15.0
 DEFAULT_PREFERRED_COMMAND_TIMEOUT = 15.0
+MAX_ABSENCE_DELAY = 18 * 60 * 60
+MIN_Z_RANGE = -6.0
+MAX_Z_RANGE = 6.0
 
 
 class UltraError(Exception):
@@ -220,13 +226,33 @@ class UltraClient:
         response_status = status.get("status")
         if isinstance(response_status, bool) or response_status != 0:
             raise UltraProtocolError(f"radar status read failed: {response_status!r}")
-        sensitivity = status.get("level_of_sensitivity")
-        if isinstance(sensitivity, bool) or not isinstance(sensitivity, int) or sensitivity not in range(3):
-            raise UltraProtocolError(f"invalid radar sensitivity: {sensitivity!r}")
+        sensitivity = _required_int(status, "level_of_sensitivity", valid_values=range(3))
         return UltraRadarStatus(
             did=radar_did,
             sensitivity=sensitivity,
             received_at=datetime.now(UTC),
+            trigger_speed=_optional_int(status, "triger_speed", valid_values=range(3)),
+            install_mode=_optional_int(status, "install_mode", valid_values=range(2)),
+            height=_optional_int(status, "height", minimum=0, maximum=0xFFFF),
+            install_direction=_optional_int(
+                status,
+                "install_direction",
+                minimum=0,
+                maximum=0xFF,
+            ),
+            z_range=_optional_z_range(status),
+            default_absence_delay=_optional_int(
+                status,
+                "delaytime",
+                minimum=0,
+                maximum=0xFFFF,
+            ),
+            zone_absence_delays=(
+                _optional_int(status, "duration1", minimum=0, maximum=0xFFFF),
+                _optional_int(status, "duration2", minimum=0, maximum=0xFFFF),
+                _optional_int(status, "duration3", minimum=0, maximum=0xFFFF),
+                _optional_int(status, "duration4", minimum=0, maximum=0xFFFF),
+            ),
         )
 
     async def set_radar_sensitivity(
@@ -239,20 +265,181 @@ class UltraClient:
         """Set radar sensitivity and verify it through a device read-back."""
         if isinstance(sensitivity, bool) or sensitivity not in range(3):
             raise ValueError("radar sensitivity must be 0, 1, or 2")
+        return await self._set_radar_field(
+            session,
+            "level_of_sensitivity",
+            sensitivity,
+            expected=sensitivity,
+            read_value=lambda status: status.sensitivity,
+            exchange=exchange,
+        )
+
+    async def set_radar_trigger_speed(
+        self,
+        session: UltraSession,
+        trigger_speed: int,
+        *,
+        exchange: dna.PacketExchange | None = None,
+    ) -> UltraRadarStatus:
+        """Set radar trigger speed and verify it through a device read-back."""
+        if isinstance(trigger_speed, bool) or trigger_speed not in range(3):
+            raise ValueError("radar trigger speed must be 0, 1, or 2")
+        return await self._set_radar_field(
+            session,
+            "triger_speed",
+            trigger_speed,
+            expected=trigger_speed,
+            read_value=lambda status: status.trigger_speed,
+            exchange=exchange,
+        )
+
+    async def set_radar_install_mode(
+        self,
+        session: UltraSession,
+        install_mode: int,
+        *,
+        exchange: dna.PacketExchange | None = None,
+    ) -> UltraRadarStatus:
+        """Set radar installation mode and verify the device-read value."""
+        if isinstance(install_mode, bool) or install_mode not in range(2):
+            raise ValueError("radar install mode must be 0 or 1")
+        return await self._set_radar_field(
+            session,
+            "install_mode",
+            install_mode,
+            expected=install_mode,
+            read_value=lambda status: status.install_mode,
+            exchange=exchange,
+        )
+
+    async def set_radar_height(
+        self,
+        session: UltraSession,
+        height: int,
+        *,
+        exchange: dna.PacketExchange | None = None,
+    ) -> UltraRadarStatus:
+        """Set installation height in centimeters and verify the device-read value."""
+        _validate_int_range(height, 0, 0xFFFF, "radar height")
+        return await self._set_radar_field(
+            session,
+            "height",
+            height,
+            expected=height,
+            read_value=lambda status: status.height,
+            exchange=exchange,
+        )
+
+    async def set_radar_install_direction(
+        self,
+        session: UltraSession,
+        install_direction: int,
+        *,
+        exchange: dna.PacketExchange | None = None,
+    ) -> UltraRadarStatus:
+        """Set cable orientation and verify the device-read value."""
+        if isinstance(install_direction, bool) or install_direction not in range(2):
+            raise ValueError("radar install direction must be 0 or 1")
+        return await self._set_radar_field(
+            session,
+            "install_direction",
+            install_direction,
+            expected=install_direction,
+            read_value=lambda status: status.install_direction,
+            exchange=exchange,
+        )
+
+    async def set_radar_z_range(
+        self,
+        session: UltraSession,
+        minimum: float,
+        maximum: float,
+        *,
+        exchange: dna.PacketExchange | None = None,
+    ) -> UltraRadarStatus:
+        """Set the Z-axis detection range in meters and verify both limits."""
+        minimum = _validate_float_range(minimum, MIN_Z_RANGE, MAX_Z_RANGE, "minimum Z range")
+        maximum = _validate_float_range(maximum, MIN_Z_RANGE, MAX_Z_RANGE, "maximum Z range")
+        if minimum >= maximum:
+            raise ValueError("minimum Z range must be less than maximum Z range")
+
+        expected = UltraRadarZRange(minimum=minimum, maximum=maximum)
+        status = await self._set_radar_field(
+            session,
+            "z_range",
+            json.dumps(
+                {"min": minimum, "max": maximum},
+                separators=(",", ":"),
+            ),
+            expected=expected,
+            read_value=lambda value: value.z_range,
+            exchange=exchange,
+            values_match=_z_ranges_match,
+        )
+        return status
+
+    async def set_radar_default_absence_delay(
+        self,
+        session: UltraSession,
+        seconds: int,
+        *,
+        exchange: dna.PacketExchange | None = None,
+    ) -> UltraRadarStatus:
+        """Set the default absence delay and verify the device-read value."""
+        _validate_int_range(seconds, 0, MAX_ABSENCE_DELAY, "default absence delay")
+        return await self._set_radar_field(
+            session,
+            "delaytime",
+            seconds,
+            expected=seconds,
+            read_value=lambda status: status.default_absence_delay,
+            exchange=exchange,
+        )
+
+    async def set_radar_zone_absence_delay(
+        self,
+        session: UltraSession,
+        zone: int,
+        seconds: int,
+        *,
+        exchange: dna.PacketExchange | None = None,
+    ) -> UltraRadarStatus:
+        """Set one zone's absence delay and verify the device-read value."""
+        if isinstance(zone, bool) or zone not in range(1, 5):
+            raise ValueError("radar zone must be between 1 and 4")
+        _validate_int_range(seconds, 0, MAX_ABSENCE_DELAY, "zone absence delay")
+        return await self._set_radar_field(
+            session,
+            f"duration{zone}",
+            seconds,
+            expected=seconds,
+            read_value=lambda status: status.zone_absence_delays[zone - 1],
+            exchange=exchange,
+        )
+
+    async def _set_radar_field(
+        self,
+        session: UltraSession,
+        field: str,
+        value: object,
+        *,
+        expected: object,
+        read_value: Callable[[UltraRadarStatus], object],
+        exchange: dna.PacketExchange | None,
+        values_match: Callable[[object, object], bool] | None = None,
+    ) -> UltraRadarStatus:
+        """Write one radar field and require a matching independent read-back."""
         radar_did = derive_ultra2_radar_did(session.device.mac)
         await self.send_command(
             session,
-            emotion.build_set_status_frame(
-                radar_did,
-                {"level_of_sensitivity": sensitivity},
-            ),
+            emotion.build_set_status_frame(radar_did, {field: value}),
             exchange=exchange,
         )
         status = await self.get_radar_status(session, exchange=exchange)
-        if status.sensitivity != sensitivity:
-            raise UltraProtocolError(
-                f"radar sensitivity read-back mismatch ({status.sensitivity}, expected {sensitivity})"
-            )
+        actual = read_value(status)
+        matches = values_match(actual, expected) if values_match else actual == expected
+        if not matches:
+            raise UltraProtocolError(f"radar {field} read-back mismatch ({actual!r}, expected {expected!r})")
         return status
 
     async def send_command(
@@ -443,6 +630,96 @@ def derive_ultra2_radar_did(lan_mac: str) -> str:
         raise ValueError(f"invalid Ultra2 LAN MAC: {lan_mac}")
     radar_type = TYPE_ULTRA2_RADAR.to_bytes(4, "little")
     return (mac + radar_type + b"\x00\x00" + radar_type[:3] + b"\x01").hex()
+
+
+def _required_int(
+    payload: dict[str, object],
+    key: str,
+    *,
+    valid_values: Iterable[int] | None = None,
+) -> int:
+    value = _optional_int(payload, key, valid_values=valid_values)
+    if value is None:
+        raise UltraProtocolError(f"missing radar {key}")
+    return value
+
+
+def _optional_int(
+    payload: dict[str, object],
+    key: str,
+    *,
+    minimum: int | None = None,
+    maximum: int | None = None,
+    valid_values: Iterable[int] | None = None,
+) -> int | None:
+    value = payload.get(key)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise UltraProtocolError(f"invalid radar {key}: {value!r}")
+    if valid_values is not None and value not in valid_values:
+        raise UltraProtocolError(f"invalid radar {key}: {value!r}")
+    if minimum is not None and value < minimum:
+        raise UltraProtocolError(f"invalid radar {key}: {value!r}")
+    if maximum is not None and value > maximum:
+        raise UltraProtocolError(f"invalid radar {key}: {value!r}")
+    return value
+
+
+def _optional_z_range(payload: dict[str, object]) -> UltraRadarZRange | None:
+    raw = payload.get("z_range")
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError as err:
+            raise UltraProtocolError(f"invalid radar z_range: {raw!r}") from err
+    if not isinstance(raw, dict):
+        raise UltraProtocolError(f"invalid radar z_range: {raw!r}")
+    minimum = _status_float(raw.get("min"), "z_range.min")
+    maximum = _status_float(raw.get("max"), "z_range.max")
+    if minimum >= maximum:
+        raise UltraProtocolError(f"invalid radar z_range: minimum {minimum!r} is not less than maximum {maximum!r}")
+    return UltraRadarZRange(minimum=minimum, maximum=maximum)
+
+
+def _status_float(value: object, field: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise UltraProtocolError(f"invalid radar {field}: {value!r}")
+    result = float(value)
+    if not math.isfinite(result):
+        raise UltraProtocolError(f"invalid radar {field}: {value!r}")
+    return result
+
+
+def _validate_int_range(value: int, minimum: int, maximum: int, field: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
+        raise ValueError(f"{field} must be between {minimum} and {maximum}")
+
+
+def _validate_float_range(
+    value: float,
+    minimum: float,
+    maximum: float,
+    field: str,
+) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(f"{field} must be between {minimum} and {maximum}")
+    result = float(value)
+    if not math.isfinite(result) or not minimum <= result <= maximum:
+        raise ValueError(f"{field} must be between {minimum} and {maximum}")
+    return result
+
+
+def _z_ranges_match(actual: object, expected: object) -> bool:
+    if not isinstance(actual, UltraRadarZRange) or not isinstance(expected, UltraRadarZRange):
+        return False
+    return math.isclose(actual.minimum, expected.minimum, abs_tol=0.01) and math.isclose(
+        actual.maximum,
+        expected.maximum,
+        abs_tol=0.01,
+    )
 
 
 def _model_for_device_type(device_type: int) -> str:

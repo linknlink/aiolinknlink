@@ -20,6 +20,7 @@ from .models import (
     UltraPositionSubscriptionState,
     UltraPositionUpdate,
     UltraRadarStatus,
+    UltraRadarZRange,
     UltraSession,
     UltraTargetPosition,
 )
@@ -40,6 +41,7 @@ __all__ = [
     "UltraPositionUpdate",
     "UltraProtocolError",
     "UltraRadarStatus",
+    "UltraRadarZRange",
     "UltraSession",
     "UltraTargetPosition",
     "derive_ultra2_radar_did",
