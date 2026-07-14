@@ -2,6 +2,7 @@
 
 from .client import (
     DISPLAY_MODEL_ULTRA,
+    DISPLAY_MODEL_ULTRA2,
     PID_ULTRA,
     PID_ULTRA2,
     TYPE_ULTRA,
@@ -17,6 +18,7 @@ from .models import UltraDevice, UltraSession, UltraState, UltraSubDeviceState
 
 __all__ = [
     "DISPLAY_MODEL_ULTRA",
+    "DISPLAY_MODEL_ULTRA2",
     "PID_ULTRA",
     "PID_ULTRA2",
     "TYPE_ULTRA",

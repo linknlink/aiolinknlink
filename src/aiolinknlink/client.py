@@ -17,6 +17,7 @@ _LOGGER = logging.getLogger(__name__)
 
 PROVIDER = "ultra"
 DISPLAY_MODEL_ULTRA = "eMotion Ultra"
+DISPLAY_MODEL_ULTRA2 = "eMotion Ultra2"
 PID_ULTRA = "0000000000000000000000009cac0000"
 PID_ULTRA2 = "000000000000000000000000d7ac0000"
 TYPE_ULTRA = 0x9CAC
@@ -102,6 +103,10 @@ class UltraClient:
                 )
                 session.session_key = dna.extract_session_key(response)
                 session.auth_device_type = auth_type
+                device.type_id = auth_type
+                device.model = _model_for_device_type(auth_type)
+                if not device.name or device.name == DISPLAY_MODEL_ULTRA:
+                    device.name = device.model
                 session.auth_status = "ok"
                 session.auth_error = ""
                 session.last_auth_at = datetime.now(UTC)
@@ -234,7 +239,8 @@ class UltraClient:
 
     def _device_from_dna(self, raw: dna.DiscoveredDevice) -> UltraDevice:
         device_id = _entity_id_device_segment(raw.mac or raw.id or raw.ip)
-        name = raw.name or DISPLAY_MODEL_ULTRA
+        model = _model_for_device_type(raw.device_type)
+        name = raw.name or model
         return UltraDevice(
             id=device_id,
             mac=raw.mac,
@@ -242,7 +248,7 @@ class UltraClient:
             port=raw.port or self.default_port,
             type_id=raw.device_type,
             name=name,
-            model=DISPLAY_MODEL_ULTRA,
+            model=model,
             raw={"message_type": raw.message_type, "raw_len": len(raw.raw)},
         )
 
@@ -336,6 +342,12 @@ def _matches_ultra(device: UltraDevice) -> bool:
         return True
     haystack = f"{device.name} {device.model}".lower()
     return "ultra" in haystack or "emotion" in haystack
+
+
+def _model_for_device_type(device_type: int) -> str:
+    if device_type in {TYPE_ULTRA2, TYPE_ULTRA2_LAN}:
+        return DISPLAY_MODEL_ULTRA2
+    return DISPLAY_MODEL_ULTRA
 
 
 def _auth_device_type_candidates(device_type: int) -> list[int]:

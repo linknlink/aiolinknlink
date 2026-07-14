@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from aiolinknlink import (
+    DISPLAY_MODEL_ULTRA2,
     TYPE_ULTRA,
     TYPE_ULTRA2,
     TYPE_ULTRA2_LAN,
@@ -43,6 +44,8 @@ async def test_connect_and_refresh(monkeypatch: pytest.MonkeyPatch) -> None:
     state = await client.refresh(session)
 
     assert session.session_key == session_key
+    assert session.device.model == DISPLAY_MODEL_ULTRA2
+    assert session.device.name == DISPLAY_MODEL_ULTRA2
     assert state.online is True
     assert state.values["wifi_rssi"] == -43
     assert send.await_count == 3
