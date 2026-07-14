@@ -337,7 +337,7 @@ class UltraClient:
         *,
         exchange: dna.PacketExchange | None = None,
     ) -> UltraRadarStatus:
-        """Set cable orientation and verify the device-read value."""
+        """Set installation direction and verify the device-read value."""
         if isinstance(install_direction, bool) or install_direction not in range(2):
             raise ValueError("radar install direction must be 0 or 1")
         return await self._set_radar_field(

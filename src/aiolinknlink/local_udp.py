@@ -342,7 +342,7 @@ class UltraPositionSubscription:
         return await self._run_radar_operation(self._client.set_radar_height, height)
 
     async def set_radar_install_direction(self, install_direction: int) -> UltraRadarStatus:
-        """Set and read back cable orientation on the shared UDP socket."""
+        """Set and read back installation direction on the shared UDP socket."""
         return await self._run_radar_operation(
             self._client.set_radar_install_direction,
             install_direction,
