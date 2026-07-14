@@ -7,8 +7,13 @@ import logging
 import socket
 import time
 from collections.abc import Iterable
+from contextlib import suppress
 from datetime import UTC, datetime
 from typing import Any
+
+from aioesphomeapi.client import APIClient
+from aioesphomeapi.core import APIConnectionError
+from aioesphomeapi.model import EntityInfo, EntityState
 
 from .models import UltraDevice, UltraSession, UltraState, UltraSubDeviceState
 from .protocol import dna, emotion
@@ -24,6 +29,8 @@ TYPE_ULTRA = 0x9CAC
 TYPE_ULTRA2 = 0xD7AC
 TYPE_ULTRA2_LAN = 0xE3AC
 DEFAULT_TIMEOUT = 5.0
+ESPHOME_API_PORT = 6053
+ESPHOME_STATE_TIMEOUT = 2.0
 
 
 class UltraError(Exception):
@@ -57,6 +64,7 @@ class UltraClient:
         self.discovery_timeout = discovery_timeout
         self.command_timeout = command_timeout
         self.broadcast_address = broadcast_address
+        self._esphome_entity_attrs: dict[str, dict[tuple[int, int], tuple[str, ...]]] = {}
 
     async def discover(self) -> list[UltraDevice]:
         """Discover Ultra devices on the local network."""
@@ -159,6 +167,10 @@ class UltraClient:
             raw={},
             updated_at=now,
         )
+        if _supports_esphome_api(session.device) and await self._refresh_esphome_state(session, state):
+            session.last_seen = datetime.now(UTC)
+            return state
+
         if not session.session_key:
             await self._reauthenticate(session)
 
@@ -176,6 +188,70 @@ class UltraClient:
         await self._refresh_subdevices(session, state)
         session.last_seen = datetime.now(UTC)
         return state
+
+    async def _refresh_esphome_state(self, session: UltraSession, state: UltraState) -> bool:
+        """Read Ultra2 entities from its standard ESPHome local API."""
+        client = APIClient(
+            session.device.ip,
+            ESPHOME_API_PORT,
+            "",
+            client_info="aiolinknlink",
+        )
+        cache_key = _compact_mac(session.device.mac) or session.device.id
+        entity_attrs = self._esphome_entity_attrs.get(cache_key)
+        received: set[tuple[int, int]] = set()
+        all_states_received = asyncio.Event()
+        try:
+            await asyncio.wait_for(client.connect(login=True), timeout=self.command_timeout)
+            if entity_attrs is None:
+                device_info, entities, _services = await asyncio.wait_for(
+                    client.device_info_and_list_entities(),
+                    timeout=self.command_timeout,
+                )
+                if _compact_mac(device_info.mac_address) != _compact_mac(session.device.mac):
+                    state.raw["esphome_api"] = {"status": "identity_mismatch"}
+                    return False
+                entity_attrs = _esphome_entity_mapping(entities)
+                self._esphome_entity_attrs[cache_key] = entity_attrs
+
+            def _on_state(update: EntityState) -> None:
+                entity_key = (update.device_id, update.key)
+                attrs = entity_attrs.get(entity_key)
+                if attrs is None or getattr(update, "missing_state", False):
+                    return
+                value = getattr(update, "state", None)
+                for attr in attrs:
+                    state.values[attr] = _normalize_esphome_value(attr, value)
+                received.add(entity_key)
+                if len(received) == len(entity_attrs):
+                    all_states_received.set()
+
+            client.subscribe_states(_on_state)
+            with suppress(TimeoutError):
+                await asyncio.wait_for(
+                    all_states_received.wait(),
+                    timeout=ESPHOME_STATE_TIMEOUT,
+                )
+        except (APIConnectionError, OSError, TimeoutError) as err:
+            state.raw["esphome_api"] = {
+                "status": "unavailable",
+                "error": str(err) or type(err).__name__,
+            }
+            return False
+        finally:
+            with suppress(APIConnectionError, OSError):
+                await client.disconnect(force=True)
+
+        if not received:
+            state.raw["esphome_api"] = {"status": "no_state"}
+            return False
+        state.raw["esphome_api"] = {
+            "status": "ok",
+            "entity_count": len(entity_attrs),
+            "state_count": len(received),
+        }
+        state.raw["primary_protocol"] = "esphome_api"
+        return True
 
     async def control(self, session: UltraSession, entity_attr: str, sub_did: str, payload: dict[str, Any]) -> None:
         """Control a writable entity."""
@@ -240,6 +316,8 @@ class UltraClient:
             state.online = response.gateway_state.online
             state.values["state"] = response.gateway_state.state
             state.values.update(response.gateway_state.attributes)
+            if "presence" not in state.values and "pir_detected" in state.values:
+                state.values["presence"] = state.values["pir_detected"]
         if response.subdevice_frame is not None:
             state.raw["subdevice_command"] = response.subdevice_frame.command_type
             sub_payload = emotion.parse_subdevice_json_payload(response.subdevice_frame)
@@ -371,6 +449,51 @@ def _matches_ultra(device: UltraDevice) -> bool:
     if device.type_id in {TYPE_ULTRA, TYPE_ULTRA2, TYPE_ULTRA2_LAN}:
         return True
     return "ultra" in device.name.lower()
+
+
+def _supports_esphome_api(device: UltraDevice) -> bool:
+    return device.type_id in {TYPE_ULTRA2, TYPE_ULTRA2_LAN} or device.model == DISPLAY_MODEL_ULTRA2
+
+
+def _esphome_entity_mapping(entities: list[EntityInfo]) -> dict[tuple[int, int], tuple[str, ...]]:
+    mapping: dict[tuple[int, int], tuple[str, ...]] = {}
+    for entity in entities:
+        attrs = _canonical_esphome_attrs(entity.object_id)
+        if attrs:
+            mapping[(entity.device_id, entity.key)] = attrs
+    return mapping
+
+
+def _canonical_esphome_attrs(object_id: str) -> tuple[str, ...]:
+    attr = object_id.strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "all_target_counts": ("target_count",),
+        "opt3004_light": ("envlux",),
+        "persons_in_fenced_zones": ("persons_in_fenced_zones",),
+        "sht_humidity": ("envhumid",),
+        "sht_temperature": ("envtemp",),
+        "wifi_signal_sensor": ("wifi_rssi",),
+        "zone_any_presence": ("presence",),
+    }
+    if attr in aliases:
+        return aliases[attr]
+    if attr.startswith("zone_") and (attr.endswith("_presence") or attr.endswith("_target_counts")):
+        return (attr,)
+    return ()
+
+
+def _normalize_esphome_value(attr: str, value: Any) -> Any:
+    if (
+        (attr == "target_count" or attr == "persons_in_fenced_zones" or attr.endswith("_target_counts"))
+        and isinstance(value, float)
+        and value.is_integer()
+    ):
+        return int(value)
+    return value
+
+
+def _compact_mac(value: str) -> str:
+    return value.strip().lower().replace(":", "").replace("-", "")
 
 
 def _model_for_device_type(device_type: int) -> str:
