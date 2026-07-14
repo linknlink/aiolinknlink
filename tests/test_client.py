@@ -1,28 +1,28 @@
-"""Tests for the eMotion Ultra client."""
+"""Tests for the eMotion Ultra2 client."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from types import SimpleNamespace
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
 
 from aiolinknlink import (
     DISPLAY_MODEL_ULTRA2,
-    TYPE_ULTRA,
     TYPE_ULTRA2,
     TYPE_ULTRA2_LAN,
     UltraAuthError,
     UltraClient,
     UltraConnectionError,
     UltraDevice,
+    UltraProtocolError,
+    UltraRadarStatus,
+    derive_ultra2_protocol_mac,
+    derive_ultra2_radar_did,
 )
 from aiolinknlink.client import (
     _auth_device_type_candidates,
-    _canonical_esphome_attrs,
     _command_device_type_candidates,
-    _supports_esphome_api,
 )
 from aiolinknlink.models import UltraSession
 from aiolinknlink.protocol import dna, emotion
@@ -36,154 +36,138 @@ DEVICE = UltraDevice(
 )
 
 
-async def test_connect_and_refresh(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_connect(monkeypatch: pytest.MonkeyPatch) -> None:
     session_key = b"0123456789abcdef"
     auth_response = b"\x00" * 4 + session_key + b"\x00" * 12
-    gateway_response = b'\x26\x00\x00\x00{"rssi":-43,"lb_online1":1}'
-    empty_list = emotion.build_subdevice_frame(emotion.CMD_SUBDEVICE_LIST_RESPONSE, {"list": []})
-    send = AsyncMock(side_effect=[auth_response, gateway_response, empty_list])
+    send = AsyncMock(return_value=auth_response)
     monkeypatch.setattr(dna, "send_encrypted", send)
 
-    client = UltraClient(command_timeout=0.1)
-    monkeypatch.setattr(client, "_refresh_esphome_state", AsyncMock(return_value=False))
+    client = UltraClient(command_timeout=0.1, auth_timeout=0.2)
     session = await client.connect(DEVICE)
-    state = await client.refresh(session)
 
     assert session.session_key == session_key
+    assert session.auth_mac == DEVICE.mac
     assert session.device.model == DISPLAY_MODEL_ULTRA2
     assert session.device.name == DISPLAY_MODEL_ULTRA2
-    assert state.online is True
-    assert state.values["wifi_rssi"] == -43
-    assert send.await_count == 3
+    assert send.await_count == 1
+    assert send.call_args.kwargs["timeout"] == 0.2
 
 
-@dataclass
-class _Entity:
-    object_id: str
-    key: int
-    device_id: int = 0
-
-
-@dataclass
-class _State:
-    key: int
-    state: object
-    device_id: int = 0
-    missing_state: bool = False
-
-
-class _ESPHomeClient:
-    def __init__(self, *args: object, **kwargs: object) -> None:
-        self.states = [
-            _State(1, 23.5),
-            _State(2, 48.0),
-            _State(3, True),
-            _State(4, 2.0),
-            _State(5, 1.0),
-        ]
-
-    async def connect(self, *, login: bool) -> None:
-        assert login is True
-
-    async def device_info_and_list_entities(self):
-        return (
-            SimpleNamespace(mac_address=DEVICE.mac),
-            [
-                _Entity("sht_temperature", 1),
-                _Entity("sht_humidity", 2),
-                _Entity("zone_any_presence", 3),
-                _Entity("all_target_counts", 4),
-                _Entity("zone_1_target_counts", 5),
-                _Entity("mqtt_password", 6),
-            ],
-            [],
-        )
-
-    def subscribe_states(self, callback) -> None:
-        for state in self.states:
-            callback(state)
-
-    async def disconnect(self, *, force: bool) -> None:
-        assert force is True
-
-
-async def test_refresh_prefers_esphome_state(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Ultra2 state is populated from its standard local API."""
-    monkeypatch.setattr("aiolinknlink.client.APIClient", _ESPHomeClient)
-    send = AsyncMock()
-    monkeypatch.setattr(dna, "send_encrypted", send)
-    session = UltraSession(device=DEVICE, session_key=b"0123456789abcdef")
-
-    state = await UltraClient(command_timeout=1).refresh(session)
-
-    assert state.values == {
-        "state": "online",
-        "envtemp": 23.5,
-        "envhumid": 48.0,
-        "presence": True,
-        "target_count": 2,
-        "zone_1_target_counts": 1,
-    }
-    assert state.raw["primary_protocol"] == "esphome_api"
-    send.assert_not_awaited()
-
-
-@pytest.mark.parametrize(
-    ("object_id", "expected"),
-    [
-        ("Zone_2_Presence", ("zone_2_presence",)),
-        ("zone_4_target_counts", ("zone_4_target_counts",)),
-        ("mqtt_password", ()),
-        ("ip_address", ()),
-    ],
-)
-def test_canonical_esphome_attrs(object_id: str, expected: tuple[str, ...]) -> None:
-    assert _canonical_esphome_attrs(object_id) == expected
-
-
-async def test_refresh_skips_esphome_for_legacy_ultra(
+async def test_reauthenticate_preserves_working_command_variant(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Legacy Ultra devices use DNA without an ESPHome connection attempt."""
-    device = UltraDevice(
-        id=DEVICE.id,
-        ip=DEVICE.ip,
-        port=DEVICE.port,
-        mac=DEVICE.mac,
-        type_id=TYPE_ULTRA,
+    """A renewed auth key must keep the previously confirmed command variant."""
+    client = UltraClient()
+    session = UltraSession(
+        device=DEVICE,
+        session_key=b"old-session-key!",
+        auth_mac="e0:4b:41:02:44:c9",
+        command_device_type=TYPE_ULTRA2_LAN,
+        command_message_type=0x03E9,
     )
-    gateway_response = b'\x26\x00\x00\x00{"pir_detected":true}'
-    empty_list = emotion.build_subdevice_frame(emotion.CMD_SUBDEVICE_LIST_RESPONSE, {"list": []})
-    send = AsyncMock(side_effect=[gateway_response, empty_list])
-    monkeypatch.setattr(dna, "send_encrypted", send)
-    client = UltraClient(command_timeout=0.1)
-    esphome_refresh = AsyncMock(return_value=False)
-    monkeypatch.setattr(client, "_refresh_esphome_state", esphome_refresh)
-    session = UltraSession(device=device, session_key=b"0123456789abcdef")
-
-    state = await client.refresh(session)
-
-    esphome_refresh.assert_not_awaited()
-    assert state.values["presence"] is True
-
-
-def test_esphome_support_is_limited_to_ultra2() -> None:
-    assert _supports_esphome_api(DEVICE)
-    assert not _supports_esphome_api(
-        UltraDevice(
-            id=DEVICE.id,
-            ip=DEVICE.ip,
-            port=DEVICE.port,
-            mac=DEVICE.mac,
-            type_id=TYPE_ULTRA,
-        )
+    refreshed = UltraSession(
+        device=DEVICE,
+        session_key=b"new-session-key!",
+        auth_mac="e0:4b:41:02:44:c9",
+        auth_device_type=TYPE_ULTRA2,
+        auth_status="ok",
     )
+    connect = AsyncMock(return_value=refreshed)
+    monkeypatch.setattr(client, "connect", connect)
+
+    await client.reauthenticate(session)
+
+    assert session.session_key == b"new-session-key!"
+    assert session.command_device_type == TYPE_ULTRA2_LAN
+    assert session.command_message_type == 0x03E9
 
 
 async def test_connect_requires_mac() -> None:
     client = UltraClient()
     with pytest.raises(UltraAuthError, match="missing mac"):
         await client.connect(UltraDevice(id="device", ip="192.168.1.8", port=80))
+
+
+def test_derive_ultra2_protocol_mac() -> None:
+    assert derive_ultra2_protocol_mac("E0:4B:41:02:44:C7") == "e0:4b:41:02:44:c9"
+    with pytest.raises(ValueError, match="invalid Ultra2 LAN MAC"):
+        derive_ultra2_protocol_mac("not-a-mac")
+
+
+def test_derive_ultra2_radar_did() -> None:
+    assert derive_ultra2_radar_did("E0:4B:41:02:44:C7") == "e04b410244c7dbac00000000dbac0001"
+    with pytest.raises(ValueError, match="invalid Ultra2 LAN MAC"):
+        derive_ultra2_radar_did("not-a-mac")
+
+
+async def test_get_radar_status_uses_peripheral_did() -> None:
+    client = UltraClient()
+    session = UltraSession(device=DEVICE, session_key=b"0123456789abcdef")
+    response = emotion.build_subdevice_frame(
+        emotion.CMD_STATUS_RESPONSE,
+        {
+            "did": derive_ultra2_radar_did(DEVICE.mac),
+            "level_of_sensitivity": 2,
+            "status": 0,
+        },
+    )
+    send_command = AsyncMock(return_value=response)
+    client.send_command = send_command
+
+    status = await client.get_radar_status(session)
+
+    assert status.did == "e04b410167bbdbac00000000dbac0001"
+    assert status.sensitivity == 2
+    command = emotion.parse_subdevice_frame(send_command.call_args.args[1])
+    assert emotion.parse_subdevice_json_payload(command)["did"] == status.did
+
+
+async def test_set_radar_sensitivity_requires_matching_readback() -> None:
+    client = UltraClient()
+    session = UltraSession(device=DEVICE, session_key=b"0123456789abcdef")
+    client.send_command = AsyncMock(return_value=b"set-response")
+    status = UltraRadarStatus(
+        did=derive_ultra2_radar_did(DEVICE.mac),
+        sensitivity=1,
+        received_at=datetime.now(UTC),
+    )
+    client.get_radar_status = AsyncMock(return_value=status)
+
+    assert await client.set_radar_sensitivity(session, 1) is status
+    command = emotion.parse_subdevice_frame(client.send_command.call_args.args[1])
+    assert emotion.parse_subdevice_json_payload(command) == {
+        "did": status.did,
+        "level_of_sensitivity": 1,
+    }
+
+    client.get_radar_status.return_value = UltraRadarStatus(
+        did=status.did,
+        sensitivity=2,
+        received_at=datetime.now(UTC),
+    )
+    with pytest.raises(UltraProtocolError, match="read-back mismatch"):
+        await client.set_radar_sensitivity(session, 1)
+    with pytest.raises(ValueError, match="must be 0, 1, or 2"):
+        await client.set_radar_sensitivity(session, 3)
+
+
+async def test_send_command_allows_more_time_for_confirmed_variant(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A known working command variant tolerates a slow device response."""
+    send = AsyncMock(return_value=b"response")
+    monkeypatch.setattr(dna, "send_encrypted", send)
+    client = UltraClient(command_timeout=0.1, preferred_command_timeout=0.3)
+    session = UltraSession(
+        device=DEVICE,
+        session_key=b"0123456789abcdef",
+        auth_mac=DEVICE.mac,
+        command_device_type=TYPE_ULTRA2_LAN,
+        command_message_type=0x03E9,
+    )
+
+    assert await client.send_command(session, b"command", try_all=False) == b"response"
+    assert send.call_args.kwargs["timeout"] == 0.3
 
 
 async def test_discover_filters_other_dna_devices(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -263,10 +247,9 @@ async def test_discover_host_retries_discovery(monkeypatch: pytest.MonkeyPatch) 
 @pytest.mark.parametrize(
     ("device_type", "expected"),
     [
-        (TYPE_ULTRA, [TYPE_ULTRA, TYPE_ULTRA2, TYPE_ULTRA2_LAN]),
-        (TYPE_ULTRA2, [TYPE_ULTRA2, TYPE_ULTRA2_LAN, TYPE_ULTRA]),
-        (TYPE_ULTRA2_LAN, [TYPE_ULTRA2_LAN, TYPE_ULTRA2, TYPE_ULTRA]),
-        (0, [TYPE_ULTRA2, TYPE_ULTRA2_LAN, TYPE_ULTRA]),
+        (TYPE_ULTRA2, [TYPE_ULTRA2, TYPE_ULTRA2_LAN]),
+        (TYPE_ULTRA2_LAN, [TYPE_ULTRA2_LAN, TYPE_ULTRA2]),
+        (0, [TYPE_ULTRA2, TYPE_ULTRA2_LAN]),
     ],
 )
 def test_auth_device_type_candidates(device_type: int, expected: list[int]) -> None:
@@ -279,34 +262,11 @@ def test_command_candidates_prefer_authenticated_type() -> None:
         ip="192.168.1.8",
         port=80,
         mac="e0:4b:41:01:67:bb",
-        type_id=TYPE_ULTRA,
+        type_id=TYPE_ULTRA2,
     )
-    session = UltraSession(device=device, auth_device_type=TYPE_ULTRA)
+    session = UltraSession(device=device, auth_device_type=TYPE_ULTRA2_LAN)
 
     assert _command_device_type_candidates(session) == [
-        TYPE_ULTRA,
-        TYPE_ULTRA2,
         TYPE_ULTRA2_LAN,
+        TYPE_ULTRA2,
     ]
-
-
-async def test_control_builds_subdevice_frame(monkeypatch: pytest.MonkeyPatch) -> None:
-    client = UltraClient()
-    session = await _session(client, monkeypatch)
-    send = AsyncMock(return_value=b"ok")
-    monkeypatch.setattr(dna, "send_encrypted", send)
-
-    await client.control(session, "power", "radar-1", {"state": "on"})
-
-    command = send.await_args.args[3]
-    frame = emotion.parse_subdevice_frame(command)
-    payload = emotion.parse_subdevice_json_payload(frame)
-    assert frame.command_type == emotion.CMD_SET_STATUS
-    assert payload == {"did": "radar-1", "power": True}
-
-
-async def _session(client: UltraClient, monkeypatch: pytest.MonkeyPatch):
-    session_key = b"0123456789abcdef"
-    response = b"\x00" * 4 + session_key + b"\x00" * 12
-    monkeypatch.setattr(dna, "send_encrypted", AsyncMock(return_value=response))
-    return await client.connect(DEVICE)

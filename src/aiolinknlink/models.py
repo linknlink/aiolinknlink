@@ -1,7 +1,8 @@
-"""Data models for eMotion Ultra integration."""
+"""Data models for the eMotion Ultra2 integration."""
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -18,8 +19,8 @@ class UltraDevice:
     did: str = ""
     pid: str = ""
     type_id: int = 0
-    name: str = "eMotion Ultra"
-    model: str = "eMotion Ultra"
+    name: str = "eMotion Ultra2"
+    model: str = "eMotion Ultra2"
     raw: dict[str, Any] = field(default_factory=dict)
 
 
@@ -29,7 +30,10 @@ class UltraSession:
 
     device: UltraDevice
     session_key: bytes | None = None
+    auth_mac: str = ""
     auth_device_type: int = 0
+    command_device_type: int = 0
+    command_message_type: int = 0
     command_sequence: int = 0
     auth_status: str = "new"
     auth_error: str = ""
@@ -37,43 +41,79 @@ class UltraSession:
     last_seen: datetime | None = None
 
 
-@dataclass(slots=True)
-class UltraSubDeviceState:
-    """State for an Ultra child/subdevice."""
+@dataclass(frozen=True, slots=True)
+class UltraTargetPosition:
+    """One radar target position in meters."""
 
-    did: str
-    pid: str = ""
-    name: str = ""
-    type: str = ""
-    fields: dict[str, Any] = field(default_factory=dict)
-    raw: dict[str, Any] = field(default_factory=dict)
-    updated_at: datetime | None = None
+    x: float
+    y: float
+    z: float
 
+    @property
+    def horizontal_distance(self) -> float:
+        """Return the horizontal distance from the radar in meters."""
+        return math.hypot(self.x, self.y)
 
-@dataclass(slots=True)
-class UltraState:
-    """Aggregated Ultra device state."""
-
-    device_id: str
-    online: bool
-    values: dict[str, Any] = field(default_factory=dict)
-    children: dict[str, UltraSubDeviceState] = field(default_factory=dict)
-    raw: dict[str, Any] = field(default_factory=dict)
-    updated_at: datetime | None = None
+    @property
+    def distance(self) -> float:
+        """Return the three-dimensional distance from the radar in meters."""
+        return math.sqrt(self.x**2 + self.y**2 + self.z**2)
 
 
 @dataclass(frozen=True, slots=True)
-class UltraEntityInfo:
-    """HA entity mapping metadata."""
+class UltraPositionUpdate:
+    """A local UDP target-position update."""
 
-    unique_id: str
-    name: str
-    domain: str
-    attr: str
-    device_id: str
-    device_class: str | None = None
-    native_unit_of_measurement: str | None = None
-    state_class: str | None = None
-    writable: bool = False
-    sub_did: str = ""
-    extra: dict[str, Any] = field(default_factory=dict)
+    source_ip: str
+    targets: tuple[UltraTargetPosition, ...]
+    received_at: datetime
+
+    @property
+    def target_count(self) -> int:
+        """Return the number of valid targets in this update."""
+        return len(self.targets)
+
+    @property
+    def nearest_horizontal_distance(self) -> float | None:
+        """Return the nearest horizontal target distance in meters."""
+        if not self.targets:
+            return None
+        return min(target.horizontal_distance for target in self.targets)
+
+    @property
+    def nearest_distance(self) -> float | None:
+        """Return the nearest three-dimensional target distance in meters."""
+        if not self.targets:
+            return None
+        return min(target.distance for target in self.targets)
+
+
+@dataclass(frozen=True, slots=True)
+class UltraLocalUDPConfig:
+    """Device-confirmed local UDP upload configuration."""
+
+    ip: str
+    port: int
+    timeout: int
+
+
+@dataclass(frozen=True, slots=True)
+class UltraRadarStatus:
+    """Device-read radar configuration that has been validated locally."""
+
+    did: str
+    sensitivity: int
+    received_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class UltraPositionSubscriptionState:
+    """Current local UDP subscription and position state."""
+
+    subscribed: bool
+    stale: bool
+    local_port: int
+    confirmation_count: int
+    latest_update: UltraPositionUpdate | None = None
+    last_subscribed_at: datetime | None = None
+    last_error: str | None = None

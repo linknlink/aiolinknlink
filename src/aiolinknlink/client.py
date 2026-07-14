@@ -1,4 +1,4 @@
-"""Asynchronous eMotion Ultra local LAN client."""
+"""Asynchronous eMotion Ultra2 local LAN client."""
 
 from __future__ import annotations
 
@@ -7,30 +7,27 @@ import logging
 import socket
 import time
 from collections.abc import Iterable
-from contextlib import suppress
 from datetime import UTC, datetime
-from typing import Any
 
-from aioesphomeapi.client import APIClient
-from aioesphomeapi.core import APIConnectionError
-from aioesphomeapi.model import EntityInfo, EntityState
-
-from .models import UltraDevice, UltraSession, UltraState, UltraSubDeviceState
+from .models import (
+    UltraDevice,
+    UltraLocalUDPConfig,
+    UltraRadarStatus,
+    UltraSession,
+)
 from .protocol import dna, emotion
 
 _LOGGER = logging.getLogger(__name__)
 
 PROVIDER = "ultra"
-DISPLAY_MODEL_ULTRA = "eMotion Ultra"
 DISPLAY_MODEL_ULTRA2 = "eMotion Ultra2"
-PID_ULTRA = "0000000000000000000000009cac0000"
 PID_ULTRA2 = "000000000000000000000000d7ac0000"
-TYPE_ULTRA = 0x9CAC
 TYPE_ULTRA2 = 0xD7AC
 TYPE_ULTRA2_LAN = 0xE3AC
+TYPE_ULTRA2_RADAR = 0xACDB
 DEFAULT_TIMEOUT = 5.0
-ESPHOME_API_PORT = 6053
-ESPHOME_STATE_TIMEOUT = 2.0
+DEFAULT_AUTH_TIMEOUT = 15.0
+DEFAULT_PREFERRED_COMMAND_TIMEOUT = 15.0
 
 
 class UltraError(Exception):
@@ -58,13 +55,16 @@ class UltraClient:
         default_port: int = dna.DEFAULT_PORT,
         discovery_timeout: float = DEFAULT_TIMEOUT,
         command_timeout: float = DEFAULT_TIMEOUT,
+        auth_timeout: float = DEFAULT_AUTH_TIMEOUT,
+        preferred_command_timeout: float = DEFAULT_PREFERRED_COMMAND_TIMEOUT,
         broadcast_address: str = "255.255.255.255",
     ) -> None:
         self.default_port = default_port or dna.DEFAULT_PORT
         self.discovery_timeout = discovery_timeout
         self.command_timeout = command_timeout
+        self.auth_timeout = auth_timeout
+        self.preferred_command_timeout = preferred_command_timeout
         self.broadcast_address = broadcast_address
-        self._esphome_entity_attrs: dict[str, dict[tuple[int, int], tuple[str, ...]]] = {}
 
     async def discover(self) -> list[UltraDevice]:
         """Discover Ultra devices on the local network."""
@@ -107,6 +107,8 @@ class UltraClient:
             default_port=self.default_port,
             discovery_timeout=self.discovery_timeout,
             command_timeout=self.command_timeout,
+            auth_timeout=self.auth_timeout,
+            preferred_command_timeout=self.preferred_command_timeout,
             broadcast_address=host,
         )
         for _attempt in range(2):
@@ -115,10 +117,22 @@ class UltraClient:
                     return device
         raise UltraConnectionError(f"no supported LinknLink device found at {host}")
 
-    async def connect(self, device: UltraDevice) -> UltraSession:
+    async def connect(
+        self,
+        device: UltraDevice,
+        *,
+        protocol_mac: str | None = None,
+        exchange: dna.PacketExchange | None = None,
+    ) -> UltraSession:
         """Connect/authenticate to an Ultra device."""
-        session = UltraSession(device=device, auth_status="discovered", last_seen=datetime.now(UTC))
-        mac = dna.mac_bytes(device.mac)
+        auth_mac = protocol_mac or device.mac
+        session = UltraSession(
+            device=device,
+            auth_mac=auth_mac,
+            auth_status="discovered",
+            last_seen=datetime.now(UTC),
+        )
+        mac = dna.mac_bytes(auth_mac)
         if not mac:
             session.auth_status = "skipped"
             session.auth_error = "missing mac"
@@ -137,14 +151,16 @@ class UltraClient:
                     ),
                     payload,
                     dna.INITIAL_KEY,
-                    timeout=self.command_timeout,
+                    timeout=self.auth_timeout,
+                    exchange=exchange,
                 )
                 session.session_key = dna.extract_session_key(response)
                 session.auth_device_type = auth_type
-                device.type_id = auth_type
-                device.model = _model_for_device_type(auth_type)
-                if not device.name or device.name == DISPLAY_MODEL_ULTRA:
-                    device.name = device.model
+                if device.type_id not in {TYPE_ULTRA2, TYPE_ULTRA2_LAN}:
+                    device.type_id = auth_type
+                device.model = DISPLAY_MODEL_ULTRA2
+                if not device.name:
+                    device.name = DISPLAY_MODEL_ULTRA2
                 session.auth_status = "ok"
                 session.auth_error = ""
                 session.last_auth_at = datetime.now(UTC)
@@ -156,194 +172,154 @@ class UltraClient:
         session.auth_error = str(last_error) if last_error else "authentication failed"
         raise UltraConnectionError(session.auth_error) from last_error
 
-    async def refresh(self, session: UltraSession) -> UltraState:
-        """Refresh device state."""
-        now = datetime.now(UTC)
-        state = UltraState(
-            device_id=session.device.id,
-            online=True,
-            values={"state": "online"},
-            children={},
-            raw={},
-            updated_at=now,
-        )
-        if _supports_esphome_api(session.device) and await self._refresh_esphome_state(session, state):
-            session.last_seen = datetime.now(UTC)
-            return state
-
-        if not session.session_key:
-            await self._reauthenticate(session)
-
-        try:
-            payload = await self.send_command(session, emotion.build_gateway_get_state_command())
-        except (OSError, dna.DNAError, UltraError) as err:
-            session.session_key = None
-            raise UltraConnectionError(str(err)) from err
-
-        try:
-            self._apply_gateway_payload(session, state, payload)
-        except emotion.EmotionError as err:
-            raise UltraProtocolError(str(err)) from err
-
-        await self._refresh_subdevices(session, state)
-        session.last_seen = datetime.now(UTC)
-        return state
-
-    async def _refresh_esphome_state(self, session: UltraSession, state: UltraState) -> bool:
-        """Read Ultra2 entities from its standard ESPHome local API."""
-        client = APIClient(
-            session.device.ip,
-            ESPHOME_API_PORT,
-            "",
-            client_info="aiolinknlink",
-        )
-        cache_key = _compact_mac(session.device.mac) or session.device.id
-        entity_attrs = self._esphome_entity_attrs.get(cache_key)
-        received: set[tuple[int, int]] = set()
-        all_states_received = asyncio.Event()
-        try:
-            await asyncio.wait_for(client.connect(login=True), timeout=self.command_timeout)
-            if entity_attrs is None:
-                device_info, entities, _services = await asyncio.wait_for(
-                    client.device_info_and_list_entities(),
-                    timeout=self.command_timeout,
-                )
-                if _compact_mac(device_info.mac_address) != _compact_mac(session.device.mac):
-                    state.raw["esphome_api"] = {"status": "identity_mismatch"}
-                    return False
-                entity_attrs = _esphome_entity_mapping(entities)
-                self._esphome_entity_attrs[cache_key] = entity_attrs
-
-            def _on_state(update: EntityState) -> None:
-                entity_key = (update.device_id, update.key)
-                attrs = entity_attrs.get(entity_key)
-                if attrs is None or getattr(update, "missing_state", False):
-                    return
-                value = getattr(update, "state", None)
-                for attr in attrs:
-                    state.values[attr] = _normalize_esphome_value(attr, value)
-                received.add(entity_key)
-                if len(received) == len(entity_attrs):
-                    all_states_received.set()
-
-            client.subscribe_states(_on_state)
-            with suppress(TimeoutError):
-                await asyncio.wait_for(
-                    all_states_received.wait(),
-                    timeout=ESPHOME_STATE_TIMEOUT,
-                )
-        except (APIConnectionError, OSError, TimeoutError) as err:
-            state.raw["esphome_api"] = {
-                "status": "unavailable",
-                "error": str(err) or type(err).__name__,
-            }
-            return False
-        finally:
-            with suppress(APIConnectionError, OSError):
-                await client.disconnect(force=True)
-
-        if not received:
-            state.raw["esphome_api"] = {"status": "no_state"}
-            return False
-        state.raw["esphome_api"] = {
-            "status": "ok",
-            "entity_count": len(entity_attrs),
-            "state_count": len(received),
-        }
-        state.raw["primary_protocol"] = "esphome_api"
-        return True
-
-    async def control(self, session: UltraSession, entity_attr: str, sub_did: str, payload: dict[str, Any]) -> None:
-        """Control a writable entity."""
-        if not sub_did:
-            raise UltraError("control entity missing sub DID")
-        if not session.session_key:
-            await self._reauthenticate(session)
-        fields = _command_fields(entity_attr, payload)
-        if not fields:
-            raise UltraError("control payload is empty")
-        frame = emotion.build_set_status_frame(sub_did, fields)
-        await self.send_command(session, frame)
-
-    async def subscribe_local_udp_push(self, session: UltraSession, port: int, timeout: int) -> None:
+    async def subscribe_local_udp_push(
+        self,
+        session: UltraSession,
+        port: int,
+        timeout: int,
+        *,
+        try_all: bool = True,
+        exchange: dna.PacketExchange | None = None,
+    ) -> UltraLocalUDPConfig:
         """Ask the device to push position updates to a local UDP port."""
         if not session.session_key:
             raise UltraAuthError("missing DNA session key")
-        await self.send_command(session, emotion.build_local_udp_upload_command(port, timeout))
+        payload = await self.send_command(
+            session,
+            emotion.build_local_udp_upload_command(port, timeout),
+            try_all=try_all,
+            exchange=exchange,
+        )
+        try:
+            return emotion.parse_local_udp_upload_response(payload)
+        except emotion.EmotionError as err:
+            raise UltraProtocolError(str(err)) from err
 
-    async def send_command(self, session: UltraSession, command: bytes) -> bytes:
+    async def get_radar_status(
+        self,
+        session: UltraSession,
+        *,
+        exchange: dna.PacketExchange | None = None,
+    ) -> UltraRadarStatus:
+        """Read the validated Ultra2 radar configuration fields."""
+        radar_did = derive_ultra2_radar_did(session.device.mac)
+        try:
+            payload = await self.send_command(
+                session,
+                emotion.build_get_status_frame(radar_did),
+                exchange=exchange,
+            )
+            frame = emotion.parse_subdevice_frame(payload)
+            status = emotion.parse_subdevice_json_payload(frame)
+        except emotion.EmotionError as err:
+            raise UltraProtocolError(str(err)) from err
+
+        response_did = str(status.get("did", ""))
+        if response_did.lower() != radar_did:
+            raise UltraProtocolError(f"radar status DID mismatch: {response_did or 'missing'}")
+        response_status = status.get("status")
+        if isinstance(response_status, bool) or response_status != 0:
+            raise UltraProtocolError(f"radar status read failed: {response_status!r}")
+        sensitivity = status.get("level_of_sensitivity")
+        if isinstance(sensitivity, bool) or not isinstance(sensitivity, int) or sensitivity not in range(3):
+            raise UltraProtocolError(f"invalid radar sensitivity: {sensitivity!r}")
+        return UltraRadarStatus(
+            did=radar_did,
+            sensitivity=sensitivity,
+            received_at=datetime.now(UTC),
+        )
+
+    async def set_radar_sensitivity(
+        self,
+        session: UltraSession,
+        sensitivity: int,
+        *,
+        exchange: dna.PacketExchange | None = None,
+    ) -> UltraRadarStatus:
+        """Set radar sensitivity and verify it through a device read-back."""
+        if isinstance(sensitivity, bool) or sensitivity not in range(3):
+            raise ValueError("radar sensitivity must be 0, 1, or 2")
+        radar_did = derive_ultra2_radar_did(session.device.mac)
+        await self.send_command(
+            session,
+            emotion.build_set_status_frame(
+                radar_did,
+                {"level_of_sensitivity": sensitivity},
+            ),
+            exchange=exchange,
+        )
+        status = await self.get_radar_status(session, exchange=exchange)
+        if status.sensitivity != sensitivity:
+            raise UltraProtocolError(
+                f"radar sensitivity read-back mismatch ({status.sensitivity}, expected {sensitivity})"
+            )
+        return status
+
+    async def send_command(
+        self,
+        session: UltraSession,
+        command: bytes,
+        *,
+        try_all: bool = True,
+        exchange: dna.PacketExchange | None = None,
+    ) -> bytes:
         """Send an Ultra command over DNA."""
         if not session.session_key:
             raise UltraAuthError("missing DNA session key")
         last_error: Exception | None = None
-        for device_type in _command_device_type_candidates(session):
-            for message_type in _command_message_type_candidates():
-                header = dna.NetworkHeader(
-                    device_type=device_type,
-                    message_type=message_type,
-                    sequence=_next_command_sequence(session),
-                    mac=dna.mac_bytes(session.device.mac),
+        candidates = [
+            (device_type, message_type)
+            for device_type in _command_device_type_candidates(session)
+            for message_type in _command_message_type_candidates(session)
+        ]
+        if not try_all:
+            candidates = candidates[:1]
+        for device_type, message_type in candidates:
+            is_preferred = device_type == session.command_device_type and message_type == session.command_message_type
+            header = dna.NetworkHeader(
+                device_type=device_type,
+                message_type=message_type,
+                sequence=_next_command_sequence(session),
+                mac=dna.mac_bytes(session.auth_mac or session.device.mac),
+            )
+            try:
+                payload = await dna.send_encrypted(
+                    session.device.ip,
+                    session.device.port or self.default_port,
+                    header,
+                    command,
+                    session.session_key,
+                    timeout=(self.preferred_command_timeout if is_preferred else self.command_timeout),
+                    exchange=exchange,
                 )
-                try:
-                    payload = await dna.send_encrypted(
-                        session.device.ip,
-                        session.device.port or self.default_port,
-                        header,
-                        command,
-                        session.session_key,
-                        timeout=self.command_timeout,
-                    )
-                    session.auth_device_type = device_type
-                    return payload
-                except (OSError, dna.DNAError) as err:
-                    last_error = err
+                session.auth_device_type = device_type
+                session.command_device_type = device_type
+                session.command_message_type = message_type
+                return payload
+            except (OSError, dna.DNAError) as err:
+                last_error = err
         raise UltraError(str(last_error) if last_error else "command failed")
 
-    async def _reauthenticate(self, session: UltraSession) -> None:
-        refreshed = await self.connect(session.device)
+    async def reauthenticate(
+        self,
+        session: UltraSession,
+        *,
+        protocol_mac: str | None = None,
+        exchange: dna.PacketExchange | None = None,
+    ) -> None:
+        """Refresh a session key, optionally through a persistent UDP socket."""
+        refreshed = await self.connect(
+            session.device,
+            protocol_mac=protocol_mac or session.auth_mac or session.device.mac,
+            exchange=exchange,
+        )
         session.session_key = refreshed.session_key
+        session.auth_mac = refreshed.auth_mac
         session.auth_device_type = refreshed.auth_device_type
         session.auth_status = refreshed.auth_status
         session.auth_error = refreshed.auth_error
         session.last_auth_at = refreshed.last_auth_at
         session.last_seen = refreshed.last_seen
-
-    def _apply_gateway_payload(self, session: UltraSession, state: UltraState, payload: bytes) -> None:
-        response = emotion.parse_gateway_state_response(payload)
-        state.raw["gateway_payload_len"] = len(payload)
-        state.raw["gateway_command"] = response.command
-        if response.gateway_state is not None:
-            state.online = response.gateway_state.online
-            state.values["state"] = response.gateway_state.state
-            state.values.update(response.gateway_state.attributes)
-            if "presence" not in state.values and "pir_detected" in state.values:
-                state.values["presence"] = state.values["pir_detected"]
-        if response.subdevice_frame is not None:
-            state.raw["subdevice_command"] = response.subdevice_frame.command_type
-            sub_payload = emotion.parse_subdevice_json_payload(response.subdevice_frame)
-            state.raw["subdevice_payload"] = sub_payload
-            for child in _subdevice_states_from_payload(sub_payload, state.updated_at):
-                _merge_child_state(state.children, child)
-
-    async def _refresh_subdevices(self, session: UltraSession, state: UltraState) -> None:
-        try:
-            payload = await self.send_command(session, emotion.build_get_subdevice_list_frame())
-            state.raw["subdevice_list_payload_len"] = len(payload)
-            list_payload = _parse_subdevice_command_response(payload)
-        except (dna.DNAError, emotion.EmotionError, UltraError) as err:
-            state.raw["subdevice_list_error"] = str(err)
-            return
-        for child in _subdevice_states_from_payload(list_payload, state.updated_at):
-            _merge_child_state(state.children, child)
-        for did in list(state.children):
-            try:
-                payload = await self.send_command(session, emotion.build_get_status_frame(did))
-                status_payload = _parse_subdevice_command_response(payload)
-            except (dna.DNAError, emotion.EmotionError, UltraError) as err:
-                state.raw[f"subdevice_status_error_{did}"] = str(err)
-                continue
-            for child in _subdevice_states_from_payload(status_payload, state.updated_at):
-                _merge_child_state(state.children, child)
 
     def _device_from_dna(self, raw: dna.DiscoveredDevice) -> UltraDevice:
         device_id = _entity_id_device_segment(raw.mac or raw.id or raw.ip)
@@ -437,92 +413,64 @@ def _discovery_targets(broadcast_address: str, default_port: int) -> list[tuple[
 def _outbound_ipv4() -> str:
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            sock.connect(("8.8.8.8", 80))
+            # UDP connect selects a route without sending traffic. TEST-NET-1
+            # avoids implying a dependency on any public network service.
+            sock.connect(("192.0.2.1", 80))
             return str(sock.getsockname()[0])
     except OSError:
         return "127.0.0.1"
 
 
 def _matches_ultra(device: UltraDevice) -> bool:
-    if device.pid.lower() in {PID_ULTRA, PID_ULTRA2}:
+    if device.pid.lower() == PID_ULTRA2:
         return True
-    if device.type_id in {TYPE_ULTRA, TYPE_ULTRA2, TYPE_ULTRA2_LAN}:
-        return True
-    return "ultra" in device.name.lower()
+    return device.type_id in {TYPE_ULTRA2, TYPE_ULTRA2_LAN}
 
 
-def _supports_esphome_api(device: UltraDevice) -> bool:
-    return device.type_id in {TYPE_ULTRA2, TYPE_ULTRA2_LAN} or device.model == DISPLAY_MODEL_ULTRA2
+def derive_ultra2_protocol_mac(lan_mac: str) -> str:
+    """Derive the Ultra2 DNA protocol MAC from its Wi-Fi station MAC."""
+    mac = dna.mac_bytes(lan_mac)
+    if not mac:
+        raise ValueError(f"invalid Ultra2 LAN MAC: {lan_mac}")
+    value = (int.from_bytes(mac, "big") + 2) & 0xFFFFFFFFFFFF
+    return ":".join(f"{part:02x}" for part in value.to_bytes(6, "big"))
 
 
-def _esphome_entity_mapping(entities: list[EntityInfo]) -> dict[tuple[int, int], tuple[str, ...]]:
-    mapping: dict[tuple[int, int], tuple[str, ...]] = {}
-    for entity in entities:
-        attrs = _canonical_esphome_attrs(entity.object_id)
-        if attrs:
-            mapping[(entity.device_id, entity.key)] = attrs
-    return mapping
-
-
-def _canonical_esphome_attrs(object_id: str) -> tuple[str, ...]:
-    attr = object_id.strip().lower().replace("-", "_").replace(" ", "_")
-    aliases = {
-        "all_target_counts": ("target_count",),
-        "opt3004_light": ("envlux",),
-        "persons_in_fenced_zones": ("persons_in_fenced_zones",),
-        "sht_humidity": ("envhumid",),
-        "sht_temperature": ("envtemp",),
-        "wifi_signal_sensor": ("wifi_rssi",),
-        "zone_any_presence": ("presence",),
-    }
-    if attr in aliases:
-        return aliases[attr]
-    if attr.startswith("zone_") and (attr.endswith("_presence") or attr.endswith("_target_counts")):
-        return (attr,)
-    return ()
-
-
-def _normalize_esphome_value(attr: str, value: Any) -> Any:
-    if (
-        (attr == "target_count" or attr == "persons_in_fenced_zones" or attr.endswith("_target_counts"))
-        and isinstance(value, float)
-        and value.is_integer()
-    ):
-        return int(value)
-    return value
-
-
-def _compact_mac(value: str) -> str:
-    return value.strip().lower().replace(":", "").replace("-", "")
+def derive_ultra2_radar_did(lan_mac: str) -> str:
+    """Derive the Ultra2 radar peripheral DID from its Wi-Fi station MAC."""
+    mac = dna.mac_bytes(lan_mac)
+    if not mac:
+        raise ValueError(f"invalid Ultra2 LAN MAC: {lan_mac}")
+    radar_type = TYPE_ULTRA2_RADAR.to_bytes(4, "little")
+    return (mac + radar_type + b"\x00\x00" + radar_type[:3] + b"\x01").hex()
 
 
 def _model_for_device_type(device_type: int) -> str:
-    if device_type in {TYPE_ULTRA2, TYPE_ULTRA2_LAN}:
-        return DISPLAY_MODEL_ULTRA2
-    return DISPLAY_MODEL_ULTRA
+    del device_type
+    return DISPLAY_MODEL_ULTRA2
 
 
 def _auth_device_type_candidates(device_type: int) -> list[int]:
-    if device_type in {TYPE_ULTRA, TYPE_ULTRA2, TYPE_ULTRA2_LAN}:
-        values = [device_type, TYPE_ULTRA2, TYPE_ULTRA2_LAN, TYPE_ULTRA]
+    if device_type in {TYPE_ULTRA2, TYPE_ULTRA2_LAN}:
+        values = [device_type, TYPE_ULTRA2, TYPE_ULTRA2_LAN]
     else:
-        values = [TYPE_ULTRA2, TYPE_ULTRA2_LAN, TYPE_ULTRA]
+        values = [TYPE_ULTRA2, TYPE_ULTRA2_LAN]
     return _dedupe_ints(values)
 
 
 def _command_device_type_candidates(session: UltraSession) -> list[int]:
     values = [
+        session.command_device_type,
         session.auth_device_type,
         session.device.type_id,
         TYPE_ULTRA2,
         TYPE_ULTRA2_LAN,
-        TYPE_ULTRA,
     ]
     return _dedupe_ints(value for value in values if value)
 
 
-def _command_message_type_candidates() -> list[int]:
-    return [0x03E9, dna.MESSAGE_TYPE_COMMAND]
+def _command_message_type_candidates(session: UltraSession) -> list[int]:
+    return _dedupe_ints([session.command_message_type, dna.MESSAGE_TYPE_COMMAND, 0x03E9])
 
 
 def _next_command_sequence(session: UltraSession) -> int:
@@ -532,116 +480,6 @@ def _next_command_sequence(session: UltraSession) -> int:
     if session.command_sequence == 0:
         session.command_sequence = 1
     return session.command_sequence
-
-
-def _parse_subdevice_command_response(payload: bytes) -> dict[str, Any]:
-    try:
-        frame = emotion.parse_subdevice_frame(payload)
-        return emotion.parse_subdevice_json_payload(frame)
-    except emotion.EmotionError as err:
-        response = emotion.parse_gateway_state_response(payload)
-        if response.subdevice_frame is None:
-            raise UltraError("response does not contain subdevice frame") from err
-        return emotion.parse_subdevice_json_payload(response.subdevice_frame)
-
-
-def _subdevice_states_from_payload(payload: dict[str, Any], now: datetime | None) -> list[UltraSubDeviceState]:
-    children: list[UltraSubDeviceState] = []
-    for key in ("list", "subdevices", "device_list", "devices"):
-        value = payload.get(key)
-        if isinstance(value, list):
-            children.extend(_subdevice_states_from_list(value, now))
-    child = _subdevice_state_from_payload(payload, now)
-    if child is not None:
-        children.append(child)
-    for key, value in payload.items():
-        if isinstance(value, dict):
-            item = dict(value)
-            item.setdefault("did", key)
-            child = _subdevice_state_from_payload(item, now)
-            if child is not None:
-                children.append(child)
-    out: dict[str, UltraSubDeviceState] = {}
-    for child in children:
-        _merge_child_state(out, child)
-    return list(out.values())
-
-
-def _subdevice_states_from_list(items: list[Any], now: datetime | None) -> list[UltraSubDeviceState]:
-    children: list[UltraSubDeviceState] = []
-    for item in items:
-        if isinstance(item, dict):
-            child = _subdevice_state_from_payload(item, now)
-            if child is not None:
-                children.append(child)
-    return children
-
-
-def _subdevice_state_from_payload(payload: dict[str, Any], now: datetime | None) -> UltraSubDeviceState | None:
-    did = _string_field(payload, "did", "DID", "device_id", "sub_did")
-    if not did:
-        return None
-    fields = {key: value for key, value in payload.items() if key not in _SUBDEVICE_META_KEYS}
-    return UltraSubDeviceState(
-        did=did,
-        pid=_string_field(payload, "pid", "PID"),
-        name=_string_field(payload, "name", "Name"),
-        type=_string_field(payload, "type", "category", "model"),
-        fields=fields,
-        raw=dict(payload),
-        updated_at=now,
-    )
-
-
-def _merge_child_state(children: dict[str, UltraSubDeviceState], next_child: UltraSubDeviceState) -> None:
-    current = children.get(next_child.did)
-    if current is None:
-        children[next_child.did] = next_child
-        return
-    if next_child.pid:
-        current.pid = next_child.pid
-    if next_child.name:
-        current.name = next_child.name
-    if next_child.type:
-        current.type = next_child.type
-    current.fields.update(next_child.fields)
-    current.raw.update(next_child.raw)
-    current.updated_at = next_child.updated_at
-
-
-def _command_fields(entity_attr: str, payload: dict[str, Any]) -> dict[str, Any]:
-    attr = entity_attr or "value"
-    if not payload:
-        return {}
-    if len(payload) == 1:
-        if attr in payload:
-            return {attr: payload[attr]}
-        if "state" in payload and attr != "state":
-            return {attr: _normalize_control_value(payload["state"])}
-        if "value" in payload and attr != "value":
-            return {attr: payload["value"]}
-    return {key: _normalize_control_value(value) for key, value in payload.items() if key != "did"}
-
-
-def _normalize_control_value(value: Any) -> Any:
-    if isinstance(value, str):
-        lowered = value.strip().lower()
-        if lowered in {"on", "true", "1", "open", "开启"}:
-            return True
-        if lowered in {"off", "false", "0", "close", "closed", "关闭"}:
-            return False
-    return value
-
-
-def _string_field(payload: dict[str, Any], *keys: str) -> str:
-    for key in keys:
-        if key not in payload:
-            continue
-        value = payload[key]
-        if value is None:
-            continue
-        return str(value).strip()
-    return ""
 
 
 def _entity_id_device_segment(value: str) -> str:
@@ -658,22 +496,3 @@ def _dedupe_ints(values: Iterable[int]) -> list[int]:
         seen.add(value)
         out.append(value)
     return out
-
-
-_SUBDEVICE_META_KEYS = {
-    "did",
-    "DID",
-    "device_id",
-    "sub_did",
-    "pid",
-    "PID",
-    "name",
-    "Name",
-    "type",
-    "category",
-    "model",
-    "list",
-    "subdevices",
-    "device_list",
-    "devices",
-}

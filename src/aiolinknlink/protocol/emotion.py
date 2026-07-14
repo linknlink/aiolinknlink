@@ -1,17 +1,19 @@
-"""eMotion Ultra gateway and SubdeviceFrame protocol helpers."""
+"""eMotion Ultra2 gateway and SubdeviceFrame protocol helpers."""
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import math
 import struct
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
+from ..models import UltraLocalUDPConfig, UltraPositionUpdate, UltraTargetPosition
 from . import dna
 
 GATEWAY_CMD_GET_STATE_WITH_PARAMS = 0x24
-GATEWAY_CMD_SET_MQTT = 0x25
 GATEWAY_CMD_GET_STATE = 0x26
 GATEWAY_CMD_SET_LOCAL_UDP_UPLOAD = 20000
 
@@ -71,15 +73,6 @@ def build_gateway_get_state_command(params: bytes | None = None) -> bytes:
     return bytes([0x24, 0, 0, 0]) + params
 
 
-def build_gateway_set_mqtt_command(account: str, port: int, password: str, url: str) -> bytes:
-    """Build gateway MQTT configuration command."""
-    payload = json.dumps(
-        {"account": account, "portnumber": port, "password": password, "URL": url},
-        separators=(",", ":"),
-    ).encode()
-    return bytes([0x25, 0, 0, 0]) + payload
-
-
 def build_local_udp_upload_command(port: int, timeout: int, ip: int | None = None) -> bytes:
     """Build local UDP position-push subscription command."""
     payload: dict[str, Any] = {"port": port, "timeout": timeout}
@@ -87,6 +80,26 @@ def build_local_udp_upload_command(port: int, timeout: int, ip: int | None = Non
         payload["ip"] = ip
     body = json.dumps(payload, separators=(",", ":")).encode()
     return struct.pack("<I", GATEWAY_CMD_SET_LOCAL_UDP_UPLOAD) + body
+
+
+def parse_local_udp_upload_response(payload: bytes) -> UltraLocalUDPConfig:
+    """Parse the device-confirmed local UDP upload destination."""
+    if len(payload) < 4:
+        raise EmotionError("local UDP upload response is too short")
+    command = struct.unpack_from("<I", payload)[0]
+    if command != GATEWAY_CMD_SET_LOCAL_UDP_UPLOAD:
+        raise EmotionError(f"unexpected local UDP upload response command: {command}")
+    try:
+        data = json.loads(payload[4:].rstrip(b"\x00").decode())
+    except (UnicodeDecodeError, json.JSONDecodeError) as err:
+        raise EmotionError(f"invalid local UDP upload response: {err}") from err
+    if not isinstance(data, dict):
+        raise EmotionError("local UDP upload response is not an object")
+    port = _required_int(data, "port", minimum=1, maximum=65535)
+    timeout = _required_int(data, "timeout", minimum=1, maximum=86400)
+    ip_value = _required_int(data, "ip", minimum=-0x80000000, maximum=0xFFFFFFFF)
+    ip = str(ipaddress.IPv4Address(struct.pack("<I", ip_value & 0xFFFFFFFF)))
+    return UltraLocalUDPConfig(ip=ip, port=port, timeout=timeout)
 
 
 def build_subdevice_frame(command_type: int, payload: Any = None) -> bytes:
@@ -170,7 +183,7 @@ def parse_gateway_state_response(data: bytes) -> GatewayResponse:
     command = struct.unpack_from("<I", data, 0)[0]
     response = GatewayResponse(command=command, raw_payload=bytes(data))
     body = _trim_right_zero(data[4:])
-    if command in (GATEWAY_CMD_SET_MQTT, GATEWAY_CMD_GET_STATE) and len(body) >= SUBDEVICE_FRAME_MIN_LEN:
+    if command == GATEWAY_CMD_GET_STATE and len(body) >= SUBDEVICE_FRAME_MIN_LEN:
         try:
             response.subdevice_frame = parse_subdevice_frame(body)
             return response
@@ -236,6 +249,21 @@ def parse_local_udp_position_payload(payload: bytes) -> dict[str, Any]:
         raise EmotionError("missing detect_position")
     derive_distances_from_position(data, str(data["detect_position"]))
     return data
+
+
+def parse_local_udp_position_update(
+    payload: bytes,
+    source_ip: str,
+    received_at: datetime | None = None,
+) -> UltraPositionUpdate:
+    """Parse a local UDP payload into a typed target-position update."""
+    data = parse_local_udp_position_payload(payload)
+    positions = _parse_target_positions(str(data["detect_position"]))
+    return UltraPositionUpdate(
+        source_ip=source_ip,
+        targets=tuple(UltraTargetPosition(x=position["x"], y=position["y"], z=position["z"]) for position in positions),
+        received_at=received_at or datetime.now(UTC),
+    )
 
 
 def derive_distances_from_position(values: dict[str, Any], detect_position: str) -> None:
@@ -332,20 +360,38 @@ def _parse_target_positions(detect_position: str) -> list[dict[str, float]]:
     for item in raw:
         if not isinstance(item, dict):
             continue
-        x = _as_float(item.get("x"))
-        y = _as_float(item.get("y"))
-        z = _as_float(item.get("z"))
+        x = _as_finite_float(item.get("x"))
+        y = _as_finite_float(item.get("y"))
+        z = _as_finite_float(item.get("z"))
+        if x is None or y is None or z is None:
+            continue
         if x == 0 and y == 0 and z == 0:
             continue
         out.append({"x": x, "y": y, "z": z})
     return out
 
 
-def _as_float(value: Any) -> float:
+def _as_finite_float(value: Any) -> float | None:
+    if value is None or isinstance(value, bool):
+        return None
     try:
-        return float(value)
+        parsed = float(value)
     except (TypeError, ValueError):
-        return 0.0
+        return None
+    return parsed if math.isfinite(parsed) else None
+
+
+def _required_int(data: dict[str, Any], key: str, *, minimum: int, maximum: int) -> int:
+    value = data.get(key)
+    if value is None or isinstance(value, bool):
+        raise EmotionError(f"invalid {key} in local UDP upload response")
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as err:
+        raise EmotionError(f"missing or invalid {key} in local UDP upload response") from err
+    if parsed < minimum or parsed > maximum:
+        raise EmotionError(f"{key} outside valid range in local UDP upload response")
+    return parsed
 
 
 def _repair_unescaped_detect_position(raw: str) -> str:

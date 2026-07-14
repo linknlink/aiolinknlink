@@ -7,9 +7,10 @@ import ipaddress
 import json
 import socket
 import struct
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import TypeAlias
 
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
@@ -41,17 +42,21 @@ class DNAError(Exception):
     """Base DNA protocol error."""
 
 
-class LegacyShortResponseError(DNAError):
-    """Device returned a short legacy error frame."""
+class ShortResponseError(DNAError):
+    """Device returned a short unencrypted error frame."""
 
     def __init__(self, status: int, device_type: int, message_type: int) -> None:
         super().__init__(
-            f"legacy DNA short response without encrypted payload: "
+            f"DNA short response without encrypted payload: "
             f"status=0x{status:04x} device_type=0x{device_type:04x} message_type=0x{message_type:04x}"
         )
         self.status = status
         self.device_type = device_type
         self.message_type = message_type
+
+
+PacketAcceptor: TypeAlias = Callable[[bytes], bool]
+PacketExchange: TypeAlias = Callable[[str, int, bytes, float, PacketAcceptor | None], Awaitable[bytes]]
 
 
 @dataclass(slots=True)
@@ -197,14 +202,14 @@ def parse_network_header(data: bytes) -> NetworkHeader:
 
 
 def build_packet(header: NetworkHeader, encrypted_payload: bytes) -> bytes:
-    """Build a legacy full-header DNA packet."""
+    """Build a full-header DNA packet."""
     packet = bytearray(header.marshal() + encrypted_payload)
     write_checksum_le(packet, PACKET_CHECKSUM_OFFSET)
     return bytes(packet)
 
 
 def parse_packet(data: bytes) -> tuple[NetworkHeader, bytes]:
-    """Parse a legacy full-header DNA packet."""
+    """Parse a full-header DNA packet."""
     header = parse_network_header(data)
     if not verify_checksum_le(data, PACKET_CHECKSUM_OFFSET):
         raise DNAError("invalid packet checksum")
@@ -376,9 +381,9 @@ def parse_discovery_device_response(
         raise DNAError("invalid discovery response magic")
 
     device = DiscoveredDevice(id=remote_ip, ip=remote_ip, port=remote_port or default_port, raw=bytes(data))
-    legacy = _parse_legacy_discovery_device(data, remote_ip, remote_port, default_port)
-    if legacy is not None:
-        return legacy
+    full_response = _parse_full_discovery_device(data, remote_ip, remote_port, default_port)
+    if full_response is not None:
+        return full_response
 
     if len(data) >= HEADER_SIZE:
         try:
@@ -427,12 +432,16 @@ async def send_encrypted(
     payload: bytes,
     key: bytes,
     timeout: float = 5,
-    accept: Callable[[bytes], bool] | None = None,
+    accept: PacketAcceptor | None = None,
+    exchange: PacketExchange | None = None,
 ) -> bytes:
     """Asynchronously send an encrypted DNA command and decrypt the response."""
+    accept = _sequence_acceptor(header.sequence, accept)
     if key == INITIAL_KEY:
-        return await _send_legacy_encrypted(target_ip, target_port, header, payload, key, timeout, accept)
-    return await _send_blc_encrypted(target_ip, target_port, header, payload, key, timeout, accept)
+        return await _send_full_header_encrypted(
+            target_ip, target_port, header, payload, key, timeout, accept, exchange
+        )
+    return await _send_blc_encrypted(target_ip, target_port, header, payload, key, timeout, accept, exchange)
 
 
 def response_summary(data: bytes) -> str:
@@ -448,20 +457,21 @@ def response_summary(data: bytes) -> str:
     return summary
 
 
-async def _send_legacy_encrypted(
+async def _send_full_header_encrypted(
     target_ip: str,
     target_port: int,
     header: NetworkHeader,
     payload: bytes,
     key: bytes,
     timeout: float,
-    accept: Callable[[bytes], bool] | None,
+    accept: PacketAcceptor | None,
+    exchange: PacketExchange | None,
 ) -> bytes:
     header.payload_checksum = payload_checksum(payload)
     encrypted = encrypt_aes_cbc_pkcs7(build_aes_payload(payload), key, INITIAL_IV)
     packet = build_packet(header, encrypted)
-    response = await _send_packet(target_ip, target_port, packet, timeout, accept)
-    _raise_legacy_short_response(response)
+    response = await _send_packet(target_ip, target_port, packet, timeout, accept, exchange)
+    _raise_short_response(response)
     _, encrypted_payload = parse_packet(response)
     try:
         decrypted = decrypt_aes_cbc_pkcs7(encrypted_payload, key, INITIAL_IV)
@@ -489,13 +499,14 @@ async def _send_blc_encrypted(
     payload: bytes,
     key: bytes,
     timeout: float,
-    accept: Callable[[bytes], bool] | None,
+    accept: PacketAcceptor | None,
+    exchange: PacketExchange | None,
 ) -> bytes:
     header.payload_checksum = payload_checksum(payload)
     encrypted_payload = build_blc_encrypted_payload(payload, key)
     packet = build_blc_packet(header, encrypted_payload)
-    response = await _send_packet(target_ip, target_port, packet, timeout, accept)
-    _raise_legacy_short_response(response)
+    response = await _send_packet(target_ip, target_port, packet, timeout, accept, exchange)
+    _raise_short_response(response)
     _, response_body = parse_blc_packet(response)
     try:
         _, response_payload = parse_blc_encrypted_payload(response_body, key)
@@ -509,10 +520,13 @@ async def _send_packet(
     target_port: int,
     packet: bytes,
     timeout: float,
-    accept: Callable[[bytes], bool] | None,
+    accept: PacketAcceptor | None,
+    exchange: PacketExchange | None,
 ) -> bytes:
     if timeout <= 0:
         raise DNAError("timeout must be greater than zero")
+    if exchange is not None:
+        return await exchange(target_ip, target_port, packet, timeout, accept)
 
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout
@@ -538,16 +552,28 @@ async def _send_packet(
     raise DNAError(f"timeout waiting for DNA response from {target_ip}:{target_port}")
 
 
-def _raise_legacy_short_response(data: bytes) -> None:
+def _raise_short_response(data: bytes) -> None:
     if len(data) == HEADER_SIZE and len(data) >= 0x28 and data[0:2] == b"\x5a\xa5":
-        raise LegacyShortResponseError(
+        raise ShortResponseError(
             struct.unpack_from("<H", data, 0x22)[0],
             struct.unpack_from("<H", data, 0x24)[0],
             struct.unpack_from("<H", data, 0x26)[0],
         )
 
 
-def _parse_legacy_discovery_device(
+def _sequence_acceptor(sequence: int, accept: PacketAcceptor | None) -> PacketAcceptor | None:
+    if sequence == 0:
+        return accept
+
+    def _accept(candidate: bytes) -> bool:
+        if len(candidate) < 0x2A or candidate[:8] != MAGIC or struct.unpack_from("<H", candidate, 0x28)[0] != sequence:
+            return False
+        return accept is None or accept(candidate)
+
+    return _accept
+
+
+def _parse_full_discovery_device(
     data: bytes, remote_ip: str, remote_port: int, default_port: int
 ) -> DiscoveredDevice | None:
     if len(data) < 0x40 or data[0:8] != MAGIC:

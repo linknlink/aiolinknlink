@@ -1,11 +1,8 @@
 """Asynchronous local client for LinknLink devices."""
 
 from .client import (
-    DISPLAY_MODEL_ULTRA,
     DISPLAY_MODEL_ULTRA2,
-    PID_ULTRA,
     PID_ULTRA2,
-    TYPE_ULTRA,
     TYPE_ULTRA2,
     TYPE_ULTRA2_LAN,
     UltraAuthError,
@@ -13,15 +10,23 @@ from .client import (
     UltraConnectionError,
     UltraError,
     UltraProtocolError,
+    derive_ultra2_protocol_mac,
+    derive_ultra2_radar_did,
 )
-from .models import UltraDevice, UltraSession, UltraState, UltraSubDeviceState
+from .local_udp import UltraPositionSubscription
+from .models import (
+    UltraDevice,
+    UltraLocalUDPConfig,
+    UltraPositionSubscriptionState,
+    UltraPositionUpdate,
+    UltraRadarStatus,
+    UltraSession,
+    UltraTargetPosition,
+)
 
 __all__ = [
-    "DISPLAY_MODEL_ULTRA",
     "DISPLAY_MODEL_ULTRA2",
-    "PID_ULTRA",
     "PID_ULTRA2",
-    "TYPE_ULTRA",
     "TYPE_ULTRA2",
     "TYPE_ULTRA2_LAN",
     "UltraAuthError",
@@ -29,8 +34,14 @@ __all__ = [
     "UltraConnectionError",
     "UltraDevice",
     "UltraError",
+    "UltraLocalUDPConfig",
+    "UltraPositionSubscription",
+    "UltraPositionSubscriptionState",
+    "UltraPositionUpdate",
     "UltraProtocolError",
+    "UltraRadarStatus",
     "UltraSession",
-    "UltraState",
-    "UltraSubDeviceState",
+    "UltraTargetPosition",
+    "derive_ultra2_radar_did",
+    "derive_ultra2_protocol_mac",
 ]
