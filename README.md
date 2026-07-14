@@ -20,11 +20,8 @@ from aiolinknlink import UltraClient
 
 async def main() -> None:
     client = UltraClient()
-    devices = await client.discover()
-    if not devices:
-        return
-
-    session = await client.connect(devices[0])
+    device = await client.discover_host("192.168.1.8")
+    session = await client.connect(device)
     state = await client.refresh(session)
     print(state.values)
 

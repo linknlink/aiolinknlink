@@ -13,6 +13,7 @@ from aiolinknlink import (
     TYPE_ULTRA2_LAN,
     UltraAuthError,
     UltraClient,
+    UltraConnectionError,
     UltraDevice,
 )
 from aiolinknlink.client import (
@@ -55,6 +56,80 @@ async def test_connect_requires_mac() -> None:
     client = UltraClient()
     with pytest.raises(UltraAuthError, match="missing mac"):
         await client.connect(UltraDevice(id="device", ip="192.168.1.8", port=80))
+
+
+async def test_discover_filters_other_dna_devices(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Only supported Ultra device types are returned by discovery."""
+    discovered = [
+        dna.DiscoveredDevice(
+            id="other",
+            ip="192.168.1.7",
+            port=80,
+            mac="e0:4b:41:01:67:ba",
+            device_type=0x702B,
+            name="IBG",
+        ),
+        dna.DiscoveredDevice(
+            id="emotion-air",
+            ip="192.168.1.6",
+            port=80,
+            mac="e0:4b:41:01:67:b9",
+            device_type=0x702B,
+            name="eMotion Air",
+        ),
+        dna.DiscoveredDevice(
+            id=DEVICE.id,
+            ip=DEVICE.ip,
+            port=DEVICE.port,
+            mac=DEVICE.mac,
+            device_type=TYPE_ULTRA2,
+            name="eMotion Ultra 2",
+        ),
+    ]
+    discover = AsyncMock(return_value=discovered)
+    monkeypatch.setattr("aiolinknlink.client._discover_dna_devices", discover)
+
+    devices = await UltraClient().discover()
+
+    assert [device.id for device in devices] == [DEVICE.id]
+
+
+async def test_discover_host_returns_matching_device(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Targeted discovery selects the device at the requested host."""
+    devices = [
+        UltraDevice(
+            id="other",
+            ip="192.168.1.7",
+            port=80,
+            mac="e0:4b:41:01:67:ba",
+        ),
+        DEVICE,
+    ]
+    discover = AsyncMock(return_value=devices)
+    monkeypatch.setattr(UltraClient, "discover", discover)
+
+    device = await UltraClient().discover_host(DEVICE.ip)
+
+    assert device is DEVICE
+
+
+async def test_discover_host_rejects_unsupported_host(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Targeted discovery fails when the target is not a supported device."""
+    monkeypatch.setattr(UltraClient, "discover", AsyncMock(return_value=[]))
+
+    with pytest.raises(UltraConnectionError, match="no supported LinknLink device"):
+        await UltraClient().discover_host(DEVICE.ip)
+
+
+async def test_discover_host_retries_discovery(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Targeted discovery tolerates a lost discovery response."""
+    discover = AsyncMock(side_effect=[[], [DEVICE]])
+    monkeypatch.setattr(UltraClient, "discover", discover)
+
+    assert await UltraClient().discover_host(DEVICE.ip) is DEVICE
+    assert discover.await_count == 2
 
 
 @pytest.mark.parametrize(

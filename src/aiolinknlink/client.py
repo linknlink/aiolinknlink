@@ -77,6 +77,36 @@ class UltraClient:
             devices.append(device)
         return devices
 
+    async def discover_host(self, host: str) -> UltraDevice:
+        """Discover a specific Ultra device and return its reported identity."""
+        host = host.strip()
+        if not host:
+            raise UltraConnectionError("host is required")
+
+        loop = asyncio.get_running_loop()
+        try:
+            address_info = await loop.getaddrinfo(
+                host,
+                self.default_port,
+                family=socket.AF_INET,
+                type=socket.SOCK_DGRAM,
+            )
+        except OSError as err:
+            raise UltraConnectionError(f"could not resolve host {host}: {err}") from err
+
+        target_addresses = {str(info[4][0]) for info in address_info}
+        client = UltraClient(
+            default_port=self.default_port,
+            discovery_timeout=self.discovery_timeout,
+            command_timeout=self.command_timeout,
+            broadcast_address=host,
+        )
+        for _attempt in range(2):
+            for device in await client.discover():
+                if device.ip in target_addresses:
+                    return device
+        raise UltraConnectionError(f"no supported LinknLink device found at {host}")
+
     async def connect(self, device: UltraDevice) -> UltraSession:
         """Connect/authenticate to an Ultra device."""
         session = UltraSession(device=device, auth_status="discovered", last_seen=datetime.now(UTC))
@@ -340,8 +370,7 @@ def _matches_ultra(device: UltraDevice) -> bool:
         return True
     if device.type_id in {TYPE_ULTRA, TYPE_ULTRA2, TYPE_ULTRA2_LAN}:
         return True
-    haystack = f"{device.name} {device.model}".lower()
-    return "ultra" in haystack or "emotion" in haystack
+    return "ultra" in device.name.lower()
 
 
 def _model_for_device_type(device_type: int) -> str:
