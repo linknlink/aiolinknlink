@@ -7,11 +7,18 @@ from unittest.mock import AsyncMock
 import pytest
 
 from aiolinknlink import (
+    TYPE_ULTRA,
     TYPE_ULTRA2,
+    TYPE_ULTRA2_LAN,
     UltraAuthError,
     UltraClient,
     UltraDevice,
 )
+from aiolinknlink.client import (
+    _auth_device_type_candidates,
+    _command_device_type_candidates,
+)
+from aiolinknlink.models import UltraSession
 from aiolinknlink.protocol import dna, emotion
 
 DEVICE = UltraDevice(
@@ -45,6 +52,36 @@ async def test_connect_requires_mac() -> None:
     client = UltraClient()
     with pytest.raises(UltraAuthError, match="missing mac"):
         await client.connect(UltraDevice(id="device", ip="192.168.1.8", port=80))
+
+
+@pytest.mark.parametrize(
+    ("device_type", "expected"),
+    [
+        (TYPE_ULTRA, [TYPE_ULTRA, TYPE_ULTRA2, TYPE_ULTRA2_LAN]),
+        (TYPE_ULTRA2, [TYPE_ULTRA2, TYPE_ULTRA2_LAN, TYPE_ULTRA]),
+        (TYPE_ULTRA2_LAN, [TYPE_ULTRA2_LAN, TYPE_ULTRA2, TYPE_ULTRA]),
+        (0, [TYPE_ULTRA2, TYPE_ULTRA2_LAN, TYPE_ULTRA]),
+    ],
+)
+def test_auth_device_type_candidates(device_type: int, expected: list[int]) -> None:
+    assert _auth_device_type_candidates(device_type) == expected
+
+
+def test_command_candidates_prefer_authenticated_type() -> None:
+    device = UltraDevice(
+        id="e04b410167bb",
+        ip="192.168.1.8",
+        port=80,
+        mac="e0:4b:41:01:67:bb",
+        type_id=TYPE_ULTRA,
+    )
+    session = UltraSession(device=device, auth_device_type=TYPE_ULTRA)
+
+    assert _command_device_type_candidates(session) == [
+        TYPE_ULTRA,
+        TYPE_ULTRA2,
+        TYPE_ULTRA2_LAN,
+    ]
 
 
 async def test_control_builds_subdevice_frame(monkeypatch: pytest.MonkeyPatch) -> None:

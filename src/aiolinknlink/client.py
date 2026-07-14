@@ -339,13 +339,21 @@ def _matches_ultra(device: UltraDevice) -> bool:
 
 
 def _auth_device_type_candidates(device_type: int) -> list[int]:
-    if device_type == TYPE_ULTRA2_LAN:
-        return [TYPE_ULTRA2_LAN, TYPE_ULTRA2]
-    return [TYPE_ULTRA2, TYPE_ULTRA2_LAN]
+    if device_type in {TYPE_ULTRA, TYPE_ULTRA2, TYPE_ULTRA2_LAN}:
+        values = [device_type, TYPE_ULTRA2, TYPE_ULTRA2_LAN, TYPE_ULTRA]
+    else:
+        values = [TYPE_ULTRA2, TYPE_ULTRA2_LAN, TYPE_ULTRA]
+    return _dedupe_ints(values)
 
 
 def _command_device_type_candidates(session: UltraSession) -> list[int]:
-    values = [TYPE_ULTRA2, session.auth_device_type, session.device.type_id, TYPE_ULTRA2_LAN]
+    values = [
+        session.auth_device_type,
+        session.device.type_id,
+        TYPE_ULTRA2,
+        TYPE_ULTRA2_LAN,
+        TYPE_ULTRA,
+    ]
     return _dedupe_ints(value for value in values if value)
 
 
