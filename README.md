@@ -1,12 +1,8 @@
 # aiolinknlink
 
-`aiolinknlink` is an asynchronous Python client for direct local communication
-with LinknLink eMotion Ultra and Ultra2 devices.
+`aiolinknlink` is an asynchronous Python client for direct local communication with LinknLink eMotion Ultra and Ultra2 devices.
 
-The library implements LinknLink DNA discovery, authentication, encrypted UDP
-transport, and the eMotion gateway/subdevice protocol. It communicates directly
-with devices on the local network and does not require
-`linknlink-device-bridge`, DeviceHub, MQTT, or a cloud service.
+The library implements LinknLink DNA discovery, authentication, encrypted UDP transport, and the eMotion gateway/subdevice protocol. It communicates directly with devices on the local network.
 
 ## Requirements
 
@@ -49,4 +45,3 @@ python3 -m venv .venv
 ## License
 
 Apache License 2.0.
-
