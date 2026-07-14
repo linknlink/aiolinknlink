@@ -37,7 +37,7 @@ MAX_Z_RANGE = 6.0
 
 
 class UltraError(Exception):
-    """Base Ultra client error."""
+    """Base Ultra2 client error."""
 
 
 class UltraAuthError(UltraError):
@@ -45,15 +45,15 @@ class UltraAuthError(UltraError):
 
 
 class UltraConnectionError(UltraError):
-    """Ultra device could not be reached."""
+    """Ultra2 device could not be reached."""
 
 
 class UltraProtocolError(UltraError):
-    """Ultra device returned an invalid response."""
+    """Ultra2 device returned an invalid response."""
 
 
 class UltraClient:
-    """Asynchronous client for the Ultra LAN protocol."""
+    """Asynchronous client for the Ultra2 LAN protocol."""
 
     def __init__(
         self,
@@ -73,7 +73,7 @@ class UltraClient:
         self.broadcast_address = broadcast_address
 
     async def discover(self) -> list[UltraDevice]:
-        """Discover Ultra devices on the local network."""
+        """Discover Ultra2 devices on the local network."""
         raw_devices = await _discover_dna_devices(
             broadcast_address=self.broadcast_address,
             default_port=self.default_port,
@@ -92,7 +92,7 @@ class UltraClient:
         return devices
 
     async def discover_host(self, host: str) -> UltraDevice:
-        """Discover a specific Ultra device and return its reported identity."""
+        """Discover a specific Ultra2 device and return its reported identity."""
         host = host.strip()
         if not host:
             raise UltraConnectionError("host is required")
@@ -130,7 +130,7 @@ class UltraClient:
         protocol_mac: str | None = None,
         exchange: dna.PacketExchange | None = None,
     ) -> UltraSession:
-        """Connect/authenticate to an Ultra device."""
+        """Connect/authenticate to an Ultra2 device."""
         auth_mac = protocol_mac or device.mac
         session = UltraSession(
             device=device,

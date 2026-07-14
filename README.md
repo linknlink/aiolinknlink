@@ -4,6 +4,8 @@
 
 The library implements LinknLink DNA discovery, authentication, encrypted UDP transport, local multi-target radar position subscriptions, and device-verified radar configuration. It communicates directly with devices on the local network and does not require a cloud service or MQTT broker.
 
+An Ultra2 stores one local UDP position destination. Running another position subscriber for the same device redirects updates away from the current subscriber.
+
 Supported radar configuration includes sensitivity, trigger speed, installation mode, installation height, cable direction, Z-axis detection limits, the default absence delay, and Zone 1-4 absence delays. Every write API performs a separate device status read and raises an error when the read-back does not match.
 
 ## Requirements

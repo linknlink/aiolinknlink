@@ -1,4 +1,4 @@
-"""Asynchronous local client for LinknLink devices."""
+"""Asynchronous local client for LinknLink eMotion Ultra2 devices."""
 
 from .client import (
     DISPLAY_MODEL_ULTRA2,

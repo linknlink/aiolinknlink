@@ -314,7 +314,7 @@ async def test_send_command_allows_more_time_for_confirmed_variant(
 
 
 async def test_discover_filters_other_dna_devices(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Only supported Ultra device types are returned by discovery."""
+    """Only supported Ultra2 device types are returned by discovery."""
     discovered = [
         dna.DiscoveredDevice(
             id="other",

@@ -10,7 +10,7 @@ from typing import Any
 
 @dataclass(slots=True)
 class UltraDevice:
-    """Discovered Ultra device."""
+    """Discovered Ultra2 device."""
 
     id: str
     ip: str
@@ -26,7 +26,7 @@ class UltraDevice:
 
 @dataclass(slots=True)
 class UltraSession:
-    """Authenticated Ultra LAN session."""
+    """Authenticated Ultra2 LAN session."""
 
     device: UltraDevice
     session_key: bytes | None = None
