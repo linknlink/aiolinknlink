@@ -81,7 +81,6 @@ class UltraClient:
         self.auth_timeout = auth_timeout
         self.preferred_command_timeout = preferred_command_timeout
         self.broadcast_address = broadcast_address
-        self._esphome_entity_attrs: dict[str, dict[tuple[int, int], tuple[str, ...]]] = {}
 
     async def discover(self) -> list[UltraDevice]:
         """Discover Ultra2 devices on the local network."""
@@ -198,8 +197,6 @@ class UltraClient:
             "",
             client_info="aiolinknlink",
         )
-        cache_key = _compact_mac(session.device.mac) or session.device.id
-        entity_attrs = self._esphome_entity_attrs.get(cache_key)
         received: set[tuple[int, int]] = set()
         values: dict[str, int | float | bool] = {}
         all_states_received = asyncio.Event()
@@ -208,17 +205,15 @@ class UltraClient:
                 client.connect(login=True),
                 timeout=ESPHOME_CONNECT_TIMEOUT,
             )
-            if entity_attrs is None:
-                device_info, entities, _services = await asyncio.wait_for(
-                    client.device_info_and_list_entities(),
-                    timeout=ESPHOME_CONNECT_TIMEOUT,
-                )
-                if _compact_mac(device_info.mac_address) != _compact_mac(session.device.mac):
-                    raise UltraProtocolError("ESPHome API device identity does not match the Ultra device")
-                entity_attrs = _esphome_entity_mapping(entities)
-                if not entity_attrs:
-                    raise UltraProtocolError("ESPHome API did not report supported Ultra entities")
-                self._esphome_entity_attrs[cache_key] = entity_attrs
+            device_info, entities, _services = await asyncio.wait_for(
+                client.device_info_and_list_entities(),
+                timeout=ESPHOME_CONNECT_TIMEOUT,
+            )
+            if _compact_mac(device_info.mac_address) != _compact_mac(session.device.mac):
+                raise UltraProtocolError("ESPHome API device identity does not match the Ultra device")
+            entity_attrs = _esphome_entity_mapping(entities)
+            if not entity_attrs:
+                raise UltraProtocolError("ESPHome API did not report supported Ultra entities")
 
             def _on_state(update: EntityState) -> None:
                 entity_key = (update.device_id, update.key)

@@ -321,3 +321,51 @@ async def test_radar_configuration_reuses_subscription_socket() -> None:
 
     with pytest.raises(UltraError, match="not running"):
         await subscription.get_radar_status()
+
+
+async def test_radar_operation_reauthenticates_after_session_invalidation() -> None:
+    """A radar operation retries once with a renewed DNA session."""
+    device = UltraDevice(
+        id="e04b410244c7",
+        ip="127.0.0.1",
+        port=80,
+        mac="e0:4b:41:02:44:c7",
+        type_id=TYPE_ULTRA2,
+    )
+    session = UltraSession(
+        device=device,
+        session_key=b"old-session-key!",
+        auth_mac="e0:4b:41:02:44:c9",
+    )
+    client = AsyncMock()
+
+    async def subscribe(_session, port, timeout, *, exchange, try_all=True):
+        return UltraLocalUDPConfig(ip="127.0.0.1", port=port, timeout=timeout)
+
+    async def reauthenticate(_session, *, protocol_mac, exchange):
+        _session.session_key = b"new-session-key!"
+
+    radar_status = UltraRadarStatus(
+        did="e04b410244c7dbac00000000dbac0001",
+        sensitivity=2,
+        received_at=datetime.now(UTC),
+    )
+    client.subscribe_local_udp_push.side_effect = subscribe
+    client.reauthenticate.side_effect = reauthenticate
+    client.get_radar_status.side_effect = [UltraError("expired session"), radar_status]
+    subscription = UltraPositionSubscription(
+        client,
+        session,
+        subscription_timeout=1,
+        renew_interval=0.5,
+    )
+
+    await subscription.start()
+    try:
+        await subscription.wait_confirmed(1)
+        assert await subscription.get_radar_status() is radar_status
+        assert session.session_key == b"new-session-key!"
+        client.reauthenticate.assert_awaited_once()
+        assert client.get_radar_status.await_count == 2
+    finally:
+        await subscription.stop()

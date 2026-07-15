@@ -173,6 +173,37 @@ async def test_get_environment_state(monkeypatch: pytest.MonkeyPatch) -> None:
     assert session.last_seen is not None
 
 
+async def test_environment_capabilities_refresh_between_reads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An attached sensor cable is discovered without recreating the client."""
+
+    class ChangingESPHomeClient(_ESPHomeClient):
+        reads = 0
+
+        async def device_info_and_list_entities(self):
+            type(self).reads += 1
+            entities = self.entities
+            if self.reads == 1:
+                entities = [
+                    entity for entity in entities if entity.object_id not in {"sht_temperature", "sht_humidity"}
+                ]
+            return SimpleNamespace(mac_address=self.mac_address), entities, []
+
+    monkeypatch.setattr("aiolinknlink.client.APIClient", ChangingESPHomeClient)
+    session = UltraSession(device=DEVICE, session_key=b"0123456789abcdef")
+    client = UltraClient()
+
+    without_cable = await client.get_environment_state(session)
+    with_cable = await client.get_environment_state(session)
+
+    assert "temperature" not in without_cable.available_fields
+    assert "humidity" not in without_cable.available_fields
+    assert with_cable.values["temperature"] == 23.5
+    assert with_cable.values["humidity"] == 48.25
+    assert ChangingESPHomeClient.reads == 2
+
+
 @pytest.mark.parametrize(
     ("object_id", "expected"),
     [

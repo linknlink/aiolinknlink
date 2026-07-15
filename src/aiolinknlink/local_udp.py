@@ -304,24 +304,14 @@ class UltraPositionSubscription:
 
     async def get_radar_status(self) -> UltraRadarStatus:
         """Read radar configuration through the subscription's UDP socket."""
-        if not self._running:
-            raise UltraError("position subscription is not running")
-        async with self._operation_lock:
-            return await self._client.get_radar_status(
-                self._session,
-                exchange=self._listener.exchange,
-            )
+        return await self._run_radar_operation(self._client.get_radar_status)
 
     async def set_radar_sensitivity(self, sensitivity: int) -> UltraRadarStatus:
         """Set and read back radar sensitivity on the shared UDP socket."""
-        if not self._running:
-            raise UltraError("position subscription is not running")
-        async with self._operation_lock:
-            return await self._client.set_radar_sensitivity(
-                self._session,
-                sensitivity,
-                exchange=self._listener.exchange,
-            )
+        return await self._run_radar_operation(
+            self._client.set_radar_sensitivity,
+            sensitivity,
+        )
 
     async def set_radar_trigger_speed(self, trigger_speed: int) -> UltraRadarStatus:
         """Set and read back radar trigger speed on the shared UDP socket."""
@@ -384,11 +374,33 @@ class UltraPositionSubscription:
         if not self._running:
             raise UltraError("position subscription is not running")
         async with self._operation_lock:
-            return await operation(
-                self._session,
-                *args,
-                exchange=self._listener.exchange,
-            )
+            await self._ensure_authenticated()
+            try:
+                return await operation(
+                    self._session,
+                    *args,
+                    exchange=self._listener.exchange,
+                )
+            except UltraProtocolError:
+                raise
+            except UltraError:
+                self._session.session_key = None
+                await self._ensure_authenticated()
+                return await operation(
+                    self._session,
+                    *args,
+                    exchange=self._listener.exchange,
+                )
+
+    async def _ensure_authenticated(self) -> None:
+        """Refresh a missing or invalidated DNA session key."""
+        if self._session.session_key:
+            return
+        await self._client.reauthenticate(
+            self._session,
+            protocol_mac=self._protocol_mac,
+            exchange=self._listener.exchange,
+        )
 
     async def _subscription_loop(self) -> None:
         failure_count = 0

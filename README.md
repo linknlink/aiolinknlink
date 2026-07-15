@@ -8,6 +8,8 @@ An Ultra2 stores one local UDP position destination. Running another position su
 
 Supported radar configuration includes sensitivity, trigger speed, installation mode, installation height, installation direction, Z-axis detection limits, the default absence delay, and Zone 1-4 absence delays. Every write API performs a separate device status read and raises an error when the read-back does not match.
 
+Temperature and humidity require the optional sensor power cable. Environment reads refresh the device's ESPHome entity list so connecting or disconnecting the cable is detected after the device restarts.
+
 ## Requirements
 
 - Python 3.11 or newer

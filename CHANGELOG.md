@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.2
+
+- Refresh ESPHome entity capabilities on every state read so optional
+  temperature and humidity hardware is detected after a device restart.
+- Reauthenticate and retry radar operations once after a DNA session expires.
+
 ## 0.3.1
 
 - Add direct local reads for eMotion Ultra temperature, humidity, illuminance,
