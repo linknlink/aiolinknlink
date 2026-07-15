@@ -16,6 +16,7 @@ from .client import (
 from .local_udp import UltraPositionSubscription
 from .models import (
     UltraDevice,
+    UltraEnvironmentState,
     UltraLocalUDPConfig,
     UltraPositionSubscriptionState,
     UltraPositionUpdate,
@@ -34,6 +35,7 @@ __all__ = [
     "UltraClient",
     "UltraConnectionError",
     "UltraDevice",
+    "UltraEnvironmentState",
     "UltraError",
     "UltraLocalUDPConfig",
     "UltraPositionSubscription",

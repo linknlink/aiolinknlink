@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1
+
+- Add direct local reads for eMotion Ultra temperature, humidity, illuminance,
+  occupancy, target counts, fenced-zone counts, zone states, and Wi-Fi signal.
+- Restrict ESPHome API state mapping to known non-sensitive Ultra entities.
+
 ## 0.3.0
 
 - Limit the supported product scope to eMotion Ultra2.

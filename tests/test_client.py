@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -25,7 +26,9 @@ from aiolinknlink import (
 )
 from aiolinknlink.client import (
     _auth_device_type_candidates,
+    _canonical_esphome_attrs,
     _command_device_type_candidates,
+    _normalize_esphome_value,
 )
 from aiolinknlink.models import UltraSession
 from aiolinknlink.protocol import dna, emotion
@@ -52,6 +55,66 @@ RADAR_STATUS = UltraRadarStatus(
 )
 
 
+@dataclass
+class _Entity:
+    object_id: str
+    key: int
+    device_id: int = 0
+
+
+@dataclass
+class _State:
+    key: int
+    state: object
+    device_id: int = 0
+    missing_state: bool = False
+
+
+class _ESPHomeClient:
+    entities = [
+        _Entity("sht_temperature", 1),
+        _Entity("sht_humidity", 2),
+        _Entity("opt3004_light", 3),
+        _Entity("zone_any_presence", 4),
+        _Entity("all_target_counts", 5),
+        _Entity("persons_in_fenced_zones", 6),
+        _Entity("wifi_signal_sensor", 7),
+        _Entity("zone_1_presence", 8),
+        _Entity("zone_1_target_counts", 9),
+        _Entity("mqtt_password", 10),
+    ]
+    states = [
+        _State(1, 23.5),
+        _State(2, 48.25),
+        _State(3, 325.0),
+        _State(4, True),
+        _State(5, 2.0),
+        _State(6, 1.0),
+        _State(7, -52.0),
+        _State(8, False),
+        _State(9, 1.0),
+        _State(10, "secret"),
+    ]
+    mac_address = DEVICE.mac
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        self.disconnected = False
+
+    async def connect(self, *, login: bool) -> None:
+        assert login is True
+
+    async def device_info_and_list_entities(self):
+        return SimpleNamespace(mac_address=self.mac_address), self.entities, []
+
+    def subscribe_states(self, callback) -> None:
+        for state in self.states:
+            callback(state)
+
+    async def disconnect(self, *, force: bool) -> None:
+        assert force is True
+        self.disconnected = True
+
+
 async def test_connect(monkeypatch: pytest.MonkeyPatch) -> None:
     session_key = b"0123456789abcdef"
     auth_response = b"\x00" * 4 + session_key + b"\x00" * 12
@@ -67,6 +130,76 @@ async def test_connect(monkeypatch: pytest.MonkeyPatch) -> None:
     assert session.device.name == DISPLAY_MODEL_ULTRA2
     assert send.await_count == 1
     assert send.call_args.kwargs["timeout"] == 0.2
+
+
+async def test_connect_preserves_caller_display_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Internal Ultra2 authentication must not overwrite a public model name."""
+    session_key = b"0123456789abcdef"
+    monkeypatch.setattr(
+        dna,
+        "send_encrypted",
+        AsyncMock(return_value=b"\x00" * 4 + session_key + b"\x00" * 12),
+    )
+    device = replace(DEVICE, model="eMotion Ultra", name="eMotion Ultra")
+
+    await UltraClient().connect(device)
+
+    assert device.model == "eMotion Ultra"
+    assert device.name == "eMotion Ultra"
+
+
+async def test_get_environment_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Only supported local environmental entities are returned."""
+    monkeypatch.setattr("aiolinknlink.client.APIClient", _ESPHomeClient)
+    session = UltraSession(device=DEVICE, session_key=b"0123456789abcdef")
+
+    state = await UltraClient().get_environment_state(session)
+
+    assert state.values == {
+        "temperature": 23.5,
+        "humidity": 48.25,
+        "illuminance": 325.0,
+        "occupancy": True,
+        "target_count": 2,
+        "persons_in_fenced_zones": 1,
+        "wifi_signal": -52,
+        "zone_1_presence": False,
+        "zone_1_target_counts": 1,
+    }
+    assert state.available_fields == frozenset(state.values)
+    assert "mqtt_password" not in state.values
+    assert session.last_seen is not None
+
+
+@pytest.mark.parametrize(
+    ("object_id", "expected"),
+    [
+        ("Zone-2 Presence", ("zone_2_presence",)),
+        ("zone_4_target_counts", ("zone_4_target_counts",)),
+        ("mqtt_password", ()),
+        ("ip_address", ()),
+    ],
+)
+def test_canonical_esphome_attrs(object_id: str, expected: tuple[str, ...]) -> None:
+    assert _canonical_esphome_attrs(object_id) == expected
+
+
+@pytest.mark.parametrize(
+    ("attr", "value", "expected"),
+    [
+        ("occupancy", 1, None),
+        ("zone_1_presence", False, False),
+        ("temperature", True, None),
+        ("temperature", "23", None),
+        ("temperature", float("nan"), None),
+        ("temperature", 23, 23.0),
+        ("target_count", 2.4, 2),
+    ],
+)
+def test_normalize_esphome_value(attr: str, value: object, expected: object) -> None:
+    assert _normalize_esphome_value(attr, value) == expected
 
 
 async def test_reauthenticate_preserves_working_command_variant(

@@ -42,6 +42,16 @@ class UltraSession:
 
 
 @dataclass(frozen=True, slots=True)
+class UltraEnvironmentState:
+    """Locally reported Ultra2 environmental and occupancy state."""
+
+    device_id: str
+    values: dict[str, int | float | bool]
+    available_fields: frozenset[str]
+    received_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
 class UltraTargetPosition:
     """One radar target position in meters."""
 

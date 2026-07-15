@@ -9,6 +9,7 @@ import struct
 from unittest.mock import AsyncMock
 
 import pytest
+from aioesphomeapi.core import APIConnectionError
 
 import aiolinknlink.client as client_module
 from aiolinknlink import (
@@ -53,6 +54,27 @@ def radar_response(**changes: object) -> bytes:
     }
     values.update(changes)
     return emotion.build_subdevice_frame(emotion.CMD_STATUS_RESPONSE, values)
+
+
+class FailingESPHomeClient:
+    """Minimal client that fails before entity discovery."""
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        pass
+
+    async def connect(self, *, login: bool) -> None:
+        raise APIConnectionError("offline")
+
+    async def disconnect(self, *, force: bool) -> None:
+        pass
+
+
+async def test_environment_connection_error_is_wrapped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(client_module, "APIClient", FailingESPHomeClient)
+    with pytest.raises(UltraConnectionError, match="state read failed"):
+        await UltraClient().get_environment_state(UltraSession(device=device(), session_key=b"0123456789abcdef"))
 
 
 async def test_discover_deduplicates_supported_devices(

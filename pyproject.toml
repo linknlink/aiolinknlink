@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "aiolinknlink"
-version = "0.3.0"
+version = "0.3.1"
 description = "Asynchronous local client for LinknLink eMotion Ultra2 devices"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -24,6 +24,7 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
+  "aioesphomeapi>=45.6.0,<46.0",
   "cryptography>=41.0.0",
 ]
 

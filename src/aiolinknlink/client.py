@@ -9,10 +9,17 @@ import math
 import socket
 import time
 from collections.abc import Callable, Iterable
+from contextlib import suppress
 from datetime import UTC, datetime
+from typing import Any
+
+from aioesphomeapi.client import APIClient
+from aioesphomeapi.core import APIConnectionError
+from aioesphomeapi.model import EntityInfo, EntityState
 
 from .models import (
     UltraDevice,
+    UltraEnvironmentState,
     UltraLocalUDPConfig,
     UltraRadarStatus,
     UltraRadarZRange,
@@ -34,6 +41,9 @@ DEFAULT_PREFERRED_COMMAND_TIMEOUT = 15.0
 MAX_ABSENCE_DELAY = 18 * 60 * 60
 MIN_Z_RANGE = -6.0
 MAX_Z_RANGE = 6.0
+ESPHOME_API_PORT = 6053
+ESPHOME_CONNECT_TIMEOUT = 20.0
+ESPHOME_STATE_TIMEOUT = 8.0
 
 
 class UltraError(Exception):
@@ -71,6 +81,7 @@ class UltraClient:
         self.auth_timeout = auth_timeout
         self.preferred_command_timeout = preferred_command_timeout
         self.broadcast_address = broadcast_address
+        self._esphome_entity_attrs: dict[str, dict[tuple[int, int], tuple[str, ...]]] = {}
 
     async def discover(self) -> list[UltraDevice]:
         """Discover Ultra2 devices on the local network."""
@@ -164,7 +175,8 @@ class UltraClient:
                 session.auth_device_type = auth_type
                 if device.type_id not in {TYPE_ULTRA2, TYPE_ULTRA2_LAN}:
                     device.type_id = auth_type
-                device.model = DISPLAY_MODEL_ULTRA2
+                if not device.model:
+                    device.model = DISPLAY_MODEL_ULTRA2
                 if not device.name:
                     device.name = DISPLAY_MODEL_ULTRA2
                 session.auth_status = "ok"
@@ -177,6 +189,74 @@ class UltraClient:
         session.auth_status = "failed"
         session.auth_error = str(last_error) if last_error else "authentication failed"
         raise UltraConnectionError(session.auth_error) from last_error
+
+    async def get_environment_state(self, session: UltraSession) -> UltraEnvironmentState:
+        """Read environmental, occupancy, and count states from the local API."""
+        client = APIClient(
+            session.device.ip,
+            ESPHOME_API_PORT,
+            "",
+            client_info="aiolinknlink",
+        )
+        cache_key = _compact_mac(session.device.mac) or session.device.id
+        entity_attrs = self._esphome_entity_attrs.get(cache_key)
+        received: set[tuple[int, int]] = set()
+        values: dict[str, int | float | bool] = {}
+        all_states_received = asyncio.Event()
+        try:
+            await asyncio.wait_for(
+                client.connect(login=True),
+                timeout=ESPHOME_CONNECT_TIMEOUT,
+            )
+            if entity_attrs is None:
+                device_info, entities, _services = await asyncio.wait_for(
+                    client.device_info_and_list_entities(),
+                    timeout=ESPHOME_CONNECT_TIMEOUT,
+                )
+                if _compact_mac(device_info.mac_address) != _compact_mac(session.device.mac):
+                    raise UltraProtocolError("ESPHome API device identity does not match the Ultra device")
+                entity_attrs = _esphome_entity_mapping(entities)
+                if not entity_attrs:
+                    raise UltraProtocolError("ESPHome API did not report supported Ultra entities")
+                self._esphome_entity_attrs[cache_key] = entity_attrs
+
+            def _on_state(update: EntityState) -> None:
+                entity_key = (update.device_id, update.key)
+                attrs = entity_attrs.get(entity_key)
+                if attrs is None or getattr(update, "missing_state", False):
+                    return
+                value = _normalize_esphome_value(attrs[0], getattr(update, "state", None))
+                if value is None:
+                    return
+                for attr in attrs:
+                    values[attr] = value
+                received.add(entity_key)
+                if len(received) == len(entity_attrs):
+                    all_states_received.set()
+
+            client.subscribe_states(_on_state)
+            with suppress(TimeoutError):
+                await asyncio.wait_for(
+                    all_states_received.wait(),
+                    timeout=ESPHOME_STATE_TIMEOUT,
+                )
+        except UltraProtocolError:
+            raise
+        except (APIConnectionError, OSError, TimeoutError) as err:
+            raise UltraConnectionError(f"ESPHome API state read failed: {str(err) or type(err).__name__}") from err
+        finally:
+            with suppress(APIConnectionError, OSError):
+                await client.disconnect(force=True)
+
+        if not received:
+            raise UltraConnectionError("ESPHome API did not return Ultra state")
+        session.last_seen = datetime.now(UTC)
+        return UltraEnvironmentState(
+            device_id=session.device.id,
+            values=values,
+            available_fields=frozenset(attr for attrs in entity_attrs.values() for attr in attrs),
+            received_at=datetime.now(UTC),
+        )
 
     async def subscribe_local_udp_push(
         self,
@@ -612,6 +692,56 @@ def _matches_ultra(device: UltraDevice) -> bool:
     if device.pid.lower() == PID_ULTRA2:
         return True
     return device.type_id in {TYPE_ULTRA2, TYPE_ULTRA2_LAN}
+
+
+def _esphome_entity_mapping(
+    entities: list[EntityInfo],
+) -> dict[tuple[int, int], tuple[str, ...]]:
+    """Map only known non-sensitive Ultra entities to public state fields."""
+    mapping: dict[tuple[int, int], tuple[str, ...]] = {}
+    for entity in entities:
+        attrs = _canonical_esphome_attrs(entity.object_id)
+        if attrs:
+            mapping[(entity.device_id, entity.key)] = attrs
+    return mapping
+
+
+def _canonical_esphome_attrs(object_id: str) -> tuple[str, ...]:
+    """Return public field names for one supported ESPHome object ID."""
+    attr = object_id.strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "all_target_counts": ("target_count",),
+        "opt3004_light": ("illuminance",),
+        "persons_in_fenced_zones": ("persons_in_fenced_zones",),
+        "sht_humidity": ("humidity",),
+        "sht_temperature": ("temperature",),
+        "wifi_signal_sensor": ("wifi_signal",),
+        "zone_any_presence": ("occupancy",),
+    }
+    if attr in aliases:
+        return aliases[attr]
+    if attr.startswith("zone_") and (attr.endswith("_presence") or attr.endswith("_target_counts")):
+        return (attr,)
+    return ()
+
+
+def _normalize_esphome_value(attr: str, value: Any) -> int | float | bool | None:
+    """Normalize ESPHome protobuf values for stable public state types."""
+    if attr == "occupancy" or attr.endswith("_presence"):
+        return value if isinstance(value, bool) else None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    numeric = float(value)
+    if not math.isfinite(numeric):
+        return None
+    if attr in {"target_count", "persons_in_fenced_zones", "wifi_signal"} or attr.endswith("_target_counts"):
+        return round(numeric)
+    return numeric
+
+
+def _compact_mac(value: str) -> str:
+    """Return a separator-free lowercase MAC address."""
+    return value.strip().lower().replace(":", "").replace("-", "")
 
 
 def derive_ultra2_protocol_mac(lan_mac: str) -> str:
