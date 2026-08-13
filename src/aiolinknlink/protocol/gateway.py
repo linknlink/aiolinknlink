@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 import struct
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any
 
 from . import dna
 
@@ -40,9 +41,7 @@ def build_gateway_frame(command_type: int, payload: Mapping[str, object]) -> byt
     encoded = json.dumps(dict(payload), separators=(",", ":"), ensure_ascii=False).encode()
     if len(encoded) > 0xFFFF:
         raise GatewayProtocolError(f"gateway JSON payload too large: {len(encoded)}")
-    frame = bytearray(
-        struct.pack("<IHHHH", UART_MAGIC, 0, command_type, len(encoded), UART_VERSION) + encoded
-    )
+    frame = bytearray(struct.pack("<IHHHH", UART_MAGIC, 0, command_type, len(encoded), UART_VERSION) + encoded)
     dna.write_checksum_le(frame, 4)
     return bytes(frame)
 
@@ -56,9 +55,7 @@ def parse_gateway_frame(data: bytes) -> GatewayFrame:
         raise GatewayProtocolError("invalid gateway frame magic")
     expected_length = UART_HEADER_SIZE + payload_length
     if len(data) != expected_length:
-        raise GatewayProtocolError(
-            f"invalid gateway frame length: expected {expected_length}, got {len(data)}"
-        )
+        raise GatewayProtocolError(f"invalid gateway frame length: expected {expected_length}, got {len(data)}")
     if not dna.verify_checksum_le(data, 4):
         raise GatewayProtocolError("invalid gateway frame checksum")
     try:

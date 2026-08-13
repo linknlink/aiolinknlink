@@ -51,9 +51,7 @@ async def async_setup_entry(
     del hass
     coordinator = entry.runtime_data
     async_add_entities(
-        IbgSensor(coordinator, did, description)
-        for did in coordinator.data.states
-        for description in SENSORS
+        IbgSensor(coordinator, did, description) for did in coordinator.data.states for description in SENSORS
     )
 
 

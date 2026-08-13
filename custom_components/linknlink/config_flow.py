@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from aiolinknlink import IbgClient, IbgConnectionError, IbgError
 import voluptuous as vol
-
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_HOST
+
+from aiolinknlink import IbgClient, IbgConnectionError, IbgError
 
 from .const import DOMAIN
 

@@ -8,6 +8,10 @@
   illuminance, battery, and occupancy data.
 - Add a development Home Assistant custom integration with UI configuration,
   coordinator polling, device registry hierarchy, and sensor entities.
+- Validate both DID and PID on status responses and isolate offline or failing
+  sensors from the rest of a gateway refresh.
+- Add failure/recovery tests plus credential-free HA Container deployment,
+  backup, rollback, smoke-test, and operations documentation.
 
 ## 0.3.2
 

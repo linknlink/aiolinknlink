@@ -6,6 +6,9 @@ import logging
 from dataclasses import dataclass
 from datetime import timedelta
 
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+
 from aiolinknlink import (
     IbgClient,
     IbgConnectionError,
@@ -15,9 +18,6 @@ from aiolinknlink import (
     IbgSubDevice,
     IbgSubDeviceState,
 )
-
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import DOMAIN, UPDATE_INTERVAL_SECONDS
 
@@ -59,7 +59,7 @@ class IbgDataUpdateCoordinator(DataUpdateCoordinator[IbgCoordinatorData]):
             try:
                 self.session = await self.client.connect(self.device)
                 return await self._read_data()
-            except (IbgConnectionError, IbgError) as err:
+            except IbgError as err:
                 raise UpdateFailed(f"Could not update iBG gateway {self.device.ip}: {err}") from err
         except IbgError as err:
             raise UpdateFailed(f"Invalid response from iBG gateway {self.device.ip}: {err}") from err

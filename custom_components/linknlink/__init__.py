@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import sys
 from contextlib import suppress
 from pathlib import Path
-import sys
+from typing import TypeAlias
 
 # Development deployments keep the library checkout in HA's persistent
 # configuration volume, so container replacement does not remove it.
@@ -14,18 +15,18 @@ if _LIBRARY_SOURCE.is_dir():
         sys.path.remove(str(_LIBRARY_SOURCE))
     sys.path.insert(0, str(_LIBRARY_SOURCE))
 
-from aiolinknlink import IbgClient, IbgError  # noqa: E402
-
 from homeassistant.config_entries import ConfigEntry  # noqa: E402
 from homeassistant.const import CONF_HOST  # noqa: E402
 from homeassistant.core import HomeAssistant  # noqa: E402
 from homeassistant.exceptions import ConfigEntryNotReady  # noqa: E402
 from homeassistant.helpers import device_registry as dr  # noqa: E402
 
+from aiolinknlink import IbgClient, IbgError  # noqa: E402
+
 from .const import PLATFORMS  # noqa: E402
 from .coordinator import IbgDataUpdateCoordinator  # noqa: E402
 
-type LinknLinkConfigEntry = ConfigEntry[IbgDataUpdateCoordinator]
+LinknLinkConfigEntry: TypeAlias = ConfigEntry[IbgDataUpdateCoordinator]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: LinknLinkConfigEntry) -> bool:
