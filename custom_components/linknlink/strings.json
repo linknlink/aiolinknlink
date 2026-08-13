@@ -1,0 +1,25 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to LinknLink iBG",
+        "description": "Enter the local IP address of your iBG gateway.",
+        "data": {"host": "Host"}
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the iBG gateway",
+      "unknown": "Unexpected error"
+    },
+    "abort": {"already_configured": "This iBG gateway is already configured"}
+  },
+  "entity": {
+    "sensor": {
+      "temperature": {"name": "Temperature"},
+      "humidity": {"name": "Humidity"},
+      "illuminance": {"name": "Illuminance"},
+      "battery": {"name": "Battery"}
+    },
+    "binary_sensor": {"occupancy": {"name": "Occupancy"}}
+  }
+}

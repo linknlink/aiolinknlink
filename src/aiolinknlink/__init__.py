@@ -1,4 +1,13 @@
-"""Asynchronous local client for LinknLink eMotion Ultra2 devices."""
+"""Asynchronous local clients for LinknLink devices."""
+
+from .ibg import (
+    DISPLAY_MODEL_IBG2_SE,
+    PID_SR3_SENSOR,
+    IbgClient,
+    IbgConnectionError,
+    IbgError,
+    IbgProtocolError,
+)
 
 from .client import (
     DISPLAY_MODEL_ULTRA2,
@@ -15,6 +24,10 @@ from .client import (
 )
 from .local_udp import UltraPositionSubscription
 from .models import (
+    IbgDevice,
+    IbgSession,
+    IbgSubDevice,
+    IbgSubDeviceState,
     UltraDevice,
     UltraEnvironmentState,
     UltraLocalUDPConfig,
@@ -27,7 +40,17 @@ from .models import (
 )
 
 __all__ = [
+    "DISPLAY_MODEL_IBG2_SE",
     "DISPLAY_MODEL_ULTRA2",
+    "IbgClient",
+    "IbgConnectionError",
+    "IbgDevice",
+    "IbgError",
+    "IbgProtocolError",
+    "IbgSession",
+    "IbgSubDevice",
+    "IbgSubDeviceState",
+    "PID_SR3_SENSOR",
     "PID_ULTRA2",
     "TYPE_ULTRA2",
     "TYPE_ULTRA2_LAN",

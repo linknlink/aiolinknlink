@@ -1,0 +1,25 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "连接 LinknLink iBG",
+        "description": "请输入 iBG 网关的局域网 IP 地址。",
+        "data": {"host": "主机地址"}
+      }
+    },
+    "error": {
+      "cannot_connect": "无法连接 iBG 网关",
+      "unknown": "发生未知错误"
+    },
+    "abort": {"already_configured": "此 iBG 网关已经配置"}
+  },
+  "entity": {
+    "sensor": {
+      "temperature": {"name": "温度"},
+      "humidity": {"name": "湿度"},
+      "illuminance": {"name": "照度"},
+      "battery": {"name": "电量"}
+    },
+    "binary_sensor": {"occupancy": {"name": "人体感应"}}
+  }
+}
