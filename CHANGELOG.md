@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Add local iBG2 SE discovery, compact DNA authentication, paginated subdevice
+  inventory, and read-only sensor state polling.
+- Add strict safe-state normalization for PID `05000100` temperature, humidity,
+  illuminance, battery, and occupancy data.
+- Add a development Home Assistant custom integration with UI configuration,
+  coordinator polling, device registry hierarchy, and sensor entities.
+
 ## 0.3.2
 
 - Refresh ESPHome entity capabilities on every state read so optional

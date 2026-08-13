@@ -49,6 +49,24 @@ def test_parse_short_discovery_response() -> None:
     assert device.device_type == 0xD7AC
 
 
+def test_parse_ibg_compact_probe_response() -> None:
+    """Parse the compact iBG lan_dev_probe_t response layout."""
+    packet = bytearray(0x80)
+    packet[:8] = dna.MAGIC
+    struct.pack_into("<H", packet, 0x24, 0x2B71)
+    struct.pack_into("<H", packet, 0x26, dna.MESSAGE_TYPE_DISCOVERY_RESPONSE)
+    struct.pack_into("<H", packet, 0x34, 0x2B71)
+    packet[0x3A:0x40] = bytes(reversed(bytes.fromhex("001122334455")))
+    packet[0x40:0x44] = b"IBG\x00"
+    dna.write_checksum_le(packet, dna.PACKET_CHECKSUM_OFFSET)
+
+    device = dna.parse_discovery_device_response(bytes(packet), "192.168.1.10", 80)
+
+    assert device.name == "IBG"
+    assert device.device_type == 0x2B71
+    assert device.mac == "00:11:22:33:44:55"
+
+
 def test_subdevice_frame_round_trip() -> None:
     """SubdeviceFrame build/parse round trip."""
     frame = emotion.build_get_status_frame("did-1")

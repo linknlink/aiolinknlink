@@ -381,6 +381,9 @@ def parse_discovery_device_response(
         raise DNAError("invalid discovery response magic")
 
     device = DiscoveredDevice(id=remote_ip, ip=remote_ip, port=remote_port or default_port, raw=bytes(data))
+    compact_probe = _parse_compact_probe_device(data, remote_ip, remote_port, default_port)
+    if compact_probe is not None:
+        return compact_probe
     full_response = _parse_full_discovery_device(data, remote_ip, remote_port, default_port)
     if full_response is not None:
         return full_response
@@ -434,10 +437,12 @@ async def send_encrypted(
     timeout: float = 5,
     accept: PacketAcceptor | None = None,
     exchange: PacketExchange | None = None,
+    *,
+    compact: bool = False,
 ) -> bytes:
     """Asynchronously send an encrypted DNA command and decrypt the response."""
     accept = _sequence_acceptor(header.sequence, accept)
-    if key == INITIAL_KEY:
+    if key == INITIAL_KEY and not compact:
         return await _send_full_header_encrypted(
             target_ip, target_port, header, payload, key, timeout, accept, exchange
         )
@@ -507,7 +512,13 @@ async def _send_blc_encrypted(
     packet = build_blc_packet(header, encrypted_payload)
     response = await _send_packet(target_ip, target_port, packet, timeout, accept, exchange)
     _raise_short_response(response)
-    _, response_body = parse_blc_packet(response)
+    response_header, response_body = parse_blc_packet(response)
+    if response_header.status != 0:
+        raise ShortResponseError(
+            response_header.status,
+            response_header.device_type,
+            response_header.message_type,
+        )
     try:
         _, response_payload = parse_blc_encrypted_payload(response_body, key)
     except DNAError as err:
@@ -553,7 +564,7 @@ async def _send_packet(
 
 
 def _raise_short_response(data: bytes) -> None:
-    if len(data) == HEADER_SIZE and len(data) >= 0x28 and data[0:2] == b"\x5a\xa5":
+    if len(data) in {BLC_NETWORK_HEADER_SIZE, HEADER_SIZE} and data[0:2] == b"\x5a\xa5":
         raise ShortResponseError(
             struct.unpack_from("<H", data, 0x22)[0],
             struct.unpack_from("<H", data, 0x24)[0],
@@ -585,6 +596,38 @@ def _parse_full_discovery_device(
         return None
     mac = bytes(reversed(data[0x3A:0x40]))
     name = _parse_discovery_name(data[0x40:])
+    formatted = format_mac(mac)
+    return DiscoveredDevice(
+        id=formatted or remote_ip,
+        ip=remote_ip,
+        port=remote_port or default_port,
+        mac=formatted,
+        device_type=device_type,
+        message_type=MESSAGE_TYPE_DISCOVERY_RESPONSE,
+        name=name,
+        raw=bytes(data),
+    )
+
+
+def _parse_compact_probe_device(
+    data: bytes, remote_ip: str, remote_port: int, default_port: int
+) -> DiscoveredDevice | None:
+    """Parse the compact LAN probe response used by iBG gateways."""
+    # network_head_t (0x30) is followed by lan_dev_probe_t. The embedded
+    # device_info_t starts at 0x40 and its first field is a printable name.
+    if len(data) < 0x41 or data[0:8] != MAGIC:
+        return None
+    if struct.unpack_from("<H", data, 0x26)[0] != MESSAGE_TYPE_DISCOVERY_RESPONSE:
+        return None
+    name = _parse_discovery_name(data[0x40:])
+    if not name.upper().startswith("IBG"):
+        return None
+    device_type = struct.unpack_from("<H", data, 0x34)[0]
+    if device_type == 0:
+        return None
+    # dna_get_devid() stores this identifier in the firmware's little-endian
+    # byte order; reverse it for the conventional printed MAC representation.
+    mac = bytes(reversed(data[0x3A:0x40]))
     formatted = format_mac(mac)
     return DiscoveredDevice(
         id=formatted or remote_ip,
