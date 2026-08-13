@@ -78,6 +78,9 @@ integration in `custom_components/linknlink`. Copy that directory into the HA
 configuration's `custom_components` directory and install this checkout of
 `aiolinknlink` in the HA Python environment.
 
+The reproducible HA Container deployment, upgrade, rollback, verification, and
+recovery procedure is documented in [docs/IBG_INTEGRATION.md](docs/IBG_INTEGRATION.md).
+
 ## Development
 
 ```bash

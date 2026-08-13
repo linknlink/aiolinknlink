@@ -1,14 +1,5 @@
 """Asynchronous local clients for LinknLink devices."""
 
-from .ibg import (
-    DISPLAY_MODEL_IBG2_SE,
-    PID_SR3_SENSOR,
-    IbgClient,
-    IbgConnectionError,
-    IbgError,
-    IbgProtocolError,
-)
-
 from .client import (
     DISPLAY_MODEL_ULTRA2,
     PID_ULTRA2,
@@ -21,6 +12,14 @@ from .client import (
     UltraProtocolError,
     derive_ultra2_protocol_mac,
     derive_ultra2_radar_did,
+)
+from .ibg import (
+    DISPLAY_MODEL_IBG2_SE,
+    PID_SR3_SENSOR,
+    IbgClient,
+    IbgConnectionError,
+    IbgError,
+    IbgProtocolError,
 )
 from .local_udp import UltraPositionSubscription
 from .models import (

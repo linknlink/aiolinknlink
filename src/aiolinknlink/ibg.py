@@ -199,6 +199,11 @@ class IbgClient:
         returned_did = payload.get("did")
         if returned_did is not None and returned_did != device.did:
             raise IbgProtocolError("subdevice status identity does not match request")
+        returned_pid = payload.get("pid")
+        if returned_pid is not None and (
+            not isinstance(returned_pid, str) or returned_pid.lower() != device.pid.lower()
+        ):
+            raise IbgProtocolError("subdevice status product identity does not match request")
         return IbgSubDeviceState(
             device=device,
             values=normalize_subdevice_state(device.pid, payload),
@@ -266,9 +271,7 @@ class IbgClient:
         except (OSError, dna.DNAError) as err:
             raise IbgConnectionError(str(err)) from err
         if frame.command_type != response_type:
-            raise IbgProtocolError(
-                f"unexpected gateway response command: 0x{frame.command_type:04x}"
-            )
+            raise IbgProtocolError(f"unexpected gateway response command: 0x{frame.command_type:04x}")
         session.last_seen = datetime.now(UTC)
         return frame.payload
 

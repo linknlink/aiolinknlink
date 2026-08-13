@@ -18,10 +18,7 @@ async def async_setup_entry(
     """Create occupancy sensors for supported iBG subdevices."""
     del hass
     coordinator = entry.runtime_data
-    async_add_entities(
-        IbgOccupancySensor(coordinator, did)
-        for did in coordinator.data.states
-    )
+    async_add_entities(IbgOccupancySensor(coordinator, did) for did in coordinator.data.states)
 
 
 class IbgOccupancySensor(IbgCoordinatorEntity, BinarySensorEntity):
