@@ -14,7 +14,9 @@ from .client import (
     derive_ultra2_radar_did,
 )
 from .ibg import (
+    BOX7_POWER_FIELDS,
     DISPLAY_MODEL_IBG2_SE,
+    PID_BOX7_CONTROLLER,
     PID_SR3_SENSOR,
     IbgClient,
     IbgConnectionError,
@@ -40,6 +42,7 @@ from .models import (
 )
 
 __all__ = [
+    "BOX7_POWER_FIELDS",
     "DISPLAY_MODEL_IBG2_SE",
     "DISPLAY_MODEL_ULTRA2",
     "IbgClient",
@@ -51,6 +54,7 @@ __all__ = [
     "IbgSession",
     "IbgSubDevice",
     "IbgSubDeviceState",
+    "PID_BOX7_CONTROLLER",
     "PID_SR3_SENSOR",
     "PID_ULTRA2",
     "TYPE_ULTRA2",

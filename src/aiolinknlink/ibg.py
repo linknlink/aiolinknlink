@@ -6,6 +6,7 @@ import asyncio
 import math
 import secrets
 import socket
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any, TypeGuard
 
@@ -15,7 +16,9 @@ from .protocol import dna, gateway
 
 DISPLAY_MODEL_IBG2_SE = "iBG2 SE"
 PID_SR3_SENSOR = "00000000000000000000000005000100"
-SUPPORTED_SENSOR_PIDS = frozenset({PID_SR3_SENSOR})
+PID_BOX7_CONTROLLER = "00000000000000000000000031130100"
+SUPPORTED_SUBDEVICE_PIDS = frozenset({PID_SR3_SENSOR, PID_BOX7_CONTROLLER})
+BOX7_POWER_FIELDS = frozenset(f"pwr{channel}" for channel in range(1, 8))
 DEFAULT_TIMEOUT = 5.0
 DEFAULT_AUTH_TIMEOUT = 10.0
 PAGE_SIZE = 10
@@ -103,6 +106,7 @@ class IbgClient:
         self,
         device: IbgDevice,
         *,
+        local_key: bytes | None = None,
         exchange: dna.PacketExchange | None = None,
     ) -> IbgSession:
         """Authenticate locally and establish an iBG session."""
@@ -110,6 +114,17 @@ class IbgClient:
         if not mac:
             raise IbgConnectionError("iBG discovery response did not include a valid MAC")
         sequence = _random_sequence()
+        if local_key is not None:
+            if len(local_key) != 16:
+                raise IbgConnectionError("iBG local key must contain exactly 16 bytes")
+            now = datetime.now(UTC)
+            return IbgSession(
+                device=device,
+                session_key=bytes(local_key),
+                command_sequence=sequence,
+                last_auth_at=now,
+                last_seen=now,
+            )
         try:
             response = await dna.send_encrypted(
                 device.ip,
@@ -186,7 +201,7 @@ class IbgClient:
         exchange: dna.PacketExchange | None = None,
     ) -> IbgSubDeviceState:
         """Read one supported subdevice and expose only reviewed safe fields."""
-        if device.pid.lower() not in SUPPORTED_SENSOR_PIDS:
+        if device.pid.lower() not in SUPPORTED_SUBDEVICE_PIDS:
             raise IbgProtocolError(f"unsupported iBG subdevice PID: {device.pid}")
         payload = await self._command(
             session,
@@ -196,14 +211,7 @@ class IbgClient:
             exchange=exchange,
         )
         _require_success(payload)
-        returned_did = payload.get("did")
-        if returned_did is not None and returned_did != device.did:
-            raise IbgProtocolError("subdevice status identity does not match request")
-        returned_pid = payload.get("pid")
-        if returned_pid is not None and (
-            not isinstance(returned_pid, str) or returned_pid.lower() != device.pid.lower()
-        ):
-            raise IbgProtocolError("subdevice status product identity does not match request")
+        _validate_state_identity(device, payload)
         return IbgSubDeviceState(
             device=device,
             values=normalize_subdevice_state(device.pid, payload),
@@ -220,7 +228,7 @@ class IbgClient:
         """Read online supported sensors without failing the whole gateway refresh."""
         states: dict[str, IbgSubDeviceState | None] = {}
         for device in devices:
-            if device.pid.lower() not in SUPPORTED_SENSOR_PIDS:
+            if device.pid.lower() not in SUPPORTED_SUBDEVICE_PIDS:
                 continue
             if not device.online:
                 states[device.did] = None
@@ -234,6 +242,44 @@ class IbgClient:
             except (IbgError, OSError, dna.DNAError):
                 states[device.did] = None
         return states
+
+    async def set_subdevice_state(
+        self,
+        session: IbgSession,
+        device: IbgSubDevice,
+        changes: Mapping[str, bool],
+        *,
+        exchange: dna.PacketExchange | None = None,
+    ) -> IbgSubDeviceState:
+        """Set reviewed writable fields and return the confirmed device state."""
+        if device.pid.lower() != PID_BOX7_CONTROLLER:
+            raise IbgProtocolError(f"unsupported writable iBG subdevice PID: {device.pid}")
+        if not device.online:
+            raise IbgConnectionError(f"iBG subdevice is offline: {device.did}")
+        if not changes:
+            raise IbgProtocolError("at least one iBG subdevice change is required")
+        invalid_fields = set(changes) - BOX7_POWER_FIELDS
+        if invalid_fields:
+            raise IbgProtocolError(f"unsupported writable iBG subdevice field: {sorted(invalid_fields)[0]}")
+        if any(not isinstance(value, bool) for value in changes.values()):
+            raise IbgProtocolError("iBG subdevice power values must be boolean")
+
+        request: dict[str, object] = {"did": device.did}
+        request.update({key: int(value) for key, value in changes.items()})
+        payload = await self._command(
+            session,
+            gateway.CMD_SET_STATUS,
+            request,
+            gateway.CMD_STATUS_RESPONSE,
+            exchange=exchange,
+        )
+        _require_success(payload)
+        _validate_state_identity(device, payload)
+        values = normalize_subdevice_state(device.pid, payload)
+        for key, expected in changes.items():
+            if values.get(key) is not expected:
+                raise IbgProtocolError(f"iBG subdevice did not confirm requested field: {key}")
+        return IbgSubDeviceState(device=device, values=values, received_at=datetime.now(UTC))
 
     async def _command(
         self,
@@ -289,6 +335,8 @@ class IbgClient:
 
 def normalize_subdevice_state(pid: str, payload: dict[str, Any]) -> dict[str, int | float | bool]:
     """Return reviewed HA-safe fields, excluding all gateway configuration."""
+    if pid.lower() == PID_BOX7_CONTROLLER:
+        return _normalize_box7_state(payload)
     if pid.lower() != PID_SR3_SENSOR:
         return {}
     values: dict[str, int | float | bool] = {}
@@ -313,6 +361,47 @@ def normalize_subdevice_state(pid: str, payload: dict[str, Any]) -> dict[str, in
     if isinstance(keypressed, int) and not isinstance(keypressed, bool) and keypressed in {1, 2}:
         values["keypressed"] = keypressed
     return values
+
+
+def _normalize_box7_state(payload: dict[str, Any]) -> dict[str, int | float | bool]:
+    """Normalize the reviewed seven-channel controller profile."""
+    values: dict[str, int | float | bool] = {}
+    for key in BOX7_POWER_FIELDS:
+        raw = payload.get(key)
+        if isinstance(raw, bool):
+            values[key] = raw
+        elif isinstance(raw, int) and raw in {0, 1}:
+            values[key] = bool(raw)
+
+    scaled_fields = {
+        "power": (0, 5_000_000, 10),
+        "totalconsum": (0, 999_999_999, 100),
+        "envtemp1": (-50, 128, 1),
+        "envtemp2": (-50, 128, 1),
+        "envtemp3": (-50, 128, 1),
+        "envtemp4": (-50, 128, 1),
+        "Aphasevolt": (0, 5_000, 10),
+        "Bphasevolt": (0, 5_000, 10),
+        "Cphasevolt": (0, 5_000, 10),
+        "Aphasecurrent": (0, 999_999, 1_000),
+        "Bphasecurrent": (0, 999_999, 1_000),
+        "Cphasecurrent": (0, 999_999, 1_000),
+    }
+    for key, (minimum, maximum, divisor) in scaled_fields.items():
+        raw = _number(payload.get(key))
+        if raw is not None and minimum <= raw <= maximum:
+            values[key] = raw / divisor
+    return values
+
+
+def _validate_state_identity(device: IbgSubDevice, payload: dict[str, Any]) -> None:
+    """Ensure a status response belongs to the requested subdevice."""
+    returned_did = payload.get("did")
+    if returned_did is not None and returned_did != device.did:
+        raise IbgProtocolError("subdevice status identity does not match request")
+    returned_pid = payload.get("pid")
+    if returned_pid is not None and (not isinstance(returned_pid, str) or returned_pid.lower() != device.pid.lower()):
+        raise IbgProtocolError("subdevice status product identity does not match request")
 
 
 def _parse_subdevice(value: object) -> IbgSubDevice:

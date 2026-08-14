@@ -4,12 +4,13 @@
       "user": {
         "title": "连接 LinknLink iBG",
         "description": "请输入 iBG 网关的局域网 IP 地址。",
-        "data": {"host": "主机地址"}
+        "data": {"host": "主机地址", "local_key": "本地密钥（可选）"}
       }
     },
     "error": {
       "cannot_connect": "无法连接 iBG 网关",
-      "unknown": "发生未知错误"
+      "unknown": "发生未知错误",
+      "invalid_local_key": "本地密钥必须是32位十六进制字符"
     },
     "abort": {"already_configured": "此 iBG 网关已经配置"}
   },
@@ -18,9 +19,30 @@
       "temperature": {"name": "温度"},
       "humidity": {"name": "湿度"},
       "illuminance": {"name": "照度"},
-      "battery": {"name": "电量"}
+      "battery": {"name": "电量"},
+      "power": {"name": "当前功率"},
+      "total_energy": {"name": "累计电量"},
+      "temperature_1": {"name": "温度1"},
+      "temperature_2": {"name": "温度2"},
+      "temperature_3": {"name": "温度3"},
+      "temperature_4": {"name": "温度4"},
+      "phase_a_voltage": {"name": "A相电压"},
+      "phase_b_voltage": {"name": "B相电压"},
+      "phase_c_voltage": {"name": "C相电压"},
+      "phase_a_current": {"name": "A相电流"},
+      "phase_b_current": {"name": "B相电流"},
+      "phase_c_current": {"name": "C相电流"}
     },
     "binary_sensor": {"occupancy": {"name": "人体感应"}},
-    "event": {"key": {"name": "按键"}}
+    "event": {"key": {"name": "按键"}},
+    "switch": {
+      "circuit_1": {"name": "回路1"},
+      "circuit_2": {"name": "回路2"},
+      "circuit_3": {"name": "回路3"},
+      "circuit_4": {"name": "回路4"},
+      "circuit_5": {"name": "回路5"},
+      "circuit_6": {"name": "回路6"},
+      "circuit_7": {"name": "回路7"}
+    }
   }
 }

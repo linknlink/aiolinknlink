@@ -16,6 +16,12 @@
   acknowledgement, reauthentication, and polling fallback.
 - Expose the PID `05000100` physical key as a Home Assistant event entity;
   only a confirmed `2` to `1` edge emits a `pressed` event.
+- Support locked iBG gateways through an optional pre-paired local key without
+  changing the gateway lock configuration.
+- Add PID `31130100` seven-channel controllers with seven confirmed HA switches
+  and twelve scaled power, energy, temperature, voltage, and current sensors.
+- Create HA entities from per-PID capability catalogs so unrelated device types
+  no longer receive inapplicable entities.
 
 ## 0.3.2
 

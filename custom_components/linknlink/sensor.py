@@ -3,14 +3,24 @@
 from __future__ import annotations
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorEntityDescription, SensorStateClass
-from homeassistant.const import LIGHT_LUX, PERCENTAGE, UnitOfTemperature
+from homeassistant.const import (
+    LIGHT_LUX,
+    PERCENTAGE,
+    UnitOfElectricCurrent,
+    UnitOfElectricPotential,
+    UnitOfEnergy,
+    UnitOfPower,
+    UnitOfTemperature,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+
+from aiolinknlink import PID_BOX7_CONTROLLER, PID_SR3_SENSOR
 
 from . import LinknLinkConfigEntry
 from .entity import IbgCoordinatorEntity
 
-SENSORS = (
+SR3_SENSORS = (
     SensorEntityDescription(
         key="temperature",
         translation_key="temperature",
@@ -41,6 +51,58 @@ SENSORS = (
     ),
 )
 
+BOX7_SENSORS = (
+    SensorEntityDescription(
+        key="power",
+        translation_key="power",
+        device_class=SensorDeviceClass.POWER,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    SensorEntityDescription(
+        key="totalconsum",
+        translation_key="total_energy",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
+    *(
+        SensorEntityDescription(
+            key=f"envtemp{channel}",
+            translation_key=f"temperature_{channel}",
+            device_class=SensorDeviceClass.TEMPERATURE,
+            native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+            state_class=SensorStateClass.MEASUREMENT,
+        )
+        for channel in range(1, 5)
+    ),
+    *(
+        SensorEntityDescription(
+            key=f"{phase}phasevolt",
+            translation_key=f"phase_{phase.lower()}_voltage",
+            device_class=SensorDeviceClass.VOLTAGE,
+            native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+            state_class=SensorStateClass.MEASUREMENT,
+        )
+        for phase in "ABC"
+    ),
+    *(
+        SensorEntityDescription(
+            key=f"{phase}phasecurrent",
+            translation_key=f"phase_{phase.lower()}_current",
+            device_class=SensorDeviceClass.CURRENT,
+            native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+            state_class=SensorStateClass.MEASUREMENT,
+        )
+        for phase in "ABC"
+    ),
+)
+
+SENSORS_BY_PID = {
+    PID_SR3_SENSOR: SR3_SENSORS,
+    PID_BOX7_CONTROLLER: BOX7_SENSORS,
+}
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -51,7 +113,9 @@ async def async_setup_entry(
     del hass
     coordinator = entry.runtime_data
     async_add_entities(
-        IbgSensor(coordinator, did, description) for did in coordinator.data.states for description in SENSORS
+        IbgSensor(coordinator, device.did, description)
+        for device in coordinator.data.subdevices
+        for description in SENSORS_BY_PID.get(device.pid, ())
     )
 
 

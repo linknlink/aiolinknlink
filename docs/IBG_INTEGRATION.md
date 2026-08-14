@@ -1,10 +1,11 @@
-# iBG2 SE Home Assistant Integration
+# iBG Home Assistant Integration
 
 ## Supported scope
 
-This release supports local, read-only communication with iBG2 SE gateways.
-It discovers and authenticates the gateway over encrypted UDP, reads the full
-paginated subdevice inventory, and exposes reviewed fields from PID
+This release supports encrypted local communication with iBG gateways. It can
+pair with unlocked gateways or reuse a pre-paired local key when a gateway's
+local access lock is enabled. It reads the full paginated subdevice inventory
+and exposes reviewed fields from PID
 `00000000000000000000000005000100` sensors:
 
 - temperature;
@@ -14,10 +15,20 @@ paginated subdevice inventory, and exposes reviewed fields from PID
 - occupancy;
 - physical key press events.
 
+PID `00000000000000000000000031130100` seven-channel controllers expose:
+
+- seven read/write circuit switches (`pwr1` through `pwr7`);
+- current power and total energy;
+- four temperature inputs;
+- three-phase voltage and current.
+
+Switch writes are field- and type-whitelisted, and HA updates a switch only
+after the controller confirms the requested value.
+
 Gateway credentials, MQTT settings, network keys, raw snapshots, AES session
-keys, and unreviewed fields are deliberately excluded. Device control, dynamic
-addition of new entity types while HA is running, Zigbee, Modbus, and other RF
-profiles are not part of this release.
+keys, and unreviewed fields are deliberately excluded. Dynamic addition of new
+entity types while HA is running, Zigbee, Modbus, and other RF profiles are not
+part of this release.
 
 ## Architecture
 
@@ -58,7 +69,10 @@ password or iBG key. If HA does not become ready within two minutes, the script
 exits unsuccessfully and prints the retained backup location.
 
 In HA, select **Settings → Devices & services → Add integration → LinknLink**,
-then enter the iBG LAN address.
+then enter the iBG LAN address. Leave **Local key** empty for an unlocked
+gateway. A locked gateway requires its existing 32-character hexadecimal local
+key; the integration stores it only in config-entry data and never exposes it
+through an entity or log message.
 
 ## Verification
 
@@ -68,11 +82,13 @@ Run the component import check in an HA image or HA container:
 python scripts/ha-smoke-test.py --source /path/to/aiolinknlink
 ```
 
-Add `--host IBG_ADDRESS` for a read-only live check. Output contains counts and
+Add `--host IBG_ADDRESS` for a read-only live check. For a locked gateway, set
+the `LINKNLINK_IBG_LOCAL_KEY` environment variable. Output contains counts and
 field names only; it excludes device identifiers, names, state values, and keys.
 
-Expected UI result for the verified test gateway is one hub device, two sensor
-devices, and six entities per sensor. Counts can differ on another gateway.
+Each PID `05000100` device has six entities. Each PID `31130100` device has 19
+entities: seven switches and twelve sensors. Counts can differ on another
+gateway.
 
 ## Upgrade and rollback
 

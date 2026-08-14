@@ -10,13 +10,13 @@ Supported radar configuration includes sensitivity, trigger speed, installation 
 
 Temperature and humidity require the optional sensor power cable. Environment reads refresh the device's ESPHome entity list so connecting or disconnecting the cable is detected after the device restarts.
 
-The iBG client supports compact DNA discovery and authentication, paginated
-subdevice inventory, and read-only state polling for PID `05000100` sensors.
-Only reviewed state fields are returned: temperature, humidity, illuminance,
-battery level, occupancy, and the physical key state. A persistent authenticated
-heartbeat can receive and acknowledge local state pushes so short key events do
-not depend on the polling interval. Gateway configuration values and credentials
-are never included in public state.
+The iBG client supports compact DNA discovery and authentication, optional
+pre-paired local keys for locked gateways, and paginated subdevice inventory.
+PID `05000100` environment/occupancy sensors and PID `31130100`
+seven-channel controllers are supported. The controller exposes seven confirmed
+switches plus power, energy, temperature, voltage, and current sensors. A
+persistent authenticated heartbeat receives and acknowledges local state pushes.
+Gateway configuration values and credentials are never included in public state.
 
 ## Requirements
 
@@ -55,7 +55,7 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-Read supported iBG sensor states:
+Read supported iBG subdevice states:
 
 ```python
 import asyncio
@@ -84,6 +84,20 @@ async def main() -> None:
 
 
 asyncio.run(main())
+```
+
+Locked gateways can reuse their existing 16-byte local key without changing the
+gateway lock setting:
+
+```python
+session = await client.connect(gateway, local_key=bytes.fromhex(local_key_hex))
+```
+
+Seven-channel controller writes are restricted to `pwr1` through `pwr7` and
+must be confirmed by the device response:
+
+```python
+state = await client.set_subdevice_state(session, controller, {"pwr1": True})
 ```
 
 For development testing, the repository also contains a Home Assistant custom

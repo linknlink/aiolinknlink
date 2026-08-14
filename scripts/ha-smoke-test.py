@@ -7,6 +7,7 @@ import argparse
 import asyncio
 import importlib
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -25,7 +26,9 @@ async def _live_test(host: str) -> dict[str, object]:
 
     client = IbgClient(discovery_timeout=3, auth_timeout=5, command_timeout=5)
     gateway = await client.discover_host(host)
-    session = await client.connect(gateway)
+    local_key_hex = os.environ.get("LINKNLINK_IBG_LOCAL_KEY", "")
+    local_key = bytes.fromhex(local_key_hex) if local_key_hex else None
+    session = await client.connect(gateway, local_key=local_key)
     devices = await client.list_subdevices(session)
     states = await client.read_supported_states(session, devices)
     return {
@@ -62,6 +65,7 @@ def main() -> None:
         "custom_components.linknlink.sensor",
         "custom_components.linknlink.binary_sensor",
         "custom_components.linknlink.event",
+        "custom_components.linknlink.switch",
     ):
         importlib.import_module(module)
 

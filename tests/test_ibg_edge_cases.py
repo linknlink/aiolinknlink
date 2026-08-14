@@ -16,7 +16,7 @@ from aiolinknlink import (
     IbgSession,
     IbgSubDevice,
 )
-from aiolinknlink.ibg import PID_SR3_SENSOR
+from aiolinknlink.ibg import PID_BOX7_CONTROLLER, PID_SR3_SENSOR
 from aiolinknlink.protocol import dna, gateway
 
 GATEWAY = IbgDevice(
@@ -173,6 +173,26 @@ async def test_state_read_isolates_offline_and_failing_devices() -> None:
     states = await IbgClient().read_supported_states(_session(), [online, offline, unsupported], exchange=exchange)
 
     assert states == {DID: None, offline.did: None}
+
+
+async def test_set_state_requires_device_confirmation() -> None:
+    device = IbgSubDevice(DID, PID_BOX7_CONTROLLER, "BOX7", True)
+
+    async def exchange(
+        _ip: str,
+        _port: int,
+        packet: bytes,
+        _timeout: float,
+        _accept: dna.PacketAcceptor | None,
+    ) -> bytes:
+        return _response(
+            packet,
+            gateway.CMD_STATUS_RESPONSE,
+            {"did": DID, "pid": PID_BOX7_CONTROLLER, "pwr1": 0},
+        )
+
+    with pytest.raises(IbgProtocolError, match="did not confirm"):
+        await IbgClient().set_subdevice_state(_session(), device, {"pwr1": True}, exchange=exchange)
 
 
 async def test_command_requires_session_and_valid_response_type() -> None:
