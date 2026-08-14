@@ -53,6 +53,7 @@ def main() -> None:
     for path in (
         component / "manifest.json",
         component / "strings.json",
+        component / "translations" / "en.json",
         component / "translations" / "zh-Hans.json",
     ):
         json.loads(path.read_text())
@@ -66,6 +67,7 @@ def main() -> None:
         "custom_components.linknlink.binary_sensor",
         "custom_components.linknlink.event",
         "custom_components.linknlink.switch",
+        "custom_components.linknlink.number",
     ):
         importlib.import_module(module)
 

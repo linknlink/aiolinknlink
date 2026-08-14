@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorEntityDescription, SensorStateClass
 from homeassistant.const import (
     LIGHT_LUX,
@@ -15,7 +17,7 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from aiolinknlink import PID_BOX7_CONTROLLER, PID_SR3_SENSOR
+from aiolinknlink import PID_BOX7_CONTROLLER, PID_DTU, PID_SR3_SENSOR
 
 from . import LinknLinkConfigEntry
 from .entity import IbgCoordinatorEntity
@@ -107,9 +109,33 @@ BOX7_SENSORS = (
     ),
 )
 
+DTU_ELECTRICAL_SENSORS = tuple(
+    description for description in BOX7_SENSORS if not description.key.startswith("envtemp")
+)
+
+
+@dataclass(frozen=True, kw_only=True)
+class DtuAnalogInputEntityDescription(SensorEntityDescription):
+    """Describe one DTU analog input and its companion mode field."""
+
+    mode_key: str
+
+
+DTU_ANALOG_INPUTS = tuple(
+    DtuAnalogInputEntityDescription(
+        key=f"d{channel}",
+        name=f"Analog input {channel}",
+        translation_key=f"analog_input_{channel}",
+        state_class=SensorStateClass.MEASUREMENT,
+        mode_key=f"date{channel}_type",
+    )
+    for channel in range(1, 4)
+)
+
 SENSORS_BY_PID = {
     PID_SR3_SENSOR: SR3_SENSORS,
     PID_BOX7_CONTROLLER: BOX7_SENSORS,
+    PID_DTU: DTU_ELECTRICAL_SENSORS,
 }
 
 
@@ -121,11 +147,18 @@ async def async_setup_entry(
     """Create sensors for all reviewed iBG subdevice fields."""
     del hass
     coordinator = entry.runtime_data
-    async_add_entities(
+    entities = [
         IbgSensor(coordinator, device.did, description)
         for device in coordinator.data.subdevices
         for description in SENSORS_BY_PID.get(device.pid, ())
+    ]
+    entities.extend(
+        IbgDtuAnalogInputSensor(coordinator, device.did, description)
+        for device in coordinator.data.subdevices
+        if device.pid == PID_DTU
+        for description in DTU_ANALOG_INPUTS
     )
+    async_add_entities(entities)
 
 
 class IbgSensor(IbgCoordinatorEntity, SensorEntity):
@@ -142,3 +175,36 @@ class IbgSensor(IbgCoordinatorEntity, SensorEntity):
         """Return the latest safe numeric value."""
         value = self._value()
         return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+class IbgDtuAnalogInputSensor(IbgSensor):
+    """One DTU analog input whose configured mode selects mA or V."""
+
+    entity_description: DtuAnalogInputEntityDescription
+
+    @property
+    def device_class(self) -> SensorDeviceClass | None:
+        """Return current or voltage according to the DTU input mode."""
+        mode = self._input_mode()
+        if mode == 0:
+            return SensorDeviceClass.CURRENT
+        if mode == 1:
+            return SensorDeviceClass.VOLTAGE
+        return None
+
+    @property
+    def native_unit_of_measurement(self) -> str | None:
+        """Return mA for current mode and V for voltage mode."""
+        mode = self._input_mode()
+        if mode == 0:
+            return UnitOfElectricCurrent.MILLIAMPERE
+        if mode == 1:
+            return UnitOfElectricPotential.VOLT
+        return None
+
+    def _input_mode(self) -> int | None:
+        state = self.coordinator.data.states.get(self.did)
+        if state is None:
+            return None
+        mode = state.values.get(self.entity_description.mode_key)
+        return mode if isinstance(mode, int) and not isinstance(mode, bool) and mode in {0, 1} else None

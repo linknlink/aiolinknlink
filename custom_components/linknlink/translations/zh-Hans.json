@@ -31,10 +31,19 @@
       "phase_c_voltage": {"name": "C相电压"},
       "phase_a_current": {"name": "A相电流"},
       "phase_b_current": {"name": "B相电流"},
-      "phase_c_current": {"name": "C相电流"}
+      "phase_c_current": {"name": "C相电流"},
+      "analog_input_1": {"name": "模拟量输入1"},
+      "analog_input_2": {"name": "模拟量输入2"},
+      "analog_input_3": {"name": "模拟量输入3"}
     },
-    "binary_sensor": {"occupancy": {"name": "人体感应"}},
+    "binary_sensor": {
+      "occupancy": {"name": "人体感应"},
+      "signal_input_1": {"name": "信号输入1"},
+      "signal_input_2": {"name": "信号输入2"},
+      "signal_input_3": {"name": "信号输入3"}
+    },
     "event": {"key": {"name": "按键"}},
+    "number": {"voltage_output": {"name": "电压输出"}},
     "switch": {
       "switch_1": {"name": "开关1"},
       "switch_2": {"name": "开关2"},

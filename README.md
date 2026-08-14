@@ -12,11 +12,12 @@ Temperature and humidity require the optional sensor power cable. Environment re
 
 The iBG client supports compact DNA discovery and authentication, optional
 pre-paired local keys for locked gateways, and paginated subdevice inventory.
-PID `05000100` environment/occupancy sensors and PID `31130100`
-seven-channel controllers are supported. The controller exposes seven confirmed
-switches plus power, energy, temperature, voltage, and current sensors. A
-persistent authenticated heartbeat receives and acknowledges local state pushes.
-Gateway configuration values and credentials are never included in public state.
+PID `05000100` environment/occupancy sensors, PID `31130100` seven-channel
+controllers, and PID `0b150100` DTUs are supported. DTUs expose two confirmed
+switches, three mode-aware analog inputs, a confirmed 0-10 V output, three
+signal inputs, and electrical measurements. A persistent authenticated heartbeat
+receives and acknowledges local state pushes. Gateway configuration values and
+credentials are never included in public state.
 
 ## Requirements
 
@@ -98,6 +99,14 @@ must be confirmed by the device response:
 
 ```python
 state = await client.set_subdevice_state(session, controller, {"pwr1": True})
+```
+
+DTU writes are restricted to boolean `pwr1`/`pwr2` values and a `voltage`
+output from 0.0 through 10.0 V in 0.1 V steps. The wire value is scaled by ten,
+and the normalized read-back must confirm the request:
+
+```python
+state = await client.set_subdevice_state(session, dtu, {"pwr1": True, "voltage": 7.5})
 ```
 
 For development testing, the repository also contains a Home Assistant custom

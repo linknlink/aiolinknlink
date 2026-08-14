@@ -8,7 +8,7 @@ from homeassistant.components.switch import SwitchEntity, SwitchEntityDescriptio
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from aiolinknlink import PID_BOX7_CONTROLLER
+from aiolinknlink import PID_BOX7_CONTROLLER, PID_DTU
 
 from . import LinknLinkConfigEntry
 from .entity import IbgCoordinatorEntity
@@ -21,6 +21,11 @@ BOX7_SWITCHES = tuple(
     )
     for channel in range(1, 8)
 )
+DTU_SWITCHES = BOX7_SWITCHES[:2]
+SWITCHES_BY_PID = {
+    PID_BOX7_CONTROLLER: BOX7_SWITCHES,
+    PID_DTU: DTU_SWITCHES,
+}
 
 
 async def async_setup_entry(
@@ -28,19 +33,18 @@ async def async_setup_entry(
     entry: LinknLinkConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Create the seven reviewed circuit switches for BOX7 controllers."""
+    """Create reviewed power switches for supported iBG subdevices."""
     del hass
     coordinator = entry.runtime_data
     async_add_entities(
-        IbgBox7Switch(coordinator, device.did, description)
+        IbgPowerSwitch(coordinator, device.did, description)
         for device in coordinator.data.subdevices
-        if device.pid == PID_BOX7_CONTROLLER
-        for description in BOX7_SWITCHES
+        for description in SWITCHES_BY_PID.get(device.pid, ())
     )
 
 
-class IbgBox7Switch(IbgCoordinatorEntity, SwitchEntity):
-    """One controllable circuit on a seven-channel controller."""
+class IbgPowerSwitch(IbgCoordinatorEntity, SwitchEntity):
+    """One confirmed power output on an iBG subdevice."""
 
     entity_description: SwitchEntityDescription
 
@@ -50,16 +54,16 @@ class IbgBox7Switch(IbgCoordinatorEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool | None:
-        """Return the confirmed circuit state."""
+        """Return the confirmed output state."""
         value = self._value()
         return value if isinstance(value, bool) else None
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn the circuit on and wait for device confirmation."""
+        """Turn the output on and wait for device confirmation."""
         del kwargs
         await self.coordinator.async_set_subdevice_state(self.did, {self.key: True})
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn the circuit off and wait for device confirmation."""
+        """Turn the output off and wait for device confirmation."""
         del kwargs
         await self.coordinator.async_set_subdevice_state(self.did, {self.key: False})

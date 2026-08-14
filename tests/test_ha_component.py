@@ -11,10 +11,13 @@ import pytest
 
 pytest.importorskip("homeassistant")
 
+from homeassistant.components.sensor import SensorDeviceClass  # noqa: E402
+from homeassistant.const import UnitOfElectricCurrent, UnitOfElectricPotential  # noqa: E402
 from homeassistant.helpers.update_coordinator import UpdateFailed  # noqa: E402
 
 from aiolinknlink import (  # noqa: E402
     PID_BOX7_CONTROLLER,
+    PID_DTU,
     IbgConnectionError,
     IbgDevice,
     IbgProtocolError,
@@ -22,13 +25,22 @@ from aiolinknlink import (  # noqa: E402
     IbgSubDevice,
     IbgSubDeviceState,
 )
+from custom_components.linknlink.binary_sensor import DTU_BINARY_SENSORS, IbgBinarySensor  # noqa: E402
 from custom_components.linknlink.coordinator import (  # noqa: E402
     IbgCoordinatorData,
     IbgDataUpdateCoordinator,
 )
 from custom_components.linknlink.entity import IbgCoordinatorEntity  # noqa: E402
-from custom_components.linknlink.sensor import BOX7_SENSORS, SENSORS_BY_PID, SR3_SENSORS  # noqa: E402
-from custom_components.linknlink.switch import BOX7_SWITCHES, IbgBox7Switch  # noqa: E402
+from custom_components.linknlink.number import IbgDtuVoltageOutput  # noqa: E402
+from custom_components.linknlink.sensor import (  # noqa: E402
+    BOX7_SENSORS,
+    DTU_ANALOG_INPUTS,
+    DTU_ELECTRICAL_SENSORS,
+    SENSORS_BY_PID,
+    SR3_SENSORS,
+    IbgDtuAnalogInputSensor,
+)
+from custom_components.linknlink.switch import BOX7_SWITCHES, DTU_SWITCHES, IbgPowerSwitch  # noqa: E402
 
 GATEWAY = IbgDevice(
     id="001122334455",
@@ -145,18 +157,69 @@ async def test_box7_switch_uses_confirmed_coordinator_control() -> None:
     )
     coordinator.last_update_success = True
     coordinator.async_set_subdevice_state = AsyncMock()  # type: ignore[method-assign]
-    entity = IbgBox7Switch(coordinator, device.did, BOX7_SWITCHES[0])
+    entity = IbgPowerSwitch(coordinator, device.did, BOX7_SWITCHES[0])
 
     assert entity.is_on is False
     await entity.async_turn_on()
     coordinator.async_set_subdevice_state.assert_awaited_once_with(device.did, {"pwr1": True})
 
 
+async def test_dtu_entities_use_input_modes_and_confirmed_controls() -> None:
+    device = IbgSubDevice(
+        did="00112233445566778899aabbccddeef1",
+        pid=PID_DTU,
+        name="DTU",
+        online=True,
+    )
+    coordinator = object.__new__(IbgDataUpdateCoordinator)
+    coordinator.device = GATEWAY
+    coordinator.data = IbgCoordinatorData(
+        (device,),
+        {
+            device.did: IbgSubDeviceState(
+                device,
+                {
+                    "d1": 12.34,
+                    "date1_type": 0,
+                    "d2": 7.5,
+                    "date2_type": 1,
+                    "signalinput1": True,
+                    "voltage": 8.0,
+                },
+                datetime.now(UTC),
+            )
+        },
+    )
+    coordinator.last_update_success = True
+    coordinator.async_set_subdevice_state = AsyncMock()  # type: ignore[method-assign]
+
+    current_input = IbgDtuAnalogInputSensor(coordinator, device.did, DTU_ANALOG_INPUTS[0])
+    voltage_input = IbgDtuAnalogInputSensor(coordinator, device.did, DTU_ANALOG_INPUTS[1])
+    signal = IbgBinarySensor(coordinator, device.did, DTU_BINARY_SENSORS[0])
+    output = IbgDtuVoltageOutput(coordinator, device.did)
+
+    assert current_input.native_value == 12.34
+    assert current_input.device_class == SensorDeviceClass.CURRENT
+    assert current_input.native_unit_of_measurement == UnitOfElectricCurrent.MILLIAMPERE
+    assert voltage_input.native_value == 7.5
+    assert voltage_input.device_class == SensorDeviceClass.VOLTAGE
+    assert voltage_input.native_unit_of_measurement == UnitOfElectricPotential.VOLT
+    assert signal.is_on is True
+    assert output.native_value == 8.0
+    await output.async_set_native_value(7.5)
+    coordinator.async_set_subdevice_state.assert_awaited_once_with(device.did, {"voltage": 7.5})
+
+
 def test_entity_catalogs_are_pid_specific() -> None:
     assert len(BOX7_SWITCHES) == 7
     assert len(BOX7_SENSORS) == 12
+    assert len(DTU_SWITCHES) == 2
+    assert len(DTU_ELECTRICAL_SENSORS) == 8
+    assert len(DTU_ANALOG_INPUTS) == 3
+    assert len(DTU_BINARY_SENSORS) == 3
     assert len(SR3_SENSORS) == 4
     assert SENSORS_BY_PID[PID_BOX7_CONTROLLER] == BOX7_SENSORS
+    assert SENSORS_BY_PID[PID_DTU] == DTU_ELECTRICAL_SENSORS
     assert [description.name for description in BOX7_SWITCHES] == [f"Switch {channel}" for channel in range(1, 8)]
     assert len({description.name for description in BOX7_SENSORS}) == 12
 
@@ -171,7 +234,12 @@ def test_entity_translations_cover_parameter_derived_names() -> None:
 
     for catalog in catalogs:
         sensor_names = catalog["entity"]["sensor"]
+        binary_sensor_names = catalog["entity"]["binary_sensor"]
+        number_names = catalog["entity"]["number"]
         switch_names = catalog["entity"]["switch"]
         assert all(description.translation_key in sensor_names for description in BOX7_SENSORS)
+        assert all(description.translation_key in sensor_names for description in DTU_ANALOG_INPUTS)
+        assert all(description.translation_key in binary_sensor_names for description in DTU_BINARY_SENSORS)
         assert all(description.translation_key in switch_names for description in BOX7_SWITCHES)
+        assert "voltage_output" in number_names
         assert len({switch_names[f"switch_{channel}"]["name"] for channel in range(1, 8)}) == 7
