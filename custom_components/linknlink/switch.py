@@ -14,7 +14,12 @@ from . import LinknLinkConfigEntry
 from .entity import IbgCoordinatorEntity
 
 BOX7_SWITCHES = tuple(
-    SwitchEntityDescription(key=f"pwr{channel}", translation_key=f"circuit_{channel}") for channel in range(1, 8)
+    SwitchEntityDescription(
+        key=f"pwr{channel}",
+        name=f"Circuit {channel}",
+        translation_key=f"circuit_{channel}",
+    )
+    for channel in range(1, 8)
 )
 
 

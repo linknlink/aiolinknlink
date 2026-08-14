@@ -22,6 +22,8 @@
   and twelve scaled power, energy, temperature, voltage, and current sensors.
 - Create HA entities from per-PID capability catalogs so unrelated device types
   no longer receive inapplicable entities.
+- Generate distinct seven-channel controller entity names from each circuit,
+  temperature input, and electrical phase parameter.
 
 ## 0.3.2
 

@@ -23,6 +23,7 @@ from .entity import IbgCoordinatorEntity
 SR3_SENSORS = (
     SensorEntityDescription(
         key="temperature",
+        name="Temperature",
         translation_key="temperature",
         device_class=SensorDeviceClass.TEMPERATURE,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
@@ -30,6 +31,7 @@ SR3_SENSORS = (
     ),
     SensorEntityDescription(
         key="humidity",
+        name="Humidity",
         translation_key="humidity",
         device_class=SensorDeviceClass.HUMIDITY,
         native_unit_of_measurement=PERCENTAGE,
@@ -37,6 +39,7 @@ SR3_SENSORS = (
     ),
     SensorEntityDescription(
         key="illuminance",
+        name="Illuminance",
         translation_key="illuminance",
         device_class=SensorDeviceClass.ILLUMINANCE,
         native_unit_of_measurement=LIGHT_LUX,
@@ -44,6 +47,7 @@ SR3_SENSORS = (
     ),
     SensorEntityDescription(
         key="battery",
+        name="Battery",
         translation_key="battery",
         device_class=SensorDeviceClass.BATTERY,
         native_unit_of_measurement=PERCENTAGE,
@@ -54,6 +58,7 @@ SR3_SENSORS = (
 BOX7_SENSORS = (
     SensorEntityDescription(
         key="power",
+        name="Power",
         translation_key="power",
         device_class=SensorDeviceClass.POWER,
         native_unit_of_measurement=UnitOfPower.WATT,
@@ -61,6 +66,7 @@ BOX7_SENSORS = (
     ),
     SensorEntityDescription(
         key="totalconsum",
+        name="Total energy",
         translation_key="total_energy",
         device_class=SensorDeviceClass.ENERGY,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
@@ -69,6 +75,7 @@ BOX7_SENSORS = (
     *(
         SensorEntityDescription(
             key=f"envtemp{channel}",
+            name=f"Temperature {channel}",
             translation_key=f"temperature_{channel}",
             device_class=SensorDeviceClass.TEMPERATURE,
             native_unit_of_measurement=UnitOfTemperature.CELSIUS,
@@ -79,6 +86,7 @@ BOX7_SENSORS = (
     *(
         SensorEntityDescription(
             key=f"{phase}phasevolt",
+            name=f"Phase {phase} voltage",
             translation_key=f"phase_{phase.lower()}_voltage",
             device_class=SensorDeviceClass.VOLTAGE,
             native_unit_of_measurement=UnitOfElectricPotential.VOLT,
@@ -89,6 +97,7 @@ BOX7_SENSORS = (
     *(
         SensorEntityDescription(
             key=f"{phase}phasecurrent",
+            name=f"Phase {phase} current",
             translation_key=f"phase_{phase.lower()}_current",
             device_class=SensorDeviceClass.CURRENT,
             native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
