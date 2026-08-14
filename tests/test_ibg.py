@@ -8,6 +8,7 @@ import struct
 import pytest
 
 from aiolinknlink import (
+    PID_DTU,
     IbgClient,
     IbgConnectionError,
     IbgDevice,
@@ -28,6 +29,7 @@ GATEWAY = IbgDevice(
 SESSION_KEY = b"0123456789abcdef"
 SENSOR_DID = "00112233445566778899aabbccddeeff"
 BOX7_DID = "00112233445566778899aabbccddeef0"
+DTU_DID = "00112233445566778899aabbccddeef1"
 
 
 def _response_packet(request: bytes, key: bytes, response: bytes) -> bytes:
@@ -203,6 +205,57 @@ def test_box7_state_normalization_uses_reviewed_fields_and_scales() -> None:
     }
 
 
+def test_dtu_state_normalization_uses_modes_and_documented_scaling() -> None:
+    values = normalize_subdevice_state(
+        PID_DTU,
+        {
+            "pwr1": 1,
+            "pwr2": False,
+            "d1": 1234,
+            "d2": 750,
+            "d3": 100,
+            "date1_type": 0,
+            "date2_type": 1,
+            "date3_type": 2,
+            "voltage": 80,
+            "power": 12345,
+            "totalconsum": 98765,
+            "Aphasevolt": 230,
+            "Bphasevolt": 231,
+            "Cphasevolt": 232,
+            "Aphasecurrent": 123,
+            "Bphasecurrent": 456,
+            "Cphasecurrent": 65535,
+            "signalinput1": 1,
+            "signalinput2": 0,
+            "signalinput3": True,
+            "wifi_switch": 1,
+            "password": "must-not-be-exposed",
+        },
+    )
+
+    assert values == {
+        "pwr1": True,
+        "pwr2": False,
+        "date1_type": 0,
+        "d1": 12.34,
+        "date2_type": 1,
+        "d2": 7.5,
+        "signalinput1": True,
+        "signalinput2": False,
+        "signalinput3": True,
+        "voltage": 8.0,
+        "power": 1234.5,
+        "totalconsum": 987.65,
+        "Aphasevolt": 230.0,
+        "Bphasevolt": 231.0,
+        "Cphasevolt": 232.0,
+        "Aphasecurrent": 1.23,
+        "Bphasecurrent": 4.56,
+        "Cphasecurrent": 655.35,
+    }
+
+
 async def test_box7_set_state_sends_only_reviewed_boolean_control() -> None:
     device = IbgSubDevice(BOX7_DID, PID_BOX7_CONTROLLER, "BOX7", True)
 
@@ -241,6 +294,70 @@ async def test_box7_set_state_sends_only_reviewed_boolean_control() -> None:
     )
 
     assert state.values == {"pwr1": False, "pwr3": True, "power": 12.0}
+
+
+async def test_dtu_set_state_encodes_voltage_and_confirms_all_fields() -> None:
+    device = IbgSubDevice(DTU_DID, PID_DTU, "DTU", True)
+
+    async def exchange(
+        _ip: str,
+        _port: int,
+        packet: bytes,
+        _timeout: float,
+        _accept: dna.PacketAcceptor | None,
+    ) -> bytes:
+        _header, body = dna.parse_blc_packet(packet)
+        _aes, plain = dna.parse_blc_encrypted_payload(body, SESSION_KEY)
+        frame = gateway.parse_gateway_frame(plain)
+        assert frame.command_type == gateway.CMD_SET_STATUS
+        assert frame.payload == {"did": DTU_DID, "pwr2": 1, "voltage": 75}
+        return _response_packet(
+            packet,
+            SESSION_KEY,
+            gateway.build_gateway_frame(
+                gateway.CMD_STATUS_RESPONSE,
+                {
+                    "did": DTU_DID,
+                    "pid": PID_DTU,
+                    "pwr1": 0,
+                    "pwr2": 1,
+                    "voltage": 75,
+                },
+            ),
+        )
+
+    state = await IbgClient().set_subdevice_state(
+        IbgSession(device=GATEWAY, session_key=SESSION_KEY),
+        device,
+        {"pwr2": True, "voltage": 7.5},
+        exchange=exchange,
+    )
+
+    assert state.values == {"pwr1": False, "pwr2": True, "voltage": 7.5}
+
+
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [
+        ({"pwr1": 1}, "boolean"),
+        ({"voltage": -0.1}, "between 0 and 10"),
+        ({"voltage": 10.1}, "between 0 and 10"),
+        ({"voltage": 1.25}, "0.1 V steps"),
+        ({"voltage": True}, "between 0 and 10"),
+        ({"d1": 1.0}, "field"),
+    ],
+)
+async def test_dtu_set_state_rejects_unsafe_requests(
+    changes: dict[str, bool | int | float],
+    message: str,
+) -> None:
+    device = IbgSubDevice(DTU_DID, PID_DTU, "DTU", True)
+    with pytest.raises(IbgProtocolError, match=message):
+        await IbgClient().set_subdevice_state(
+            IbgSession(device=GATEWAY, session_key=SESSION_KEY),
+            device,
+            changes,
+        )
 
 
 @pytest.mark.parametrize(

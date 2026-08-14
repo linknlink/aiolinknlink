@@ -25,6 +25,17 @@ PID `00000000000000000000000031130100` seven-channel controllers expose:
 Switch writes are field- and type-whitelisted, and HA updates a switch only
 after the controller confirms the requested value.
 
+PID `0000000000000000000000000b150100` DTUs expose:
+
+- two confirmed read/write switches (`pwr1` and `pwr2`);
+- three analog input values whose `dateN_type` mode selects mA (`0`) or V (`1`);
+- one confirmed 0-10 V number output in 0.1 V steps;
+- current power, total energy, and three-phase voltage/current;
+- three binary signal inputs.
+
+Numeric DTU writes are range-, step-, and type-whitelisted and are accepted by
+HA only after the DTU reports the requested normalized value.
+
 Gateway credentials, MQTT settings, network keys, raw snapshots, AES session
 keys, and unreviewed fields are deliberately excluded. Dynamic addition of new
 entity types while HA is running, Zigbee, Modbus, and other RF profiles are not
@@ -87,8 +98,9 @@ the `LINKNLINK_IBG_LOCAL_KEY` environment variable. Output contains counts and
 field names only; it excludes device identifiers, names, state values, and keys.
 
 Each PID `05000100` device has six entities. Each PID `31130100` device has 19
-entities: seven switches and twelve sensors. Counts can differ on another
-gateway.
+entities: seven switches and twelve sensors. Each PID `0b150100` DTU has 17
+entities: two switches, eleven sensors, three binary sensors, and one number.
+Counts can differ on another gateway.
 
 ## Upgrade and rollback
 

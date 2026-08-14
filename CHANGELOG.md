@@ -26,6 +26,8 @@
   temperature input, and electrical phase parameter.
 - Name the seven controllable channels Switch 1 through Switch 7 to match their
   Home Assistant entity type.
+- Add PID `0b150100` DTUs with two confirmed switches, three mode-aware analog
+  inputs, a confirmed 0-10 V output, three signal inputs, and electrical sensors.
 
 ## 0.3.2
 

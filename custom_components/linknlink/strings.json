@@ -31,10 +31,19 @@
       "phase_c_voltage": {"name": "Phase C voltage"},
       "phase_a_current": {"name": "Phase A current"},
       "phase_b_current": {"name": "Phase B current"},
-      "phase_c_current": {"name": "Phase C current"}
+      "phase_c_current": {"name": "Phase C current"},
+      "analog_input_1": {"name": "Analog input 1"},
+      "analog_input_2": {"name": "Analog input 2"},
+      "analog_input_3": {"name": "Analog input 3"}
     },
-    "binary_sensor": {"occupancy": {"name": "Occupancy"}},
+    "binary_sensor": {
+      "occupancy": {"name": "Occupancy"},
+      "signal_input_1": {"name": "Signal input 1"},
+      "signal_input_2": {"name": "Signal input 2"},
+      "signal_input_3": {"name": "Signal input 3"}
+    },
     "event": {"key": {"name": "Key"}},
+    "number": {"voltage_output": {"name": "Voltage output"}},
     "switch": {
       "switch_1": {"name": "Switch 1"},
       "switch_2": {"name": "Switch 2"},

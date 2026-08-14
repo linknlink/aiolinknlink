@@ -84,7 +84,7 @@ class IbgDataUpdateCoordinator(DataUpdateCoordinator[IbgCoordinatorData]):
             self.push_subscription.update_devices(subdevices)
         return IbgCoordinatorData(tuple(subdevices), states, dict(self._key_event_counts))
 
-    async def async_set_subdevice_state(self, did: str, changes: dict[str, bool]) -> None:
+    async def async_set_subdevice_state(self, did: str, changes: dict[str, bool | int | float]) -> None:
         """Write one reviewed subdevice state and merge its confirmed response."""
         if self.data is None:
             raise IbgError("iBG coordinator has no device data")

@@ -11,6 +11,7 @@ from .coordinator import IbgDataUpdateCoordinator
 SUBDEVICE_MODELS = {
     "00000000000000000000000005000100": "RF environment/occupancy sensor",
     "00000000000000000000000031130100": "Seven-channel controller",
+    "0000000000000000000000000b150100": "DTU",
 }
 
 

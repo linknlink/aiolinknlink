@@ -17,8 +17,12 @@ from .protocol import dna, gateway
 DISPLAY_MODEL_IBG2_SE = "iBG2 SE"
 PID_SR3_SENSOR = "00000000000000000000000005000100"
 PID_BOX7_CONTROLLER = "00000000000000000000000031130100"
-SUPPORTED_SUBDEVICE_PIDS = frozenset({PID_SR3_SENSOR, PID_BOX7_CONTROLLER})
+PID_DTU = "0000000000000000000000000b150100"
+SUPPORTED_SUBDEVICE_PIDS = frozenset({PID_SR3_SENSOR, PID_BOX7_CONTROLLER, PID_DTU})
 BOX7_POWER_FIELDS = frozenset(f"pwr{channel}" for channel in range(1, 8))
+DTU_POWER_FIELDS = frozenset(f"pwr{channel}" for channel in range(1, 3))
+DTU_VOLTAGE_OUTPUT_FIELD = "voltage"
+DTU_WRITABLE_FIELDS = DTU_POWER_FIELDS | {DTU_VOLTAGE_OUTPUT_FIELD}
 DEFAULT_TIMEOUT = 5.0
 DEFAULT_AUTH_TIMEOUT = 10.0
 PAGE_SIZE = 10
@@ -247,25 +251,44 @@ class IbgClient:
         self,
         session: IbgSession,
         device: IbgSubDevice,
-        changes: Mapping[str, bool],
+        changes: Mapping[str, bool | int | float],
         *,
         exchange: dna.PacketExchange | None = None,
     ) -> IbgSubDeviceState:
         """Set reviewed writable fields and return the confirmed device state."""
-        if device.pid.lower() != PID_BOX7_CONTROLLER:
+        pid = device.pid.lower()
+        if pid not in {PID_BOX7_CONTROLLER, PID_DTU}:
             raise IbgProtocolError(f"unsupported writable iBG subdevice PID: {device.pid}")
         if not device.online:
             raise IbgConnectionError(f"iBG subdevice is offline: {device.did}")
         if not changes:
             raise IbgProtocolError("at least one iBG subdevice change is required")
-        invalid_fields = set(changes) - BOX7_POWER_FIELDS
+        writable_fields = BOX7_POWER_FIELDS if pid == PID_BOX7_CONTROLLER else DTU_WRITABLE_FIELDS
+        invalid_fields = set(changes) - writable_fields
         if invalid_fields:
             raise IbgProtocolError(f"unsupported writable iBG subdevice field: {sorted(invalid_fields)[0]}")
-        if any(not isinstance(value, bool) for value in changes.values()):
-            raise IbgProtocolError("iBG subdevice power values must be boolean")
+
+        request_values: dict[str, int] = {}
+        expected_values: dict[str, bool | float] = {}
+        for key, value in changes.items():
+            if key in BOX7_POWER_FIELDS or key in DTU_POWER_FIELDS:
+                if not isinstance(value, bool):
+                    raise IbgProtocolError("iBG subdevice power values must be boolean")
+                request_values[key] = int(value)
+                expected_values[key] = value
+                continue
+            number = _number(value)
+            if key != DTU_VOLTAGE_OUTPUT_FIELD or number is None or not 0 <= number <= 10:
+                raise IbgProtocolError("DTU voltage output must be between 0 and 10 V")
+            scaled = number * 10
+            raw = round(scaled)
+            if not math.isclose(scaled, raw, abs_tol=1e-9):
+                raise IbgProtocolError("DTU voltage output must use 0.1 V steps")
+            request_values[key] = raw
+            expected_values[key] = raw / 10
 
         request: dict[str, object] = {"did": device.did}
-        request.update({key: int(value) for key, value in changes.items()})
+        request.update(request_values)
         payload = await self._command(
             session,
             gateway.CMD_SET_STATUS,
@@ -276,8 +299,11 @@ class IbgClient:
         _require_success(payload)
         _validate_state_identity(device, payload)
         values = normalize_subdevice_state(device.pid, payload)
-        for key, expected in changes.items():
-            if values.get(key) is not expected:
+        for key, expected in expected_values.items():
+            confirmed = values.get(key)
+            if (isinstance(expected, bool) and confirmed is not expected) or (
+                not isinstance(expected, bool) and confirmed != expected
+            ):
                 raise IbgProtocolError(f"iBG subdevice did not confirm requested field: {key}")
         return IbgSubDeviceState(device=device, values=values, received_at=datetime.now(UTC))
 
@@ -337,6 +363,8 @@ def normalize_subdevice_state(pid: str, payload: dict[str, Any]) -> dict[str, in
     """Return reviewed HA-safe fields, excluding all gateway configuration."""
     if pid.lower() == PID_BOX7_CONTROLLER:
         return _normalize_box7_state(payload)
+    if pid.lower() == PID_DTU:
+        return _normalize_dtu_state(payload)
     if pid.lower() != PID_SR3_SENSOR:
         return {}
     values: dict[str, int | float | bool] = {}
@@ -386,6 +414,50 @@ def _normalize_box7_state(payload: dict[str, Any]) -> dict[str, int | float | bo
         "Aphasecurrent": (0, 999_999, 1_000),
         "Bphasecurrent": (0, 999_999, 1_000),
         "Cphasecurrent": (0, 999_999, 1_000),
+    }
+    for key, (minimum, maximum, divisor) in scaled_fields.items():
+        raw = _number(payload.get(key))
+        if raw is not None and minimum <= raw <= maximum:
+            values[key] = raw / divisor
+    return values
+
+
+def _normalize_dtu_state(payload: dict[str, Any]) -> dict[str, int | float | bool]:
+    """Normalize the reviewed DTU profile and retain analog input modes."""
+    values: dict[str, int | float | bool] = {}
+    for key in DTU_POWER_FIELDS:
+        raw = payload.get(key)
+        if isinstance(raw, bool):
+            values[key] = raw
+        elif isinstance(raw, int) and raw in {0, 1}:
+            values[key] = bool(raw)
+
+    for channel in range(1, 4):
+        mode_key = f"date{channel}_type"
+        mode = payload.get(mode_key)
+        if isinstance(mode, int) and not isinstance(mode, bool) and mode in {0, 1}:
+            values[mode_key] = mode
+            raw = _number(payload.get(f"d{channel}"))
+            if raw is not None and 0 <= raw <= 65_535:
+                values[f"d{channel}"] = raw / 100
+
+        signal_key = f"signalinput{channel}"
+        signal = payload.get(signal_key)
+        if isinstance(signal, bool):
+            values[signal_key] = signal
+        elif isinstance(signal, int) and signal in {0, 1}:
+            values[signal_key] = bool(signal)
+
+    scaled_fields = {
+        "voltage": (0, 100, 10),
+        "power": (0, 16_777_215, 10),
+        "totalconsum": (0, 4_294_967_295, 100),
+        "Aphasevolt": (0, 255, 1),
+        "Bphasevolt": (0, 255, 1),
+        "Cphasevolt": (0, 255, 1),
+        "Aphasecurrent": (0, 65_535, 100),
+        "Bphasecurrent": (0, 65_535, 100),
+        "Cphasecurrent": (0, 65_535, 100),
     }
     for key, (minimum, maximum, divisor) in scaled_fields.items():
         raw = _number(payload.get(key))
