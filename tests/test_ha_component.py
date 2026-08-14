@@ -157,7 +157,7 @@ def test_entity_catalogs_are_pid_specific() -> None:
     assert len(BOX7_SENSORS) == 12
     assert len(SR3_SENSORS) == 4
     assert SENSORS_BY_PID[PID_BOX7_CONTROLLER] == BOX7_SENSORS
-    assert len({description.name for description in BOX7_SWITCHES}) == 7
+    assert [description.name for description in BOX7_SWITCHES] == [f"Switch {channel}" for channel in range(1, 8)]
     assert len({description.name for description in BOX7_SENSORS}) == 12
 
 
@@ -174,4 +174,4 @@ def test_entity_translations_cover_parameter_derived_names() -> None:
         switch_names = catalog["entity"]["switch"]
         assert all(description.translation_key in sensor_names for description in BOX7_SENSORS)
         assert all(description.translation_key in switch_names for description in BOX7_SWITCHES)
-        assert len({switch_names[f"circuit_{channel}"]["name"] for channel in range(1, 8)}) == 7
+        assert len({switch_names[f"switch_{channel}"]["name"] for channel in range(1, 8)}) == 7
