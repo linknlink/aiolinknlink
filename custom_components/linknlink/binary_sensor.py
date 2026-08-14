@@ -6,6 +6,8 @@ from homeassistant.components.binary_sensor import BinarySensorDeviceClass, Bina
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
+from aiolinknlink import PID_SR3_SENSOR
+
 from . import LinknLinkConfigEntry
 from .entity import IbgCoordinatorEntity
 
@@ -18,7 +20,11 @@ async def async_setup_entry(
     """Create occupancy sensors for supported iBG subdevices."""
     del hass
     coordinator = entry.runtime_data
-    async_add_entities(IbgOccupancySensor(coordinator, did) for did in coordinator.data.states)
+    async_add_entities(
+        IbgOccupancySensor(coordinator, device.did)
+        for device in coordinator.data.subdevices
+        if device.pid == PID_SR3_SENSOR
+    )
 
 
 class IbgOccupancySensor(IbgCoordinatorEntity, BinarySensorEntity):

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -185,6 +186,35 @@ async def test_subscription_heartbeat_uses_persistent_socket() -> None:
 
     assert session.command_sequence == 9
     assert session.last_seen is not None
+
+
+async def test_subscription_reauthentication_reuses_locked_gateway_key() -> None:
+    client = IbgClient()
+    client.connect = AsyncMock(  # type: ignore[method-assign]
+        return_value=IbgSession(GATEWAY, SESSION_KEY)
+    )
+    subscription = IbgPushSubscription(
+        client,
+        IbgSession(GATEWAY, SESSION_KEY),
+        [SUBDEVICE],
+        lambda _state: None,
+        local_key=SESSION_KEY,
+    )
+    protocol = IbgPushProtocol(
+        asyncio.get_running_loop(),
+        subscription.session,
+        lambda _state: None,
+        {SUBDEVICE.did: SUBDEVICE},
+    )
+    subscription._protocol = protocol
+
+    await subscription._reauthenticate()
+
+    client.connect.assert_awaited_once_with(
+        GATEWAY,
+        local_key=SESSION_KEY,
+        exchange=protocol.exchange,
+    )
 
 
 def test_heartbeat_accepts_firmware_length_including_zero_padding() -> None:

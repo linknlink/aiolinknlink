@@ -43,6 +43,8 @@ class IbgDataUpdateCoordinator(DataUpdateCoordinator[IbgCoordinatorData]):
         client: IbgClient,
         device: IbgDevice,
         session: IbgSession,
+        *,
+        local_key: bytes | None = None,
     ) -> None:
         super().__init__(
             hass,
@@ -53,6 +55,7 @@ class IbgDataUpdateCoordinator(DataUpdateCoordinator[IbgCoordinatorData]):
         self.client = client
         self.device = device
         self.session = session
+        self.local_key = local_key
         self.push_subscription: IbgPushSubscription | None = None
         self._last_keypressed: dict[str, int] = {}
         self._key_event_counts: dict[str, int] = {}
@@ -62,7 +65,7 @@ class IbgDataUpdateCoordinator(DataUpdateCoordinator[IbgCoordinatorData]):
             return await self._read_data()
         except IbgConnectionError:
             try:
-                self.session = await self.client.connect(self.device)
+                self.session = await self.client.connect(self.device, local_key=self.local_key)
                 if self.push_subscription is not None:
                     self.push_subscription.update_session(self.session)
                 return await self._read_data()
@@ -81,6 +84,22 @@ class IbgDataUpdateCoordinator(DataUpdateCoordinator[IbgCoordinatorData]):
             self.push_subscription.update_devices(subdevices)
         return IbgCoordinatorData(tuple(subdevices), states, dict(self._key_event_counts))
 
+    async def async_set_subdevice_state(self, did: str, changes: dict[str, bool]) -> None:
+        """Write one reviewed subdevice state and merge its confirmed response."""
+        if self.data is None:
+            raise IbgError("iBG coordinator has no device data")
+        device = next((item for item in self.data.subdevices if item.did == did), None)
+        if device is None:
+            raise IbgError(f"iBG subdevice is no longer present: {did}")
+        try:
+            state = await self.client.set_subdevice_state(self.session, device, changes)
+        except IbgConnectionError:
+            self.session = await self.client.connect(self.device, local_key=self.local_key)
+            if self.push_subscription is not None:
+                self.push_subscription.update_session(self.session)
+            state = await self.client.set_subdevice_state(self.session, device, changes)
+        self._handle_push_state(state)
+
     async def async_start_push(self) -> None:
         """Start the best-effort iBG local status push listener."""
         if self.push_subscription is not None:
@@ -90,6 +109,7 @@ class IbgDataUpdateCoordinator(DataUpdateCoordinator[IbgCoordinatorData]):
             self.session,
             self.data.subdevices,
             self._handle_push_state,
+            local_key=self.local_key,
         )
         try:
             await subscription.start()

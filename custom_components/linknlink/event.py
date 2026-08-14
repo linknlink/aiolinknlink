@@ -6,6 +6,8 @@ from homeassistant.components.event import EventEntity
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
+from aiolinknlink import PID_SR3_SENSOR
+
 from . import LinknLinkConfigEntry
 from .entity import IbgCoordinatorEntity
 
@@ -20,7 +22,9 @@ async def async_setup_entry(
     """Create a physical key event entity for each supported iBG sensor."""
     del hass
     coordinator = entry.runtime_data
-    async_add_entities(IbgKeyEvent(coordinator, did) for did in coordinator.data.states)
+    async_add_entities(
+        IbgKeyEvent(coordinator, device.did) for device in coordinator.data.subdevices if device.pid == PID_SR3_SENSOR
+    )
 
 
 class IbgKeyEvent(IbgCoordinatorEntity, EventEntity):

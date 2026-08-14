@@ -12,6 +12,7 @@ pytest.importorskip("homeassistant")
 from homeassistant.helpers.update_coordinator import UpdateFailed  # noqa: E402
 
 from aiolinknlink import (  # noqa: E402
+    PID_BOX7_CONTROLLER,
     IbgConnectionError,
     IbgDevice,
     IbgProtocolError,
@@ -24,6 +25,8 @@ from custom_components.linknlink.coordinator import (  # noqa: E402
     IbgDataUpdateCoordinator,
 )
 from custom_components.linknlink.entity import IbgCoordinatorEntity  # noqa: E402
+from custom_components.linknlink.sensor import BOX7_SENSORS, SENSORS_BY_PID, SR3_SENSORS  # noqa: E402
+from custom_components.linknlink.switch import BOX7_SWITCHES, IbgBox7Switch  # noqa: E402
 
 GATEWAY = IbgDevice(
     id="001122334455",
@@ -45,6 +48,7 @@ def _coordinator(client: object) -> IbgDataUpdateCoordinator:
     coordinator.client = client  # type: ignore[assignment]
     coordinator.device = GATEWAY
     coordinator.session = IbgSession(device=GATEWAY, session_key=b"0123456789abcdef")
+    coordinator.local_key = None
     coordinator.push_subscription = None
     coordinator._last_keypressed = {}
     coordinator._key_event_counts = {}
@@ -64,7 +68,7 @@ async def test_coordinator_reauthenticates_once_after_connection_failure() -> No
     assert data.subdevices == (SUBDEVICE,)
     assert data.states == {SUBDEVICE.did: None}
     assert coordinator.session is refreshed
-    client.connect.assert_awaited_once_with(GATEWAY)
+    client.connect.assert_awaited_once_with(GATEWAY, local_key=None)
 
 
 async def test_coordinator_converts_repeated_connection_failure() -> None:
@@ -122,3 +126,32 @@ def test_coordinator_counts_only_two_to_one_key_edges() -> None:
     coordinator._track_key_edges({SUBDEVICE.did: key_state(2)})
 
     assert coordinator._key_event_counts == {SUBDEVICE.did: 1}
+
+
+async def test_box7_switch_uses_confirmed_coordinator_control() -> None:
+    device = IbgSubDevice(
+        did="00112233445566778899aabbccddeef0",
+        pid=PID_BOX7_CONTROLLER,
+        name="BOX7",
+        online=True,
+    )
+    coordinator = object.__new__(IbgDataUpdateCoordinator)
+    coordinator.device = GATEWAY
+    coordinator.data = IbgCoordinatorData(
+        (device,),
+        {device.did: IbgSubDeviceState(device, {"pwr1": False}, datetime.now(UTC))},
+    )
+    coordinator.last_update_success = True
+    coordinator.async_set_subdevice_state = AsyncMock()  # type: ignore[method-assign]
+    entity = IbgBox7Switch(coordinator, device.did, BOX7_SWITCHES[0])
+
+    assert entity.is_on is False
+    await entity.async_turn_on()
+    coordinator.async_set_subdevice_state.assert_awaited_once_with(device.did, {"pwr1": True})
+
+
+def test_entity_catalogs_are_pid_specific() -> None:
+    assert len(BOX7_SWITCHES) == 7
+    assert len(BOX7_SENSORS) == 12
+    assert len(SR3_SENSORS) == 4
+    assert SENSORS_BY_PID[PID_BOX7_CONTROLLER] == BOX7_SENSORS

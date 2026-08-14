@@ -8,6 +8,11 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN
 from .coordinator import IbgDataUpdateCoordinator
 
+SUBDEVICE_MODELS = {
+    "00000000000000000000000005000100": "RF environment/occupancy sensor",
+    "00000000000000000000000031130100": "Seven-channel controller",
+}
+
 
 class IbgCoordinatorEntity(CoordinatorEntity[IbgDataUpdateCoordinator]):
     """Base entity for one iBG subdevice field."""
@@ -33,7 +38,7 @@ class IbgCoordinatorEntity(CoordinatorEntity[IbgDataUpdateCoordinator]):
             identifiers={(DOMAIN, f"{self.coordinator.device.id}_{self.did}")},
             name=self._subdevice.name,
             manufacturer="LinknLink",
-            model=f"iBG subdevice {self._subdevice.pid[-8:]}",
+            model=SUBDEVICE_MODELS.get(self._subdevice.pid, f"iBG subdevice {self._subdevice.pid[-8:]}"),
             via_device=(DOMAIN, self.coordinator.device.id),
         )
 

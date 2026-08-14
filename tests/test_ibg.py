@@ -7,8 +7,15 @@ import struct
 
 import pytest
 
-from aiolinknlink import IbgClient, IbgDevice, IbgProtocolError, IbgSession, IbgSubDevice
-from aiolinknlink.ibg import PID_SR3_SENSOR, normalize_subdevice_state
+from aiolinknlink import (
+    IbgClient,
+    IbgConnectionError,
+    IbgDevice,
+    IbgProtocolError,
+    IbgSession,
+    IbgSubDevice,
+)
+from aiolinknlink.ibg import PID_BOX7_CONTROLLER, PID_SR3_SENSOR, normalize_subdevice_state
 from aiolinknlink.protocol import dna, gateway
 
 GATEWAY = IbgDevice(
@@ -20,6 +27,7 @@ GATEWAY = IbgDevice(
 )
 SESSION_KEY = b"0123456789abcdef"
 SENSOR_DID = "00112233445566778899aabbccddeeff"
+BOX7_DID = "00112233445566778899aabbccddeef0"
 
 
 def _response_packet(request: bytes, key: bytes, response: bytes) -> bytes:
@@ -61,6 +69,19 @@ async def test_connect_uses_compact_auth_and_extracts_session_key() -> None:
     assert session.session_key == SESSION_KEY
     assert session.last_auth_at is not None
     assert SESSION_KEY.hex() not in repr(session)
+
+
+async def test_connect_accepts_previously_paired_local_key_without_auth_exchange() -> None:
+    async def exchange(*_args: object) -> bytes:
+        raise AssertionError("locked gateway must not be paired again")
+
+    session = await IbgClient().connect(GATEWAY, local_key=SESSION_KEY, exchange=exchange)
+
+    assert session.session_key == SESSION_KEY
+    assert session.last_auth_at is not None
+
+    with pytest.raises(IbgConnectionError, match="16 bytes"):
+        await IbgClient().connect(GATEWAY, local_key=b"short")
 
 
 async def test_paginated_subdevice_list_and_safe_state() -> None:
@@ -140,6 +161,109 @@ def test_state_normalization_accepts_confirmed_key_values_only() -> None:
     assert normalize_subdevice_state(PID_SR3_SENSOR, {"keypressed": 1}) == {"keypressed": 1}
     assert normalize_subdevice_state(PID_SR3_SENSOR, {"keypressed": 2}) == {"keypressed": 2}
     assert normalize_subdevice_state(PID_SR3_SENSOR, {"keypressed": 0}) == {}
+
+
+def test_box7_state_normalization_uses_reviewed_fields_and_scales() -> None:
+    values = normalize_subdevice_state(
+        PID_BOX7_CONTROLLER,
+        {
+            "pwr1": 1,
+            "pwr2": 0,
+            "pwr3": True,
+            "pwr4": 2,
+            "power": 12345,
+            "totalconsum": 98765,
+            "envtemp1": -5,
+            "envtemp2": 128,
+            "envtemp3": 129,
+            "Aphasevolt": 2315,
+            "Bphasevolt": True,
+            "Cphasevolt": 2200,
+            "Aphasecurrent": 1234,
+            "Bphasecurrent": 999999,
+            "Cphasecurrent": -1,
+            "alarm_state": 1,
+            "tempdif1": 8,
+            "password": "must-not-be-exposed",
+        },
+    )
+
+    assert values == {
+        "pwr1": True,
+        "pwr2": False,
+        "pwr3": True,
+        "power": 1234.5,
+        "totalconsum": 987.65,
+        "envtemp1": -5.0,
+        "envtemp2": 128.0,
+        "Aphasevolt": 231.5,
+        "Cphasevolt": 220.0,
+        "Aphasecurrent": 1.234,
+        "Bphasecurrent": 999.999,
+    }
+
+
+async def test_box7_set_state_sends_only_reviewed_boolean_control() -> None:
+    device = IbgSubDevice(BOX7_DID, PID_BOX7_CONTROLLER, "BOX7", True)
+
+    async def exchange(
+        _ip: str,
+        _port: int,
+        packet: bytes,
+        _timeout: float,
+        _accept: dna.PacketAcceptor | None,
+    ) -> bytes:
+        _header, body = dna.parse_blc_packet(packet)
+        _aes, plain = dna.parse_blc_encrypted_payload(body, SESSION_KEY)
+        frame = gateway.parse_gateway_frame(plain)
+        assert frame.command_type == gateway.CMD_SET_STATUS
+        assert frame.payload == {"did": BOX7_DID, "pwr3": 1}
+        return _response_packet(
+            packet,
+            SESSION_KEY,
+            gateway.build_gateway_frame(
+                gateway.CMD_STATUS_RESPONSE,
+                {
+                    "did": BOX7_DID,
+                    "pid": PID_BOX7_CONTROLLER,
+                    "pwr1": 0,
+                    "pwr3": 1,
+                    "power": 120,
+                },
+            ),
+        )
+
+    state = await IbgClient().set_subdevice_state(
+        IbgSession(device=GATEWAY, session_key=SESSION_KEY),
+        device,
+        {"pwr3": True},
+        exchange=exchange,
+    )
+
+    assert state.values == {"pwr1": False, "pwr3": True, "power": 12.0}
+
+
+@pytest.mark.parametrize(
+    ("device", "changes", "message"),
+    [
+        (IbgSubDevice(BOX7_DID, PID_SR3_SENSOR, "Sensor", True), {"pwr1": True}, "unsupported writable"),
+        (IbgSubDevice(BOX7_DID, PID_BOX7_CONTROLLER, "BOX7", False), {"pwr1": True}, "offline"),
+        (IbgSubDevice(BOX7_DID, PID_BOX7_CONTROLLER, "BOX7", True), {}, "at least one"),
+        (IbgSubDevice(BOX7_DID, PID_BOX7_CONTROLLER, "BOX7", True), {"alarm_state": True}, "field"),
+        (IbgSubDevice(BOX7_DID, PID_BOX7_CONTROLLER, "BOX7", True), {"pwr1": 1}, "boolean"),
+    ],
+)
+async def test_box7_set_state_rejects_unsafe_requests(
+    device: IbgSubDevice,
+    changes: dict[str, bool],
+    message: str,
+) -> None:
+    with pytest.raises((IbgConnectionError, IbgProtocolError), match=message):
+        await IbgClient().set_subdevice_state(
+            IbgSession(device=GATEWAY, session_key=SESSION_KEY),
+            device,
+            changes,
+        )
 
 
 async def test_unsupported_pid_is_not_queried() -> None:

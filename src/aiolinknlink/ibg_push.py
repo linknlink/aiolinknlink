@@ -173,6 +173,7 @@ class IbgPushSubscription:
         devices: list[IbgSubDevice] | tuple[IbgSubDevice, ...],
         callback: StateCallback,
         *,
+        local_key: bytes | None = None,
         port: int = 0,
         heartbeat_interval: float = DEFAULT_HEARTBEAT_INTERVAL,
         retry_interval: float = DEFAULT_RETRY_INTERVAL,
@@ -186,6 +187,7 @@ class IbgPushSubscription:
         self.session = session
         self._devices = {device.did: device for device in devices}
         self._callback = callback
+        self._local_key = local_key
         self._requested_port = port
         self._heartbeat_interval = heartbeat_interval
         self._retry_interval = retry_interval
@@ -320,7 +322,11 @@ class IbgPushSubscription:
         protocol = self._protocol
         if protocol is None:
             raise IbgError("iBG push listener is not running")
-        session = await self._client.connect(self.session.device, exchange=protocol.exchange)
+        session = await self._client.connect(
+            self.session.device,
+            local_key=self._local_key,
+            exchange=protocol.exchange,
+        )
         self.update_session(session)
 
 
