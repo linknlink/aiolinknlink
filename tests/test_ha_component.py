@@ -45,6 +45,9 @@ def _coordinator(client: object) -> IbgDataUpdateCoordinator:
     coordinator.client = client  # type: ignore[assignment]
     coordinator.device = GATEWAY
     coordinator.session = IbgSession(device=GATEWAY, session_key=b"0123456789abcdef")
+    coordinator.push_subscription = None
+    coordinator._last_keypressed = {}
+    coordinator._key_event_counts = {}
     return coordinator
 
 
@@ -103,3 +106,19 @@ def test_entity_availability_and_safe_value() -> None:
     coordinator.data = IbgCoordinatorData((SUBDEVICE,), {SUBDEVICE.did: None})
     assert not entity.available
     assert entity._value() is None
+
+
+def test_coordinator_counts_only_two_to_one_key_edges() -> None:
+    coordinator = _coordinator(AsyncMock())
+
+    def key_state(value: int) -> IbgSubDeviceState:
+        return IbgSubDeviceState(SUBDEVICE, {"keypressed": value}, datetime.now(UTC))
+
+    coordinator._track_key_edges({SUBDEVICE.did: key_state(1)})
+    assert coordinator._key_event_counts == {}
+    coordinator._track_key_edges({SUBDEVICE.did: key_state(2)})
+    coordinator._track_key_edges({SUBDEVICE.did: key_state(1)})
+    coordinator._track_key_edges({SUBDEVICE.did: key_state(1)})
+    coordinator._track_key_edges({SUBDEVICE.did: key_state(2)})
+
+    assert coordinator._key_event_counts == {SUBDEVICE.did: 1}

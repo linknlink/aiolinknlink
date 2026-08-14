@@ -74,6 +74,7 @@ async def test_paginated_subdevice_list_and_safe_state() -> None:
         "envlux": 126,
         "battery": 100,
         "pir_detected": 1,
+        "keypressed": 2,
         "password": "must-not-be-exposed",
         "network_key": "must-not-be-exposed",
     }
@@ -112,6 +113,7 @@ async def test_paginated_subdevice_list_and_safe_state() -> None:
         "illuminance": 126,
         "battery": 100,
         "occupancy": True,
+        "keypressed": 2,
     }
     assert "password" not in state.values
     assert "network_key" not in state.values
@@ -127,10 +129,17 @@ def test_state_normalization_rejects_unreviewed_and_invalid_values() -> None:
             "envlux": -1,
             "battery": 101,
             "pir_detected": 3,
+            "keypressed": True,
             "mqtt_password": "secret",
         },
     )
     assert values == {}
+
+
+def test_state_normalization_accepts_confirmed_key_values_only() -> None:
+    assert normalize_subdevice_state(PID_SR3_SENSOR, {"keypressed": 1}) == {"keypressed": 1}
+    assert normalize_subdevice_state(PID_SR3_SENSOR, {"keypressed": 2}) == {"keypressed": 2}
+    assert normalize_subdevice_state(PID_SR3_SENSOR, {"keypressed": 0}) == {}
 
 
 async def test_unsupported_pid_is_not_queried() -> None:

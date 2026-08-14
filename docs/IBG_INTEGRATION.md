@@ -11,7 +11,8 @@ paginated subdevice inventory, and exposes reviewed fields from PID
 - humidity;
 - illuminance;
 - battery percentage;
-- occupancy.
+- occupancy;
+- physical key press events.
 
 Gateway credentials, MQTT settings, network keys, raw snapshots, AES session
 keys, and unreviewed fields are deliberately excluded. Device control, dynamic
@@ -25,7 +26,9 @@ packet validation, pagination, normalization, and error isolation. The custom
 component under `custom_components/linknlink` owns HA configuration, polling,
 device hierarchy, availability, and entities.
 
-HA polls the gateway every 30 seconds. A failed sensor read marks only that
+HA maintains an authenticated local UDP heartbeat and receives acknowledged
+status pushes for immediate physical key events and state updates. It also polls
+the gateway every 30 seconds as a fallback. A failed sensor read marks only that
 sensor unavailable. A failed gateway exchange triggers one reauthentication
 attempt. Subsequent failure marks the coordinator unavailable and preserves the
 last state in HA history.
@@ -69,7 +72,7 @@ Add `--host IBG_ADDRESS` for a read-only live check. Output contains counts and
 field names only; it excludes device identifiers, names, state values, and keys.
 
 Expected UI result for the verified test gateway is one hub device, two sensor
-devices, and five entities per sensor. Counts can differ on another gateway.
+devices, and six entities per sensor. Counts can differ on another gateway.
 
 ## Upgrade and rollback
 

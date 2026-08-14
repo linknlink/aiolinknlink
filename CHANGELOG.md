@@ -12,6 +12,10 @@
   sensors from the rest of a gateway refresh.
 - Add failure/recovery tests plus credential-free HA Container deployment,
   backup, rollback, smoke-test, and operations documentation.
+- Add authenticated iBG local status push with heartbeat renewal,
+  acknowledgement, reauthentication, and polling fallback.
+- Expose the PID `05000100` physical key as a Home Assistant event entity;
+  only a confirmed `2` to `1` edge emits a `pressed` event.
 
 ## 0.3.2
 
