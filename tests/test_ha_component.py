@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
@@ -155,3 +157,21 @@ def test_entity_catalogs_are_pid_specific() -> None:
     assert len(BOX7_SENSORS) == 12
     assert len(SR3_SENSORS) == 4
     assert SENSORS_BY_PID[PID_BOX7_CONTROLLER] == BOX7_SENSORS
+    assert len({description.name for description in BOX7_SWITCHES}) == 7
+    assert len({description.name for description in BOX7_SENSORS}) == 12
+
+
+def test_entity_translations_cover_parameter_derived_names() -> None:
+    """Keep per-channel and per-phase names available to HA's entity registry."""
+    component_dir = Path(__file__).parents[1] / "custom_components" / "linknlink"
+    catalogs = (
+        json.loads((component_dir / "translations" / "en.json").read_text()),
+        json.loads((component_dir / "translations" / "zh-Hans.json").read_text()),
+    )
+
+    for catalog in catalogs:
+        sensor_names = catalog["entity"]["sensor"]
+        switch_names = catalog["entity"]["switch"]
+        assert all(description.translation_key in sensor_names for description in BOX7_SENSORS)
+        assert all(description.translation_key in switch_names for description in BOX7_SWITCHES)
+        assert len({switch_names[f"circuit_{channel}"]["name"] for channel in range(1, 8)}) == 7

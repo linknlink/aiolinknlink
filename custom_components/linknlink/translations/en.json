@@ -1,0 +1,48 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to LinknLink iBG",
+        "description": "Enter the local IP address of your iBG gateway.",
+        "data": {"host": "Host", "local_key": "Local key (optional)"}
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the iBG gateway",
+      "unknown": "Unexpected error",
+      "invalid_local_key": "The local key must contain exactly 32 hexadecimal characters"
+    },
+    "abort": {"already_configured": "This iBG gateway is already configured"}
+  },
+  "entity": {
+    "sensor": {
+      "temperature": {"name": "Temperature"},
+      "humidity": {"name": "Humidity"},
+      "illuminance": {"name": "Illuminance"},
+      "battery": {"name": "Battery"},
+      "power": {"name": "Power"},
+      "total_energy": {"name": "Total energy"},
+      "temperature_1": {"name": "Temperature 1"},
+      "temperature_2": {"name": "Temperature 2"},
+      "temperature_3": {"name": "Temperature 3"},
+      "temperature_4": {"name": "Temperature 4"},
+      "phase_a_voltage": {"name": "Phase A voltage"},
+      "phase_b_voltage": {"name": "Phase B voltage"},
+      "phase_c_voltage": {"name": "Phase C voltage"},
+      "phase_a_current": {"name": "Phase A current"},
+      "phase_b_current": {"name": "Phase B current"},
+      "phase_c_current": {"name": "Phase C current"}
+    },
+    "binary_sensor": {"occupancy": {"name": "Occupancy"}},
+    "event": {"key": {"name": "Key"}},
+    "switch": {
+      "circuit_1": {"name": "Circuit 1"},
+      "circuit_2": {"name": "Circuit 2"},
+      "circuit_3": {"name": "Circuit 3"},
+      "circuit_4": {"name": "Circuit 4"},
+      "circuit_5": {"name": "Circuit 5"},
+      "circuit_6": {"name": "Circuit 6"},
+      "circuit_7": {"name": "Circuit 7"}
+    }
+  }
+}
