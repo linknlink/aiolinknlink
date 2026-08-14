@@ -24,6 +24,8 @@
   no longer receive inapplicable entities.
 - Generate distinct seven-channel controller entity names from each circuit,
   temperature input, and electrical phase parameter.
+- Name the seven controllable channels Switch 1 through Switch 7 to match their
+  Home Assistant entity type.
 
 ## 0.3.2
 

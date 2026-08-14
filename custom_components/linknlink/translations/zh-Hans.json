@@ -36,13 +36,13 @@
     "binary_sensor": {"occupancy": {"name": "人体感应"}},
     "event": {"key": {"name": "按键"}},
     "switch": {
-      "circuit_1": {"name": "回路1"},
-      "circuit_2": {"name": "回路2"},
-      "circuit_3": {"name": "回路3"},
-      "circuit_4": {"name": "回路4"},
-      "circuit_5": {"name": "回路5"},
-      "circuit_6": {"name": "回路6"},
-      "circuit_7": {"name": "回路7"}
+      "switch_1": {"name": "开关1"},
+      "switch_2": {"name": "开关2"},
+      "switch_3": {"name": "开关3"},
+      "switch_4": {"name": "开关4"},
+      "switch_5": {"name": "开关5"},
+      "switch_6": {"name": "开关6"},
+      "switch_7": {"name": "开关7"}
     }
   }
 }

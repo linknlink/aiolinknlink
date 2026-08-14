@@ -36,13 +36,13 @@
     "binary_sensor": {"occupancy": {"name": "Occupancy"}},
     "event": {"key": {"name": "Key"}},
     "switch": {
-      "circuit_1": {"name": "Circuit 1"},
-      "circuit_2": {"name": "Circuit 2"},
-      "circuit_3": {"name": "Circuit 3"},
-      "circuit_4": {"name": "Circuit 4"},
-      "circuit_5": {"name": "Circuit 5"},
-      "circuit_6": {"name": "Circuit 6"},
-      "circuit_7": {"name": "Circuit 7"}
+      "switch_1": {"name": "Switch 1"},
+      "switch_2": {"name": "Switch 2"},
+      "switch_3": {"name": "Switch 3"},
+      "switch_4": {"name": "Switch 4"},
+      "switch_5": {"name": "Switch 5"},
+      "switch_6": {"name": "Switch 6"},
+      "switch_7": {"name": "Switch 7"}
     }
   }
 }
