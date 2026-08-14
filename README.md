@@ -13,8 +13,10 @@ Temperature and humidity require the optional sensor power cable. Environment re
 The iBG client supports compact DNA discovery and authentication, paginated
 subdevice inventory, and read-only state polling for PID `05000100` sensors.
 Only reviewed state fields are returned: temperature, humidity, illuminance,
-battery level, and occupancy. Gateway configuration values and credentials are
-never included in public state.
+battery level, occupancy, and the physical key state. A persistent authenticated
+heartbeat can receive and acknowledge local state pushes so short key events do
+not depend on the polling interval. Gateway configuration values and credentials
+are never included in public state.
 
 ## Requirements
 
@@ -58,7 +60,7 @@ Read supported iBG sensor states:
 ```python
 import asyncio
 
-from aiolinknlink import IbgClient
+from aiolinknlink import IbgClient, IbgPushSubscription
 
 
 async def main() -> None:
@@ -68,6 +70,17 @@ async def main() -> None:
     subdevices = await client.list_subdevices(session)
     states = await client.read_supported_states(session, subdevices)
     print(states)
+    subscription = IbgPushSubscription(
+        client,
+        session,
+        subdevices,
+        callback=lambda state: print(state.values),
+    )
+    await subscription.start()
+    try:
+        await asyncio.sleep(60)
+    finally:
+        await subscription.stop()
 
 
 asyncio.run(main())

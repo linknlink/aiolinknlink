@@ -309,6 +309,9 @@ def normalize_subdevice_state(pid: str, payload: dict[str, Any]) -> dict[str, in
         values["occupancy"] = presence
     elif isinstance(presence, int) and presence in {0, 1}:
         values["occupancy"] = bool(presence)
+    keypressed = payload.get("keypressed")
+    if isinstance(keypressed, int) and not isinstance(keypressed, bool) and keypressed in {1, 2}:
+        values["keypressed"] = keypressed
     return values
 
 

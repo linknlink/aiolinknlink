@@ -61,6 +61,7 @@ def main() -> None:
         "custom_components.linknlink.entity",
         "custom_components.linknlink.sensor",
         "custom_components.linknlink.binary_sensor",
+        "custom_components.linknlink.event",
     ):
         importlib.import_module(module)
 

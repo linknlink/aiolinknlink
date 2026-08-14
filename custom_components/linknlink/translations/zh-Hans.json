@@ -20,6 +20,7 @@
       "illuminance": {"name": "照度"},
       "battery": {"name": "电量"}
     },
-    "binary_sensor": {"occupancy": {"name": "人体感应"}}
+    "binary_sensor": {"occupancy": {"name": "人体感应"}},
+    "event": {"key": {"name": "按键"}}
   }
 }

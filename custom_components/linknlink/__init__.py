@@ -39,6 +39,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: LinknLinkConfigEntry) ->
         raise ConfigEntryNotReady(f"Could not connect to iBG gateway: {err}") from err
     coordinator = IbgDataUpdateCoordinator(hass, client, device, session)
     await coordinator.async_config_entry_first_refresh()
+    await coordinator.async_start_push()
     entry.runtime_data = coordinator
     dr.async_get(hass).async_get_or_create(
         config_entry_id=entry.entry_id,
@@ -53,4 +54,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: LinknLinkConfigEntry) ->
 
 async def async_unload_entry(hass: HomeAssistant, entry: LinknLinkConfigEntry) -> bool:
     """Unload a LinknLink config entry."""
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unloaded:
+        await entry.runtime_data.async_shutdown()
+    return unloaded

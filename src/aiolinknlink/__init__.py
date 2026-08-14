@@ -21,6 +21,7 @@ from .ibg import (
     IbgError,
     IbgProtocolError,
 )
+from .ibg_push import IbgPushSubscription
 from .local_udp import UltraPositionSubscription
 from .models import (
     IbgDevice,
@@ -46,6 +47,7 @@ __all__ = [
     "IbgDevice",
     "IbgError",
     "IbgProtocolError",
+    "IbgPushSubscription",
     "IbgSession",
     "IbgSubDevice",
     "IbgSubDeviceState",
