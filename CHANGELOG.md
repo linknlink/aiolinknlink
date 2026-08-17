@@ -31,6 +31,8 @@
 - Add PID `93150100` Modbus air conditioners as native HA climate entities with
   confirmed power, operating-mode, fan-speed, and target-temperature controls,
   current temperature, and a diagnostic fault-code sensor.
+- Add PID `0f160100` Modbus multifunction sensors with temperature, carbon
+  dioxide, humidity, and illuminance measurements using documented scaling.
 
 ## 0.3.2
 
