@@ -10,6 +10,7 @@ import pytest
 from aiolinknlink import (
     PID_DTU,
     PID_MODBUS_AC,
+    PID_MODBUS_MULTI_SENSOR,
     IbgClient,
     IbgConnectionError,
     IbgDevice,
@@ -295,6 +296,44 @@ def test_modbus_ac_state_normalization_rejects_invalid_values() -> None:
                 "temp": 15,
                 "envtemp": 651,
                 "errcode": -1,
+            },
+        )
+        == {}
+    )
+
+
+def test_modbus_multi_sensor_state_normalization_uses_documented_scaling() -> None:
+    values = normalize_subdevice_state(
+        PID_MODBUS_MULTI_SENSOR,
+        {
+            "envtemp": 200,
+            "envco2": 1000,
+            "envhumid": 400,
+            "envlux": 60,
+            "address": 2,
+            "modbusreadresult": 0,
+            "modbuswriteresult": 0,
+            "password": "must-not-be-exposed",
+        },
+    )
+
+    assert values == {
+        "temperature": 2.0,
+        "carbon_dioxide": 1000.0,
+        "humidity": 4.0,
+        "illuminance": 60.0,
+    }
+
+
+def test_modbus_multi_sensor_state_normalization_rejects_invalid_values() -> None:
+    assert (
+        normalize_subdevice_state(
+            PID_MODBUS_MULTI_SENSOR,
+            {
+                "envtemp": -4_001,
+                "envco2": True,
+                "envhumid": 10_001,
+                "envlux": -1,
             },
         )
         == {}

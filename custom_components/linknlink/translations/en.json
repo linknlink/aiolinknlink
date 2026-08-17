@@ -35,7 +35,8 @@
       "analog_input_1": {"name": "Analog input 1"},
       "analog_input_2": {"name": "Analog input 2"},
       "analog_input_3": {"name": "Analog input 3"},
-      "fault_code": {"name": "Fault code"}
+      "fault_code": {"name": "Fault code"},
+      "carbon_dioxide": {"name": "Carbon dioxide"}
     },
     "binary_sensor": {
       "occupancy": {"name": "Occupancy"},

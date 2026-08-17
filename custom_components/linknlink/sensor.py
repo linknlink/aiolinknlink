@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorEntityDescription, SensorStateClass
 from homeassistant.const import (
+    CONCENTRATION_PARTS_PER_MILLION,
     LIGHT_LUX,
     PERCENTAGE,
     UnitOfElectricCurrent,
@@ -18,7 +19,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from aiolinknlink import PID_BOX7_CONTROLLER, PID_DTU, PID_MODBUS_AC, PID_SR3_SENSOR
+from aiolinknlink import PID_BOX7_CONTROLLER, PID_DTU, PID_MODBUS_AC, PID_MODBUS_MULTI_SENSOR, PID_SR3_SENSOR
 
 from . import LinknLinkConfigEntry
 from .entity import IbgCoordinatorEntity
@@ -122,6 +123,20 @@ MODBUS_AC_SENSORS = (
     ),
 )
 
+MODBUS_MULTI_SENSORS = (
+    SR3_SENSORS[0],
+    SensorEntityDescription(
+        key="carbon_dioxide",
+        name="Carbon dioxide",
+        translation_key="carbon_dioxide",
+        device_class=SensorDeviceClass.CO2,
+        native_unit_of_measurement=CONCENTRATION_PARTS_PER_MILLION,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    SR3_SENSORS[1],
+    SR3_SENSORS[2],
+)
+
 
 @dataclass(frozen=True, kw_only=True)
 class DtuAnalogInputEntityDescription(SensorEntityDescription):
@@ -146,6 +161,7 @@ SENSORS_BY_PID = {
     PID_BOX7_CONTROLLER: BOX7_SENSORS,
     PID_DTU: DTU_ELECTRICAL_SENSORS,
     PID_MODBUS_AC: MODBUS_AC_SENSORS,
+    PID_MODBUS_MULTI_SENSOR: MODBUS_MULTI_SENSORS,
 }
 
 

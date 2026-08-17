@@ -47,6 +47,16 @@ PID `00000000000000000000000093150100` Modbus air conditioners expose:
 Every writable climate field is range- and type-whitelisted. HA accepts a
 control only after the device response confirms every requested field.
 
+PID `0000000000000000000000000f160100` Modbus multifunction sensors expose:
+
+- temperature divided by 100 and reported natively in °C;
+- carbon dioxide concentration in ppm;
+- relative humidity divided by 100 and reported as a percentage;
+- illuminance in lx.
+
+The profile is read-only. Modbus addresses, transport results, device
+configuration, and unreviewed response fields are not exposed to HA.
+
 Gateway credentials, MQTT settings, network keys, raw snapshots, AES session
 keys, and unreviewed fields are deliberately excluded. Dynamic addition of new
 entity types while HA is running, Zigbee, other Modbus profiles, and other RF
@@ -112,7 +122,8 @@ Each PID `05000100` device has six entities. Each PID `31130100` device has 19
 entities: seven switches and twelve sensors. Each PID `0b150100` DTU has 17
 entities: two switches, eleven sensors, three binary sensors, and one number.
 Each PID `93150100` Modbus air conditioner has two entities: one climate entity
-and one diagnostic fault-code sensor. Counts can differ on another gateway.
+and one diagnostic fault-code sensor. Each PID `0f160100` Modbus multifunction
+sensor has four measurement entities. Counts can differ on another gateway.
 
 ## Upgrade and rollback
 

@@ -35,7 +35,8 @@
       "analog_input_1": {"name": "模拟量输入1"},
       "analog_input_2": {"name": "模拟量输入2"},
       "analog_input_3": {"name": "模拟量输入3"},
-      "fault_code": {"name": "故障码"}
+      "fault_code": {"name": "故障码"},
+      "carbon_dioxide": {"name": "二氧化碳浓度"}
     },
     "binary_sensor": {
       "occupancy": {"name": "人体感应"},

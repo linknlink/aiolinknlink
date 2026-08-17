@@ -19,7 +19,10 @@ PID_SR3_SENSOR = "00000000000000000000000005000100"
 PID_BOX7_CONTROLLER = "00000000000000000000000031130100"
 PID_DTU = "0000000000000000000000000b150100"
 PID_MODBUS_AC = "00000000000000000000000093150100"
-SUPPORTED_SUBDEVICE_PIDS = frozenset({PID_SR3_SENSOR, PID_BOX7_CONTROLLER, PID_DTU, PID_MODBUS_AC})
+PID_MODBUS_MULTI_SENSOR = "0000000000000000000000000f160100"
+SUPPORTED_SUBDEVICE_PIDS = frozenset(
+    {PID_SR3_SENSOR, PID_BOX7_CONTROLLER, PID_DTU, PID_MODBUS_AC, PID_MODBUS_MULTI_SENSOR}
+)
 BOX7_POWER_FIELDS = frozenset(f"pwr{channel}" for channel in range(1, 8))
 DTU_POWER_FIELDS = frozenset(f"pwr{channel}" for channel in range(1, 3))
 DTU_VOLTAGE_OUTPUT_FIELD = "voltage"
@@ -404,6 +407,8 @@ def normalize_subdevice_state(pid: str, payload: dict[str, Any]) -> dict[str, in
         return _normalize_dtu_state(payload)
     if pid.lower() == PID_MODBUS_AC:
         return _normalize_modbus_ac_state(payload)
+    if pid.lower() == PID_MODBUS_MULTI_SENSOR:
+        return _normalize_modbus_multi_sensor_state(payload)
     if pid.lower() != PID_SR3_SENSOR:
         return {}
     values: dict[str, int | float | bool] = {}
@@ -528,6 +533,22 @@ def _normalize_modbus_ac_state(payload: dict[str, Any]) -> dict[str, int | float
     environment_temperature = _number(payload.get("envtemp"))
     if environment_temperature is not None and -200 <= environment_temperature <= 650:
         values["envtemp"] = environment_temperature / 10
+    return values
+
+
+def _normalize_modbus_multi_sensor_state(payload: dict[str, Any]) -> dict[str, int | float | bool]:
+    """Normalize the reviewed Modbus multifunction-sensor profile."""
+    values: dict[str, int | float | bool] = {}
+    scaled_fields = {
+        "envtemp": ("temperature", -4_000, 12_500, 100),
+        "envhumid": ("humidity", 0, 10_000, 100),
+        "envco2": ("carbon_dioxide", 0, 60_000, 1),
+        "envlux": ("illuminance", 0, 65_535, 1),
+    }
+    for raw_key, (normalized_key, minimum, maximum, divisor) in scaled_fields.items():
+        raw = _number(payload.get(raw_key))
+        if raw is not None and minimum <= raw <= maximum:
+            values[normalized_key] = raw / divisor
     return values
 
 
