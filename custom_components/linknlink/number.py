@@ -22,9 +22,7 @@ async def async_setup_entry(
     del hass
     coordinator = entry.runtime_data
     async_add_entities(
-        IbgDtuVoltageOutput(coordinator, device.did)
-        for device in coordinator.data.subdevices
-        if device.pid == PID_DTU
+        IbgDtuVoltageOutput(coordinator, device.did) for device in coordinator.data.subdevices if device.pid == PID_DTU
     )
 
 

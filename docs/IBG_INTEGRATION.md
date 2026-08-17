@@ -36,10 +36,21 @@ PID `0000000000000000000000000b150100` DTUs expose:
 Numeric DTU writes are range-, step-, and type-whitelisted and are accepted by
 HA only after the DTU reports the requested normalized value.
 
+PID `00000000000000000000000093150100` Modbus air conditioners expose:
+
+- one native climate entity with power, cool/heat/dry/fan/auto operating modes;
+- automatic, low, medium, and high fan speeds;
+- a 16-32 °C target temperature in 1 °C steps;
+- current room temperature scaled from the device's tenths-of-a-degree value;
+- one diagnostic sensor containing the raw 0-65535 fault code.
+
+Every writable climate field is range- and type-whitelisted. HA accepts a
+control only after the device response confirms every requested field.
+
 Gateway credentials, MQTT settings, network keys, raw snapshots, AES session
 keys, and unreviewed fields are deliberately excluded. Dynamic addition of new
-entity types while HA is running, Zigbee, Modbus, and other RF profiles are not
-part of this release.
+entity types while HA is running, Zigbee, other Modbus profiles, and other RF
+profiles are not part of this release.
 
 ## Architecture
 
@@ -100,7 +111,8 @@ field names only; it excludes device identifiers, names, state values, and keys.
 Each PID `05000100` device has six entities. Each PID `31130100` device has 19
 entities: seven switches and twelve sensors. Each PID `0b150100` DTU has 17
 entities: two switches, eleven sensors, three binary sensors, and one number.
-Counts can differ on another gateway.
+Each PID `93150100` Modbus air conditioner has two entities: one climate entity
+and one diagnostic fault-code sensor. Counts can differ on another gateway.
 
 ## Upgrade and rollback
 

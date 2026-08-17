@@ -28,6 +28,9 @@
   Home Assistant entity type.
 - Add PID `0b150100` DTUs with two confirmed switches, three mode-aware analog
   inputs, a confirmed 0-10 V output, three signal inputs, and electrical sensors.
+- Add PID `93150100` Modbus air conditioners as native HA climate entities with
+  confirmed power, operating-mode, fan-speed, and target-temperature controls,
+  current temperature, and a diagnostic fault-code sensor.
 
 ## 0.3.2
 

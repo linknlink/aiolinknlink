@@ -65,6 +65,7 @@ def main() -> None:
         "custom_components.linknlink.entity",
         "custom_components.linknlink.sensor",
         "custom_components.linknlink.binary_sensor",
+        "custom_components.linknlink.climate",
         "custom_components.linknlink.event",
         "custom_components.linknlink.switch",
         "custom_components.linknlink.number",

@@ -87,6 +87,11 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
+Supported iBG profiles include the RF environment/occupancy sensor, the
+seven-channel controller, the DTU, and PID `93150100` Modbus air conditioners.
+The Home Assistant integration exposes the air conditioner as a native climate
+entity with confirmed power, mode, fan-speed, and target-temperature writes.
+
 Locked gateways can reuse their existing 16-byte local key without changing the
 gateway lock setting:
 

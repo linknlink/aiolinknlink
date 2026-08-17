@@ -11,6 +11,7 @@ import pytest
 
 pytest.importorskip("homeassistant")
 
+from homeassistant.components.climate.const import HVACMode  # noqa: E402
 from homeassistant.components.sensor import SensorDeviceClass  # noqa: E402
 from homeassistant.const import UnitOfElectricCurrent, UnitOfElectricPotential  # noqa: E402
 from homeassistant.helpers.update_coordinator import UpdateFailed  # noqa: E402
@@ -18,6 +19,7 @@ from homeassistant.helpers.update_coordinator import UpdateFailed  # noqa: E402
 from aiolinknlink import (  # noqa: E402
     PID_BOX7_CONTROLLER,
     PID_DTU,
+    PID_MODBUS_AC,
     IbgConnectionError,
     IbgDevice,
     IbgProtocolError,
@@ -26,6 +28,7 @@ from aiolinknlink import (  # noqa: E402
     IbgSubDeviceState,
 )
 from custom_components.linknlink.binary_sensor import DTU_BINARY_SENSORS, IbgBinarySensor  # noqa: E402
+from custom_components.linknlink.climate import IbgModbusClimate  # noqa: E402
 from custom_components.linknlink.coordinator import (  # noqa: E402
     IbgCoordinatorData,
     IbgDataUpdateCoordinator,
@@ -36,6 +39,7 @@ from custom_components.linknlink.sensor import (  # noqa: E402
     BOX7_SENSORS,
     DTU_ANALOG_INPUTS,
     DTU_ELECTRICAL_SENSORS,
+    MODBUS_AC_SENSORS,
     SENSORS_BY_PID,
     SR3_SENSORS,
     IbgDtuAnalogInputSensor,
@@ -210,6 +214,50 @@ async def test_dtu_entities_use_input_modes_and_confirmed_controls() -> None:
     coordinator.async_set_subdevice_state.assert_awaited_once_with(device.did, {"voltage": 7.5})
 
 
+async def test_modbus_ac_climate_maps_state_and_uses_confirmed_controls() -> None:
+    device = IbgSubDevice(
+        did="00112233445566778899aabbccddeef2",
+        pid=PID_MODBUS_AC,
+        name="PLC-2",
+        online=True,
+    )
+    coordinator = object.__new__(IbgDataUpdateCoordinator)
+    coordinator.device = GATEWAY
+    coordinator.data = IbgCoordinatorData(
+        (device,),
+        {
+            device.did: IbgSubDeviceState(
+                device,
+                {"pwr": True, "ac_mode": 0, "mark": 3, "temp": 20, "envtemp": 23.0, "errcode": 1},
+                datetime.now(UTC),
+            )
+        },
+    )
+    coordinator.last_update_success = True
+    coordinator.async_set_subdevice_state = AsyncMock()  # type: ignore[method-assign]
+    entity = IbgModbusClimate(coordinator, device.did)
+
+    assert entity.hvac_mode == HVACMode.COOL
+    assert entity.fan_mode == "high"
+    assert entity.target_temperature == 20.0
+    assert entity.current_temperature == 23.0
+
+    await entity.async_set_hvac_mode(HVACMode.OFF)
+    coordinator.async_set_subdevice_state.assert_awaited_once_with(device.did, {"pwr": False})
+    coordinator.async_set_subdevice_state.reset_mock()
+
+    await entity.async_set_hvac_mode(HVACMode.HEAT)
+    coordinator.async_set_subdevice_state.assert_awaited_once_with(device.did, {"pwr": True, "ac_mode": 1})
+    coordinator.async_set_subdevice_state.reset_mock()
+
+    await entity.async_set_fan_mode("medium")
+    coordinator.async_set_subdevice_state.assert_awaited_once_with(device.did, {"mark": 2})
+    coordinator.async_set_subdevice_state.reset_mock()
+
+    await entity.async_set_temperature(temperature=24.0)
+    coordinator.async_set_subdevice_state.assert_awaited_once_with(device.did, {"temp": 24.0})
+
+
 def test_entity_catalogs_are_pid_specific() -> None:
     assert len(BOX7_SWITCHES) == 7
     assert len(BOX7_SENSORS) == 12
@@ -218,8 +266,10 @@ def test_entity_catalogs_are_pid_specific() -> None:
     assert len(DTU_ANALOG_INPUTS) == 3
     assert len(DTU_BINARY_SENSORS) == 3
     assert len(SR3_SENSORS) == 4
+    assert len(MODBUS_AC_SENSORS) == 1
     assert SENSORS_BY_PID[PID_BOX7_CONTROLLER] == BOX7_SENSORS
     assert SENSORS_BY_PID[PID_DTU] == DTU_ELECTRICAL_SENSORS
+    assert SENSORS_BY_PID[PID_MODBUS_AC] == MODBUS_AC_SENSORS
     assert [description.name for description in BOX7_SWITCHES] == [f"Switch {channel}" for channel in range(1, 8)]
     assert len({description.name for description in BOX7_SENSORS}) == 12
 
@@ -237,9 +287,12 @@ def test_entity_translations_cover_parameter_derived_names() -> None:
         binary_sensor_names = catalog["entity"]["binary_sensor"]
         number_names = catalog["entity"]["number"]
         switch_names = catalog["entity"]["switch"]
+        climate_names = catalog["entity"]["climate"]
         assert all(description.translation_key in sensor_names for description in BOX7_SENSORS)
         assert all(description.translation_key in sensor_names for description in DTU_ANALOG_INPUTS)
         assert all(description.translation_key in binary_sensor_names for description in DTU_BINARY_SENSORS)
         assert all(description.translation_key in switch_names for description in BOX7_SWITCHES)
         assert "voltage_output" in number_names
+        assert "fault_code" in sensor_names
+        assert "air_conditioner" in climate_names
         assert len({switch_names[f"switch_{channel}"]["name"] for channel in range(1, 8)}) == 7

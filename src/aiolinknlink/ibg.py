@@ -18,11 +18,24 @@ DISPLAY_MODEL_IBG2_SE = "iBG2 SE"
 PID_SR3_SENSOR = "00000000000000000000000005000100"
 PID_BOX7_CONTROLLER = "00000000000000000000000031130100"
 PID_DTU = "0000000000000000000000000b150100"
-SUPPORTED_SUBDEVICE_PIDS = frozenset({PID_SR3_SENSOR, PID_BOX7_CONTROLLER, PID_DTU})
+PID_MODBUS_AC = "00000000000000000000000093150100"
+SUPPORTED_SUBDEVICE_PIDS = frozenset({PID_SR3_SENSOR, PID_BOX7_CONTROLLER, PID_DTU, PID_MODBUS_AC})
 BOX7_POWER_FIELDS = frozenset(f"pwr{channel}" for channel in range(1, 8))
 DTU_POWER_FIELDS = frozenset(f"pwr{channel}" for channel in range(1, 3))
 DTU_VOLTAGE_OUTPUT_FIELD = "voltage"
 DTU_WRITABLE_FIELDS = DTU_POWER_FIELDS | {DTU_VOLTAGE_OUTPUT_FIELD}
+MODBUS_AC_POWER_FIELD = "pwr"
+MODBUS_AC_FAN_FIELD = "mark"
+MODBUS_AC_MODE_FIELD = "ac_mode"
+MODBUS_AC_TARGET_TEMPERATURE_FIELD = "temp"
+MODBUS_AC_WRITABLE_FIELDS = frozenset(
+    {
+        MODBUS_AC_POWER_FIELD,
+        MODBUS_AC_FAN_FIELD,
+        MODBUS_AC_MODE_FIELD,
+        MODBUS_AC_TARGET_TEMPERATURE_FIELD,
+    }
+)
 DEFAULT_TIMEOUT = 5.0
 DEFAULT_AUTH_TIMEOUT = 10.0
 PAGE_SIZE = 10
@@ -257,25 +270,49 @@ class IbgClient:
     ) -> IbgSubDeviceState:
         """Set reviewed writable fields and return the confirmed device state."""
         pid = device.pid.lower()
-        if pid not in {PID_BOX7_CONTROLLER, PID_DTU}:
+        if pid not in {PID_BOX7_CONTROLLER, PID_DTU, PID_MODBUS_AC}:
             raise IbgProtocolError(f"unsupported writable iBG subdevice PID: {device.pid}")
         if not device.online:
             raise IbgConnectionError(f"iBG subdevice is offline: {device.did}")
         if not changes:
             raise IbgProtocolError("at least one iBG subdevice change is required")
-        writable_fields = BOX7_POWER_FIELDS if pid == PID_BOX7_CONTROLLER else DTU_WRITABLE_FIELDS
+        if pid == PID_BOX7_CONTROLLER:
+            writable_fields = BOX7_POWER_FIELDS
+        elif pid == PID_DTU:
+            writable_fields = DTU_WRITABLE_FIELDS
+        else:
+            writable_fields = MODBUS_AC_WRITABLE_FIELDS
         invalid_fields = set(changes) - writable_fields
         if invalid_fields:
             raise IbgProtocolError(f"unsupported writable iBG subdevice field: {sorted(invalid_fields)[0]}")
 
         request_values: dict[str, int] = {}
-        expected_values: dict[str, bool | float] = {}
+        expected_values: dict[str, bool | int | float] = {}
         for key, value in changes.items():
-            if key in BOX7_POWER_FIELDS or key in DTU_POWER_FIELDS:
+            if key in BOX7_POWER_FIELDS or key in DTU_POWER_FIELDS or key == MODBUS_AC_POWER_FIELD:
                 if not isinstance(value, bool):
                     raise IbgProtocolError("iBG subdevice power values must be boolean")
                 request_values[key] = int(value)
                 expected_values[key] = value
+                continue
+            if pid == PID_MODBUS_AC:
+                if key in {MODBUS_AC_FAN_FIELD, MODBUS_AC_MODE_FIELD}:
+                    if not isinstance(value, int) or isinstance(value, bool):
+                        raise IbgProtocolError("Modbus AC mode values must be integers")
+                    integer = value
+                    if key == MODBUS_AC_FAN_FIELD and not 0 <= integer <= 3:
+                        raise IbgProtocolError("Modbus AC fan mode must be between 0 and 3")
+                    if key == MODBUS_AC_MODE_FIELD and not 0 <= integer <= 4:
+                        raise IbgProtocolError("Modbus AC mode must be between 0 and 4")
+                else:
+                    number = _number(value)
+                    if number is None or not float(number).is_integer():
+                        raise IbgProtocolError("Modbus AC target temperature must use 1 C steps")
+                    integer = int(number)
+                    if not 16 <= integer <= 32:
+                        raise IbgProtocolError("Modbus AC target temperature must be between 16 and 32 C")
+                request_values[key] = integer
+                expected_values[key] = integer
                 continue
             number = _number(value)
             if key != DTU_VOLTAGE_OUTPUT_FIELD or number is None or not 0 <= number <= 10:
@@ -365,6 +402,8 @@ def normalize_subdevice_state(pid: str, payload: dict[str, Any]) -> dict[str, in
         return _normalize_box7_state(payload)
     if pid.lower() == PID_DTU:
         return _normalize_dtu_state(payload)
+    if pid.lower() == PID_MODBUS_AC:
+        return _normalize_modbus_ac_state(payload)
     if pid.lower() != PID_SR3_SENSOR:
         return {}
     values: dict[str, int | float | bool] = {}
@@ -463,6 +502,32 @@ def _normalize_dtu_state(payload: dict[str, Any]) -> dict[str, int | float | boo
         raw = _number(payload.get(key))
         if raw is not None and minimum <= raw <= maximum:
             values[key] = raw / divisor
+    return values
+
+
+def _normalize_modbus_ac_state(payload: dict[str, Any]) -> dict[str, int | float | bool]:
+    """Normalize the reviewed Modbus air-conditioner profile."""
+    values: dict[str, int | float | bool] = {}
+    power = payload.get(MODBUS_AC_POWER_FIELD)
+    if isinstance(power, bool):
+        values[MODBUS_AC_POWER_FIELD] = power
+    elif isinstance(power, int) and power in {0, 1}:
+        values[MODBUS_AC_POWER_FIELD] = bool(power)
+
+    enum_ranges = {
+        MODBUS_AC_FAN_FIELD: (0, 3),
+        MODBUS_AC_MODE_FIELD: (0, 4),
+        MODBUS_AC_TARGET_TEMPERATURE_FIELD: (16, 32),
+        "errcode": (0, 65_535),
+    }
+    for key, (minimum, maximum) in enum_ranges.items():
+        raw = payload.get(key)
+        if isinstance(raw, int) and not isinstance(raw, bool) and minimum <= raw <= maximum:
+            values[key] = raw
+
+    environment_temperature = _number(payload.get("envtemp"))
+    if environment_temperature is not None and -200 <= environment_temperature <= 650:
+        values["envtemp"] = environment_temperature / 10
     return values
 
 

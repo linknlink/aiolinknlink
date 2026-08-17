@@ -15,9 +15,10 @@ from homeassistant.const import (
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from aiolinknlink import PID_BOX7_CONTROLLER, PID_DTU, PID_SR3_SENSOR
+from aiolinknlink import PID_BOX7_CONTROLLER, PID_DTU, PID_MODBUS_AC, PID_SR3_SENSOR
 
 from . import LinknLinkConfigEntry
 from .entity import IbgCoordinatorEntity
@@ -109,8 +110,16 @@ BOX7_SENSORS = (
     ),
 )
 
-DTU_ELECTRICAL_SENSORS = tuple(
-    description for description in BOX7_SENSORS if not description.key.startswith("envtemp")
+DTU_ELECTRICAL_SENSORS = tuple(description for description in BOX7_SENSORS if not description.key.startswith("envtemp"))
+
+MODBUS_AC_SENSORS = (
+    SensorEntityDescription(
+        key="errcode",
+        name="Fault code",
+        translation_key="fault_code",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        icon="mdi:alert-circle-outline",
+    ),
 )
 
 
@@ -136,6 +145,7 @@ SENSORS_BY_PID = {
     PID_SR3_SENSOR: SR3_SENSORS,
     PID_BOX7_CONTROLLER: BOX7_SENSORS,
     PID_DTU: DTU_ELECTRICAL_SENSORS,
+    PID_MODBUS_AC: MODBUS_AC_SENSORS,
 }
 
 
