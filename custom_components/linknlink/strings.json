@@ -34,7 +34,8 @@
       "phase_c_current": {"name": "Phase C current"},
       "analog_input_1": {"name": "Analog input 1"},
       "analog_input_2": {"name": "Analog input 2"},
-      "analog_input_3": {"name": "Analog input 3"}
+      "analog_input_3": {"name": "Analog input 3"},
+      "fault_code": {"name": "Fault code"}
     },
     "binary_sensor": {
       "occupancy": {"name": "Occupancy"},
@@ -44,6 +45,7 @@
     },
     "event": {"key": {"name": "Key"}},
     "number": {"voltage_output": {"name": "Voltage output"}},
+    "climate": {"air_conditioner": {"name": "Air conditioner"}},
     "switch": {
       "switch_1": {"name": "Switch 1"},
       "switch_2": {"name": "Switch 2"},

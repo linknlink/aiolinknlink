@@ -9,6 +9,7 @@ import pytest
 
 from aiolinknlink import (
     PID_DTU,
+    PID_MODBUS_AC,
     IbgClient,
     IbgConnectionError,
     IbgDevice,
@@ -30,6 +31,7 @@ SESSION_KEY = b"0123456789abcdef"
 SENSOR_DID = "00112233445566778899aabbccddeeff"
 BOX7_DID = "00112233445566778899aabbccddeef0"
 DTU_DID = "00112233445566778899aabbccddeef1"
+MODBUS_AC_DID = "00112233445566778899aabbccddeef2"
 
 
 def _response_packet(request: bytes, key: bytes, response: bytes) -> bytes:
@@ -256,6 +258,49 @@ def test_dtu_state_normalization_uses_modes_and_documented_scaling() -> None:
     }
 
 
+def test_modbus_ac_state_normalization_uses_documented_fields_and_scaling() -> None:
+    values = normalize_subdevice_state(
+        PID_MODBUS_AC,
+        {
+            "pwr": 1,
+            "mark": 3,
+            "ac_mode": 0,
+            "temp": 20,
+            "envtemp": 230,
+            "errcode": 1,
+            "address": 3,
+            "modbusreadresult": 0,
+            "password": "must-not-be-exposed",
+        },
+    )
+
+    assert values == {
+        "pwr": True,
+        "mark": 3,
+        "ac_mode": 0,
+        "temp": 20,
+        "envtemp": 23.0,
+        "errcode": 1,
+    }
+
+
+def test_modbus_ac_state_normalization_rejects_invalid_values() -> None:
+    assert (
+        normalize_subdevice_state(
+            PID_MODBUS_AC,
+            {
+                "pwr": 2,
+                "mark": 4,
+                "ac_mode": True,
+                "temp": 15,
+                "envtemp": 651,
+                "errcode": -1,
+            },
+        )
+        == {}
+    )
+
+
 async def test_box7_set_state_sends_only_reviewed_boolean_control() -> None:
     device = IbgSubDevice(BOX7_DID, PID_BOX7_CONTROLLER, "BOX7", True)
 
@@ -334,6 +379,83 @@ async def test_dtu_set_state_encodes_voltage_and_confirms_all_fields() -> None:
     )
 
     assert state.values == {"pwr1": False, "pwr2": True, "voltage": 7.5}
+
+
+async def test_modbus_ac_set_state_encodes_and_confirms_all_fields() -> None:
+    device = IbgSubDevice(MODBUS_AC_DID, PID_MODBUS_AC, "Air conditioner", True)
+
+    async def exchange(
+        _ip: str,
+        _port: int,
+        packet: bytes,
+        _timeout: float,
+        _accept: dna.PacketAcceptor | None,
+    ) -> bytes:
+        _header, body = dna.parse_blc_packet(packet)
+        _aes, plain = dna.parse_blc_encrypted_payload(body, SESSION_KEY)
+        frame = gateway.parse_gateway_frame(plain)
+        assert frame.command_type == gateway.CMD_SET_STATUS
+        assert frame.payload == {"did": MODBUS_AC_DID, "pwr": 1, "ac_mode": 1, "mark": 2, "temp": 24}
+        return _response_packet(
+            packet,
+            SESSION_KEY,
+            gateway.build_gateway_frame(
+                gateway.CMD_STATUS_RESPONSE,
+                {
+                    "did": MODBUS_AC_DID,
+                    "pid": PID_MODBUS_AC,
+                    "pwr": 1,
+                    "ac_mode": 1,
+                    "mark": 2,
+                    "temp": 24,
+                    "envtemp": 235,
+                    "errcode": 0,
+                },
+            ),
+        )
+
+    state = await IbgClient().set_subdevice_state(
+        IbgSession(device=GATEWAY, session_key=SESSION_KEY),
+        device,
+        {"pwr": True, "ac_mode": 1, "mark": 2, "temp": 24.0},
+        exchange=exchange,
+    )
+
+    assert state.values == {
+        "pwr": True,
+        "ac_mode": 1,
+        "mark": 2,
+        "temp": 24,
+        "envtemp": 23.5,
+        "errcode": 0,
+    }
+
+
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [
+        ({"pwr": 1}, "boolean"),
+        ({"mark": -1}, "between 0 and 3"),
+        ({"mark": 4}, "between 0 and 3"),
+        ({"mark": 1.0}, "mode values must be integers"),
+        ({"ac_mode": 5}, "between 0 and 4"),
+        ({"temp": 15}, "between 16 and 32"),
+        ({"temp": 33}, "between 16 and 32"),
+        ({"temp": 20.5}, "1 C steps"),
+        ({"errcode": 0}, "field"),
+    ],
+)
+async def test_modbus_ac_set_state_rejects_unsafe_requests(
+    changes: dict[str, bool | int | float],
+    message: str,
+) -> None:
+    device = IbgSubDevice(MODBUS_AC_DID, PID_MODBUS_AC, "Air conditioner", True)
+    with pytest.raises(IbgProtocolError, match=message):
+        await IbgClient().set_subdevice_state(
+            IbgSession(device=GATEWAY, session_key=SESSION_KEY),
+            device,
+            changes,
+        )
 
 
 @pytest.mark.parametrize(
