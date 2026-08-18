@@ -47,7 +47,7 @@ class IbgSubDeviceState:
     """Safe, normalized state exposed for one iBG subdevice."""
 
     device: IbgSubDevice
-    values: dict[str, int | float | bool]
+    values: dict[str, int | float | bool | str]
     received_at: datetime
 
 

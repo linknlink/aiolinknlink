@@ -38,13 +38,50 @@
       "fault_code": {"name": "故障码"},
       "carbon_dioxide": {"name": "二氧化碳浓度"},
       "total_water": {"name": "累计用水量"},
-      "water_flow_rate": {"name": "瞬时流量"}
+      "water_flow_rate": {"name": "瞬时流量"},
+      "combined_active_energy": {"name": "组合有功电能"},
+      "forward_active_energy": {"name": "正向有功电能"},
+      "reverse_active_energy": {"name": "反向有功电能"},
+      "line_ab_voltage": {"name": "AB线电压"},
+      "line_bc_voltage": {"name": "BC线电压"},
+      "line_ac_voltage": {"name": "AC线电压"},
+      "total_active_power": {"name": "合相有功功率"},
+      "phase_a_active_power": {"name": "A相有功功率"},
+      "phase_b_active_power": {"name": "B相有功功率"},
+      "phase_c_active_power": {"name": "C相有功功率"},
+      "combined_power_factor": {"name": "合相功率因数"},
+      "phase_a_power_factor": {"name": "A相功率因数"},
+      "phase_b_power_factor": {"name": "B相功率因数"},
+      "phase_c_power_factor": {"name": "C相功率因数"},
+      "phase_a_harmonic_current": {"name": "A相谐波电流"},
+      "phase_b_harmonic_current": {"name": "B相谐波电流"},
+      "phase_c_harmonic_current": {"name": "C相谐波电流"},
+      "frequency": {"name": "频率"},
+      "phase_a_reactive_power": {"name": "A相无功功率"},
+      "phase_b_reactive_power": {"name": "B相无功功率"},
+      "phase_c_reactive_power": {"name": "C相无功功率"},
+      "total_reactive_power": {"name": "合相无功功率"},
+      "reported_device_name": {"name": "设备上报名称"},
+      "electrical_parameters": {"name": "电参量配置"},
+      "modbus_address": {"name": "Modbus地址"},
+      "transformer_ratio": {"name": "互感器变比"},
+      "modbus_read_result": {
+        "name": "Modbus读取结果",
+        "state": {"success": "成功", "failure": "失败", "partial_success": "部分成功"}
+      },
+      "modbus_write_result": {
+        "name": "Modbus写入结果",
+        "state": {"success": "成功", "failure": "失败", "partial_success": "部分成功"}
+      }
     },
     "binary_sensor": {
       "occupancy": {"name": "人体感应"},
       "signal_input_1": {"name": "信号输入1"},
       "signal_input_2": {"name": "信号输入2"},
-      "signal_input_3": {"name": "信号输入3"}
+      "signal_input_3": {"name": "信号输入3"},
+      "phase_a_overload": {"name": "A相过载"},
+      "phase_b_overload": {"name": "B相过载"},
+      "phase_c_overload": {"name": "C相过载"}
     },
     "event": {"key": {"name": "按键"}},
     "number": {"voltage_output": {"name": "电压输出"}},

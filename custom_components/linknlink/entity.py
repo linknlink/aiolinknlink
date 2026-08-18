@@ -15,6 +15,7 @@ SUBDEVICE_MODELS = {
     "00000000000000000000000093150100": "Modbus air conditioner",
     "0000000000000000000000000f160100": "Modbus multifunction sensor",
     "00000000000000000000000034150100": "Modbus water meter",
+    "000000000000000000000000ed140100": "Modbus electricity meter",
     "0000000000000000000000002b160100": "Water-cooled air-conditioner panel",
 }
 
@@ -39,15 +40,21 @@ class IbgCoordinatorEntity(CoordinatorEntity[IbgDataUpdateCoordinator]):
     @property
     def device_info(self) -> DeviceInfo:
         """Return subdevice registry information."""
+        name = self._subdevice.name
+        state = self.coordinator.data.states.get(self.did)
+        if state is not None:
+            reported_name = state.values.get("devicename")
+            if isinstance(reported_name, str) and reported_name and reported_name != name:
+                name = f"{name} {reported_name}"
         return DeviceInfo(
             identifiers={(DOMAIN, f"{self.coordinator.device.id}_{self.did}")},
-            name=self._subdevice.name,
+            name=name,
             manufacturer="LinknLink",
             model=SUBDEVICE_MODELS.get(self._subdevice.pid, f"iBG subdevice {self._subdevice.pid[-8:]}"),
             via_device=(DOMAIN, self.coordinator.device.id),
         )
 
-    def _value(self) -> int | float | bool | None:
+    def _value(self) -> int | float | bool | str | None:
         state = self.coordinator.data.states.get(self.did)
         if state is None:
             return None

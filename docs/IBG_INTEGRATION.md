@@ -78,6 +78,22 @@ panels expose:
 Every writable panel field is range-, enum-, and type-whitelisted. HA accepts
 a control only after the device response confirms every requested value.
 
+PID `000000000000000000000000ed140100` Modbus electricity meters expose:
+
+- combined, forward, and reverse active energy in kWh;
+- A/B/C phase voltage and AB/BC/AC line voltage;
+- A/B/C phase current and harmonic current;
+- total and per-phase active and reactive power;
+- combined and per-phase power factor plus grid frequency;
+- A/B/C phase overload problem sensors;
+- disabled-by-default diagnostics for the reported device name, electrical
+  parameters, Modbus address, transformer ratio, and read/write result.
+
+All 37 documented fields are type-, range-, and scale-validated. The profile is
+strictly read-only. HA uses the stable inventory name plus the reported device
+name for display, while registry identifiers remain based on gateway ID, DID,
+and field name so multiple meters cannot collide.
+
 Gateway credentials, MQTT settings, network keys, raw snapshots, AES session
 keys, and unreviewed fields are deliberately excluded. Dynamic addition of new
 entity types while HA is running, Zigbee, other Modbus profiles, and other RF
@@ -147,8 +163,10 @@ Each PID `93150100` Modbus air conditioner has two entities: one climate entity
 and one diagnostic fault-code sensor. Each PID `0f160100` Modbus multifunction
 sensor has four measurement entities. Each PID `34150100` Modbus water meter
 has two entities: cumulative water and instantaneous flow. Each PID `2b160100`
-water-cooled air-conditioner panel has one climate entity. Counts can differ on
-another gateway.
+water-cooled air-conditioner panel has one climate entity. Each PID `ed140100`
+Modbus electricity meter has 37 entities: 28 measurements, three overload
+binary sensors, and six disabled-by-default diagnostic sensors. Counts can
+differ on another gateway.
 
 ## Upgrade and rollback
 

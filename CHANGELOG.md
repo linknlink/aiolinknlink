@@ -40,6 +40,9 @@
   four fan speeds, 5-35 °C target control, and indoor temperature.
 - Persist the negotiated iBG session key after unlocked first-time pairing so
   the integration can reconnect after HA or container restarts.
+- Add read-only PID `ed140100` Modbus electricity meters with 28 scaled
+  electrical measurements, three phase-overload sensors, six reviewed
+  diagnostics, and collision-safe names for multiple meters.
 
 ## 0.3.2
 

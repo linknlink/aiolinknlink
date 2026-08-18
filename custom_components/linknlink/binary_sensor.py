@@ -10,7 +10,7 @@ from homeassistant.components.binary_sensor import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from aiolinknlink import PID_DTU, PID_SR3_SENSOR
+from aiolinknlink import PID_DTU, PID_MODBUS_ELECTRICITY_METER, PID_SR3_SENSOR
 
 from . import LinknLinkConfigEntry
 from .entity import IbgCoordinatorEntity
@@ -31,9 +31,19 @@ DTU_BINARY_SENSORS = tuple(
     )
     for channel in range(1, 4)
 )
+MODBUS_ELECTRICITY_METER_BINARY_SENSORS = tuple(
+    BinarySensorEntityDescription(
+        key=f"{phase}phaseoverload",
+        name=f"Phase {phase} overload",
+        translation_key=f"phase_{phase.lower()}_overload",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+    )
+    for phase in "ABC"
+)
 BINARY_SENSORS_BY_PID = {
     PID_SR3_SENSOR: SR3_BINARY_SENSORS,
     PID_DTU: DTU_BINARY_SENSORS,
+    PID_MODBUS_ELECTRICITY_METER: MODBUS_ELECTRICITY_METER_BINARY_SENSORS,
 }
 
 
