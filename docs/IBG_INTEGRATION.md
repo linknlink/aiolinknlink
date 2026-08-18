@@ -57,6 +57,15 @@ PID `0000000000000000000000000f160100` Modbus multifunction sensors expose:
 The profile is read-only. Modbus addresses, transport results, device
 configuration, and unreviewed response fields are not exposed to HA.
 
+PID `00000000000000000000000034150100` Modbus water meters expose:
+
+- cumulative positive flow divided by 100 and reported in m³ with a
+  `total_increasing` state class;
+- instantaneous volume flow in L/h when the device includes that field.
+
+The profile is read-only. A missing instantaneous-flow field remains unknown;
+the integration does not fabricate a zero-flow reading.
+
 Gateway credentials, MQTT settings, network keys, raw snapshots, AES session
 keys, and unreviewed fields are deliberately excluded. Dynamic addition of new
 entity types while HA is running, Zigbee, other Modbus profiles, and other RF
@@ -123,7 +132,9 @@ entities: seven switches and twelve sensors. Each PID `0b150100` DTU has 17
 entities: two switches, eleven sensors, three binary sensors, and one number.
 Each PID `93150100` Modbus air conditioner has two entities: one climate entity
 and one diagnostic fault-code sensor. Each PID `0f160100` Modbus multifunction
-sensor has four measurement entities. Counts can differ on another gateway.
+sensor has four measurement entities. Each PID `34150100` Modbus water meter
+has two entities: cumulative water and instantaneous flow. Counts can differ
+on another gateway.
 
 ## Upgrade and rollback
 

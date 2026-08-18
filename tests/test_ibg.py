@@ -11,6 +11,7 @@ from aiolinknlink import (
     PID_DTU,
     PID_MODBUS_AC,
     PID_MODBUS_MULTI_SENSOR,
+    PID_MODBUS_WATER_METER,
     IbgClient,
     IbgConnectionError,
     IbgDevice,
@@ -334,6 +335,35 @@ def test_modbus_multi_sensor_state_normalization_rejects_invalid_values() -> Non
                 "envco2": True,
                 "envhumid": 10_001,
                 "envlux": -1,
+            },
+        )
+        == {}
+    )
+
+
+def test_modbus_water_meter_state_normalization_uses_documented_scaling() -> None:
+    values = normalize_subdevice_state(
+        PID_MODBUS_WATER_METER,
+        {
+            "fm_positiflow": 1000,
+            "fm_instanflow": 3600,
+            "address": 1,
+            "modbusreadresult": 0,
+            "password": "must-not-be-exposed",
+        },
+    )
+
+    assert values == {"total_water": 10.0, "water_flow_rate": 3600.0}
+
+
+def test_modbus_water_meter_state_handles_missing_and_invalid_fields() -> None:
+    assert normalize_subdevice_state(PID_MODBUS_WATER_METER, {"fm_positiflow": 1000}) == {"total_water": 10.0}
+    assert (
+        normalize_subdevice_state(
+            PID_MODBUS_WATER_METER,
+            {
+                "fm_positiflow": 10_000_000,
+                "fm_instanflow": 4_294_967_296,
             },
         )
         == {}

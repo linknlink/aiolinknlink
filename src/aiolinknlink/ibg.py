@@ -20,8 +20,16 @@ PID_BOX7_CONTROLLER = "00000000000000000000000031130100"
 PID_DTU = "0000000000000000000000000b150100"
 PID_MODBUS_AC = "00000000000000000000000093150100"
 PID_MODBUS_MULTI_SENSOR = "0000000000000000000000000f160100"
+PID_MODBUS_WATER_METER = "00000000000000000000000034150100"
 SUPPORTED_SUBDEVICE_PIDS = frozenset(
-    {PID_SR3_SENSOR, PID_BOX7_CONTROLLER, PID_DTU, PID_MODBUS_AC, PID_MODBUS_MULTI_SENSOR}
+    {
+        PID_SR3_SENSOR,
+        PID_BOX7_CONTROLLER,
+        PID_DTU,
+        PID_MODBUS_AC,
+        PID_MODBUS_MULTI_SENSOR,
+        PID_MODBUS_WATER_METER,
+    }
 )
 BOX7_POWER_FIELDS = frozenset(f"pwr{channel}" for channel in range(1, 8))
 DTU_POWER_FIELDS = frozenset(f"pwr{channel}" for channel in range(1, 3))
@@ -409,6 +417,8 @@ def normalize_subdevice_state(pid: str, payload: dict[str, Any]) -> dict[str, in
         return _normalize_modbus_ac_state(payload)
     if pid.lower() == PID_MODBUS_MULTI_SENSOR:
         return _normalize_modbus_multi_sensor_state(payload)
+    if pid.lower() == PID_MODBUS_WATER_METER:
+        return _normalize_modbus_water_meter_state(payload)
     if pid.lower() != PID_SR3_SENSOR:
         return {}
     values: dict[str, int | float | bool] = {}
@@ -544,6 +554,20 @@ def _normalize_modbus_multi_sensor_state(payload: dict[str, Any]) -> dict[str, i
         "envhumid": ("humidity", 0, 10_000, 100),
         "envco2": ("carbon_dioxide", 0, 60_000, 1),
         "envlux": ("illuminance", 0, 65_535, 1),
+    }
+    for raw_key, (normalized_key, minimum, maximum, divisor) in scaled_fields.items():
+        raw = _number(payload.get(raw_key))
+        if raw is not None and minimum <= raw <= maximum:
+            values[normalized_key] = raw / divisor
+    return values
+
+
+def _normalize_modbus_water_meter_state(payload: dict[str, Any]) -> dict[str, int | float | bool]:
+    """Normalize the reviewed Modbus water-meter profile."""
+    values: dict[str, int | float | bool] = {}
+    scaled_fields = {
+        "fm_positiflow": ("total_water", 0, 9_999_999, 100),
+        "fm_instanflow": ("water_flow_rate", 0, 4_294_967_295, 1),
     }
     for raw_key, (normalized_key, minimum, maximum, divisor) in scaled_fields.items():
         raw = _number(payload.get(raw_key))

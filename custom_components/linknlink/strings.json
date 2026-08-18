@@ -36,7 +36,9 @@
       "analog_input_2": {"name": "Analog input 2"},
       "analog_input_3": {"name": "Analog input 3"},
       "fault_code": {"name": "Fault code"},
-      "carbon_dioxide": {"name": "Carbon dioxide"}
+      "carbon_dioxide": {"name": "Carbon dioxide"},
+      "total_water": {"name": "Total water"},
+      "water_flow_rate": {"name": "Water flow rate"}
     },
     "binary_sensor": {
       "occupancy": {"name": "Occupancy"},
