@@ -90,8 +90,9 @@ asyncio.run(main())
 Supported iBG profiles include the RF environment/occupancy sensor, the
 seven-channel controller, the DTU, PID `93150100` Modbus air conditioners, PID
 `0f160100` Modbus multifunction sensors, PID `34150100` Modbus water meters,
-PID `ed140100` Modbus electricity meters, and PID `2b160100` RF water-cooled
-air-conditioner panels. The Home Assistant
+PID `ed140100` Modbus electricity meters, PID `2b160100` RF water-cooled
+air-conditioner panels, and PID `9b100100` 433 MHz eAC1 smart air-conditioner
+panels. The Home Assistant
 integration exposes both air-conditioner profiles as native climate entities
 with confirmed power, mode, fan-speed, and target-temperature writes.
 Multifunction sensors expose temperature, carbon dioxide, humidity, and
@@ -100,6 +101,9 @@ instantaneous volume flow when reported by the device. Electricity meters
 expose active energy, phase and line voltage, phase current, active and
 reactive power, power factor, harmonic current, frequency, overload, and
 reviewed Modbus diagnostics. The electricity-meter profile is read-only.
+eAC1 panels expose a native climate entity with confirmed power, mode,
+fan-speed, and 16-30 °C target-temperature controls, plus indoor humidity, a
+confirmed key-lock switch, and a device-type diagnostic.
 
 Locked gateways can reuse their existing 16-byte local key without changing the
 gateway lock setting:

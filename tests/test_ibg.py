@@ -9,6 +9,7 @@ import pytest
 
 from aiolinknlink import (
     PID_DTU,
+    PID_EAC1_PANEL,
     PID_MODBUS_AC,
     PID_MODBUS_ELECTRICITY_METER,
     PID_MODBUS_MULTI_SENSOR,
@@ -37,6 +38,7 @@ BOX7_DID = "00112233445566778899aabbccddeef0"
 DTU_DID = "00112233445566778899aabbccddeef1"
 MODBUS_AC_DID = "00112233445566778899aabbccddeef2"
 WATER_AC_PANEL_DID = "00112233445566778899aabbccddeef3"
+EAC1_DID = "00112233445566778899aabbccddeef4"
 
 
 def _response_packet(request: bytes, key: bytes, response: bytes) -> bytes:
@@ -525,6 +527,53 @@ def test_water_ac_panel_state_normalization_rejects_invalid_values() -> None:
     )
 
 
+def test_eac1_state_normalization_uses_all_documented_fields() -> None:
+    values = normalize_subdevice_state(
+        PID_EAC1_PANEL,
+        {
+            "pwr": 1,
+            "ac_mark": 2,
+            "ac_mode": 3,
+            "temp": 24,
+            "insidetemp": 23,
+            "insidehumid": 58,
+            "keylocked": 1,
+            "acpanel_devtype": 0,
+            "password": "must-not-be-exposed",
+        },
+    )
+
+    assert values == {
+        "pwr": True,
+        "ac_mark": 2,
+        "ac_mode": 3,
+        "temp": 24,
+        "insidetemp": 23,
+        "insidehumid": 58,
+        "keylocked": True,
+        "acpanel_devtype": "water_cooled",
+    }
+
+
+def test_eac1_state_normalization_rejects_invalid_values() -> None:
+    assert (
+        normalize_subdevice_state(
+            PID_EAC1_PANEL,
+            {
+                "pwr": 2,
+                "ac_mark": 4,
+                "ac_mode": 2,
+                "temp": 31,
+                "insidetemp": 101,
+                "insidehumid": 101,
+                "keylocked": -1,
+                "acpanel_devtype": 2,
+            },
+        )
+        == {}
+    )
+
+
 async def test_box7_set_state_sends_only_reviewed_boolean_control() -> None:
     device = IbgSubDevice(BOX7_DID, PID_BOX7_CONTROLLER, "BOX7", True)
 
@@ -710,6 +759,67 @@ async def test_water_ac_panel_set_state_encodes_and_confirms_all_fields() -> Non
     }
 
 
+async def test_eac1_set_state_encodes_and_confirms_all_writable_fields() -> None:
+    device = IbgSubDevice(EAC1_DID, PID_EAC1_PANEL, "RF-eac1", True)
+
+    async def exchange(
+        _ip: str,
+        _port: int,
+        packet: bytes,
+        _timeout: float,
+        _accept: dna.PacketAcceptor | None,
+    ) -> bytes:
+        _header, body = dna.parse_blc_packet(packet)
+        _aes, plain = dna.parse_blc_encrypted_payload(body, SESSION_KEY)
+        frame = gateway.parse_gateway_frame(plain)
+        assert frame.command_type == gateway.CMD_SET_STATUS
+        assert frame.payload == {
+            "did": EAC1_DID,
+            "pwr": 1,
+            "ac_mode": 1,
+            "ac_mark": 3,
+            "temp": 26,
+            "keylocked": 1,
+        }
+        return _response_packet(
+            packet,
+            SESSION_KEY,
+            gateway.build_gateway_frame(
+                gateway.CMD_STATUS_RESPONSE,
+                {
+                    "did": EAC1_DID,
+                    "pid": PID_EAC1_PANEL,
+                    "pwr": 1,
+                    "ac_mode": 1,
+                    "ac_mark": 3,
+                    "temp": 26,
+                    "insidetemp": 23,
+                    "insidehumid": 55,
+                    "keylocked": 1,
+                    "acpanel_devtype": 0,
+                },
+            ),
+        )
+
+    state = await IbgClient().set_subdevice_state(
+        IbgSession(device=GATEWAY, session_key=SESSION_KEY),
+        device,
+        {"pwr": True, "ac_mode": 1, "ac_mark": 3, "temp": 26.0, "keylocked": True},
+        exchange=exchange,
+    )
+
+    assert state.values == {
+        "pwr": True,
+        "ac_mode": 1,
+        "ac_mark": 3,
+        "temp": 26,
+        "insidetemp": 23,
+        "insidehumid": 55,
+        "keylocked": True,
+        "acpanel_devtype": "water_cooled",
+    }
+
+
 @pytest.mark.parametrize(
     ("changes", "message"),
     [
@@ -757,6 +867,35 @@ async def test_water_ac_panel_set_state_rejects_unsafe_requests(
     message: str,
 ) -> None:
     device = IbgSubDevice(WATER_AC_PANEL_DID, PID_WATER_AC_PANEL, "RF-water-panel", True)
+    with pytest.raises(IbgProtocolError, match=message):
+        await IbgClient().set_subdevice_state(
+            IbgSession(device=GATEWAY, session_key=SESSION_KEY),
+            device,
+            changes,
+        )
+
+
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [
+        ({"pwr": 1}, "boolean"),
+        ({"keylocked": 1}, "boolean"),
+        ({"ac_mark": -1}, "between 0 and 3"),
+        ({"ac_mark": 4}, "between 0 and 3"),
+        ({"ac_mode": 2}, "one of 0, 1, or 3"),
+        ({"ac_mode": 4}, "one of 0, 1, or 3"),
+        ({"temp": 15}, "between 16 and 30"),
+        ({"temp": 31}, "between 16 and 30"),
+        ({"temp": 20.5}, "1 C steps"),
+        ({"insidehumid": 50}, "field"),
+        ({"acpanel_devtype": 0}, "field"),
+    ],
+)
+async def test_eac1_set_state_rejects_unsafe_requests(
+    changes: dict[str, bool | int | float],
+    message: str,
+) -> None:
+    device = IbgSubDevice(EAC1_DID, PID_EAC1_PANEL, "RF-eac1", True)
     with pytest.raises(IbgProtocolError, match=message):
         await IbgClient().set_subdevice_state(
             IbgSession(device=GATEWAY, session_key=SESSION_KEY),

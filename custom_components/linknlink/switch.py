@@ -8,7 +8,7 @@ from homeassistant.components.switch import SwitchEntity, SwitchEntityDescriptio
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from aiolinknlink import PID_BOX7_CONTROLLER, PID_DTU
+from aiolinknlink import EAC1_KEY_LOCK_FIELD, PID_BOX7_CONTROLLER, PID_DTU, PID_EAC1_PANEL
 
 from . import LinknLinkConfigEntry
 from .entity import IbgCoordinatorEntity
@@ -22,9 +22,18 @@ BOX7_SWITCHES = tuple(
     for channel in range(1, 8)
 )
 DTU_SWITCHES = BOX7_SWITCHES[:2]
+EAC1_SWITCHES = (
+    SwitchEntityDescription(
+        key=EAC1_KEY_LOCK_FIELD,
+        name="Key lock",
+        translation_key="key_lock",
+        icon="mdi:lock",
+    ),
+)
 SWITCHES_BY_PID = {
     PID_BOX7_CONTROLLER: BOX7_SWITCHES,
     PID_DTU: DTU_SWITCHES,
+    PID_EAC1_PANEL: EAC1_SWITCHES,
 }
 
 
@@ -44,7 +53,7 @@ async def async_setup_entry(
 
 
 class IbgPowerSwitch(IbgCoordinatorEntity, SwitchEntity):
-    """One confirmed power output on an iBG subdevice."""
+    """One confirmed boolean control on an iBG subdevice."""
 
     entity_description: SwitchEntityDescription
 

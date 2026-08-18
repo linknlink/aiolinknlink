@@ -26,6 +26,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from aiolinknlink import (
     PID_BOX7_CONTROLLER,
     PID_DTU,
+    PID_EAC1_PANEL,
     PID_MODBUS_AC,
     PID_MODBUS_ELECTRICITY_METER,
     PID_MODBUS_MULTI_SENSOR,
@@ -165,6 +166,26 @@ MODBUS_WATER_SENSORS = (
         device_class=SensorDeviceClass.VOLUME_FLOW_RATE,
         native_unit_of_measurement=UnitOfVolumeFlowRate.LITERS_PER_HOUR,
         state_class=SensorStateClass.MEASUREMENT,
+    ),
+)
+
+EAC1_SENSORS = (
+    SensorEntityDescription(
+        key="insidehumid",
+        name="Indoor humidity",
+        translation_key="indoor_humidity",
+        device_class=SensorDeviceClass.HUMIDITY,
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    SensorEntityDescription(
+        key="acpanel_devtype",
+        name="Device type",
+        translation_key="ac_panel_device_type",
+        device_class=SensorDeviceClass.ENUM,
+        options=["water_cooled", "vrv"],
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
     ),
 )
 
@@ -379,6 +400,7 @@ SENSORS_BY_PID = {
     PID_MODBUS_MULTI_SENSOR: MODBUS_MULTI_SENSORS,
     PID_MODBUS_WATER_METER: MODBUS_WATER_SENSORS,
     PID_MODBUS_ELECTRICITY_METER: MODBUS_ELECTRICITY_METER_SENSORS,
+    PID_EAC1_PANEL: EAC1_SENSORS,
 }
 
 

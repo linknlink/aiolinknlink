@@ -72,6 +72,11 @@
       "modbus_write_result": {
         "name": "Modbus write result",
         "state": {"success": "Success", "failure": "Failure", "partial_success": "Partial success"}
+      },
+      "indoor_humidity": {"name": "Indoor humidity"},
+      "ac_panel_device_type": {
+        "name": "Device type",
+        "state": {"water_cooled": "Water-cooled", "vrv": "VRV"}
       }
     },
     "binary_sensor": {
@@ -87,7 +92,8 @@
     "number": {"voltage_output": {"name": "Voltage output"}},
     "climate": {
       "air_conditioner": {"name": "Air conditioner"},
-      "water_ac_panel": {"name": "Water-cooled air conditioner"}
+      "water_ac_panel": {"name": "Water-cooled air conditioner"},
+      "eac1_air_conditioner": {"name": "Air conditioner"}
     },
     "switch": {
       "switch_1": {"name": "Switch 1"},
@@ -96,7 +102,8 @@
       "switch_4": {"name": "Switch 4"},
       "switch_5": {"name": "Switch 5"},
       "switch_6": {"name": "Switch 6"},
-      "switch_7": {"name": "Switch 7"}
+      "switch_7": {"name": "Switch 7"},
+      "key_lock": {"name": "Key lock"}
     }
   }
 }
