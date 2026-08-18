@@ -43,6 +43,9 @@
 - Add read-only PID `ed140100` Modbus electricity meters with 28 scaled
   electrical measurements, three phase-overload sensors, six reviewed
   diagnostics, and collision-safe names for multiple meters.
+- Add PID `9b100100` 433 MHz eAC1 smart air-conditioner panels with a native HA
+  climate entity, confirmed power/mode/fan/temperature writes, indoor humidity,
+  a confirmed key-lock switch, and a device-type diagnostic.
 
 ## 0.3.2
 

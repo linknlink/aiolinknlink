@@ -26,6 +26,7 @@ from homeassistant.helpers.update_coordinator import UpdateFailed  # noqa: E402
 from aiolinknlink import (  # noqa: E402
     PID_BOX7_CONTROLLER,
     PID_DTU,
+    PID_EAC1_PANEL,
     PID_MODBUS_AC,
     PID_MODBUS_ELECTRICITY_METER,
     PID_MODBUS_MULTI_SENSOR,
@@ -43,7 +44,11 @@ from custom_components.linknlink.binary_sensor import (  # noqa: E402
     MODBUS_ELECTRICITY_METER_BINARY_SENSORS,
     IbgBinarySensor,
 )
-from custom_components.linknlink.climate import IbgModbusClimate, IbgWaterAcPanelClimate  # noqa: E402
+from custom_components.linknlink.climate import (  # noqa: E402
+    IbgEac1Climate,
+    IbgModbusClimate,
+    IbgWaterAcPanelClimate,
+)
 from custom_components.linknlink.const import resolve_local_key_hex  # noqa: E402
 from custom_components.linknlink.coordinator import (  # noqa: E402
     IbgCoordinatorData,
@@ -55,6 +60,7 @@ from custom_components.linknlink.sensor import (  # noqa: E402
     BOX7_SENSORS,
     DTU_ANALOG_INPUTS,
     DTU_ELECTRICAL_SENSORS,
+    EAC1_SENSORS,
     MODBUS_AC_SENSORS,
     MODBUS_ELECTRICITY_METER_SENSORS,
     MODBUS_MULTI_SENSORS,
@@ -64,7 +70,12 @@ from custom_components.linknlink.sensor import (  # noqa: E402
     IbgDtuAnalogInputSensor,
     IbgSensor,
 )
-from custom_components.linknlink.switch import BOX7_SWITCHES, DTU_SWITCHES, IbgPowerSwitch  # noqa: E402
+from custom_components.linknlink.switch import (  # noqa: E402
+    BOX7_SWITCHES,
+    DTU_SWITCHES,
+    EAC1_SWITCHES,
+    IbgPowerSwitch,
+)
 
 GATEWAY = IbgDevice(
     id="001122334455",
@@ -349,10 +360,80 @@ async def test_water_ac_panel_climate_maps_state_and_uses_confirmed_controls() -
         await entity.async_set_hvac_mode(HVACMode.DRY)
 
 
+async def test_eac1_entities_map_state_and_use_confirmed_controls() -> None:
+    device = IbgSubDevice(
+        did="00112233445566778899aabbccddeef5",
+        pid=PID_EAC1_PANEL,
+        name="RF-60745fe3",
+        online=True,
+    )
+    coordinator = object.__new__(IbgDataUpdateCoordinator)
+    coordinator.device = GATEWAY
+    coordinator.data = IbgCoordinatorData(
+        (device,),
+        {
+            device.did: IbgSubDeviceState(
+                device,
+                {
+                    "pwr": True,
+                    "ac_mode": 0,
+                    "ac_mark": 0,
+                    "temp": 16,
+                    "insidetemp": 23,
+                    "insidehumid": 55,
+                    "keylocked": False,
+                    "acpanel_devtype": "water_cooled",
+                },
+                datetime.now(UTC),
+            )
+        },
+    )
+    coordinator.last_update_success = True
+    coordinator.async_set_subdevice_state = AsyncMock()  # type: ignore[method-assign]
+    climate = IbgEac1Climate(coordinator, device.did)
+    lock = IbgPowerSwitch(coordinator, device.did, EAC1_SWITCHES[0])
+    humidity = IbgSensor(coordinator, device.did, EAC1_SENSORS[0])
+    device_type = IbgSensor(coordinator, device.did, EAC1_SENSORS[1])
+
+    assert climate.hvac_mode == HVACMode.COOL
+    assert climate.fan_mode == "auto"
+    assert climate.target_temperature == 16.0
+    assert climate.current_temperature == 23.0
+    assert climate.min_temp == 16
+    assert climate.max_temp == 30
+    assert lock.is_on is False
+    assert humidity.native_value == 55
+    assert device_type.native_value == "water_cooled"
+    assert device_type.entity_description.entity_registry_enabled_default is False
+
+    await climate.async_set_hvac_mode(HVACMode.OFF)
+    coordinator.async_set_subdevice_state.assert_awaited_once_with(device.did, {"pwr": False})
+    coordinator.async_set_subdevice_state.reset_mock()
+
+    await climate.async_set_hvac_mode(HVACMode.FAN_ONLY)
+    coordinator.async_set_subdevice_state.assert_awaited_once_with(device.did, {"pwr": True, "ac_mode": 3})
+    coordinator.async_set_subdevice_state.reset_mock()
+
+    await climate.async_set_fan_mode("high")
+    coordinator.async_set_subdevice_state.assert_awaited_once_with(device.did, {"ac_mark": 3})
+    coordinator.async_set_subdevice_state.reset_mock()
+
+    await climate.async_set_temperature(temperature=26.0)
+    coordinator.async_set_subdevice_state.assert_awaited_once_with(device.did, {"temp": 26.0})
+    coordinator.async_set_subdevice_state.reset_mock()
+
+    await lock.async_turn_on()
+    coordinator.async_set_subdevice_state.assert_awaited_once_with(device.did, {"keylocked": True})
+
+    with pytest.raises(ValueError, match="Unsupported HVAC mode"):
+        await climate.async_set_hvac_mode(HVACMode.DRY)
+
+
 def test_entity_catalogs_are_pid_specific() -> None:
     assert len(BOX7_SWITCHES) == 7
     assert len(BOX7_SENSORS) == 12
     assert len(DTU_SWITCHES) == 2
+    assert len(EAC1_SWITCHES) == 1
     assert len(DTU_ELECTRICAL_SENSORS) == 8
     assert len(DTU_ANALOG_INPUTS) == 3
     assert len(DTU_BINARY_SENSORS) == 3
@@ -362,12 +443,14 @@ def test_entity_catalogs_are_pid_specific() -> None:
     assert len(MODBUS_WATER_SENSORS) == 2
     assert len(MODBUS_ELECTRICITY_METER_SENSORS) == 34
     assert len(MODBUS_ELECTRICITY_METER_BINARY_SENSORS) == 3
+    assert len(EAC1_SENSORS) == 2
     assert SENSORS_BY_PID[PID_BOX7_CONTROLLER] == BOX7_SENSORS
     assert SENSORS_BY_PID[PID_DTU] == DTU_ELECTRICAL_SENSORS
     assert SENSORS_BY_PID[PID_MODBUS_AC] == MODBUS_AC_SENSORS
     assert SENSORS_BY_PID[PID_MODBUS_MULTI_SENSOR] == MODBUS_MULTI_SENSORS
     assert SENSORS_BY_PID[PID_MODBUS_WATER_METER] == MODBUS_WATER_SENSORS
     assert SENSORS_BY_PID[PID_MODBUS_ELECTRICITY_METER] == MODBUS_ELECTRICITY_METER_SENSORS
+    assert SENSORS_BY_PID[PID_EAC1_PANEL] == EAC1_SENSORS
     assert MODBUS_WATER_SENSORS[0].device_class == SensorDeviceClass.WATER
     assert MODBUS_WATER_SENSORS[0].native_unit_of_measurement == UnitOfVolume.CUBIC_METERS
     assert MODBUS_WATER_SENSORS[0].state_class == SensorStateClass.TOTAL_INCREASING
@@ -438,14 +521,17 @@ def test_entity_translations_cover_parameter_derived_names() -> None:
         assert all(
             description.translation_key in sensor_names for description in MODBUS_ELECTRICITY_METER_SENSORS
         )
+        assert all(description.translation_key in sensor_names for description in EAC1_SENSORS)
         assert all(description.translation_key in binary_sensor_names for description in DTU_BINARY_SENSORS)
         assert all(
             description.translation_key in binary_sensor_names
             for description in MODBUS_ELECTRICITY_METER_BINARY_SENSORS
         )
         assert all(description.translation_key in switch_names for description in BOX7_SWITCHES)
+        assert all(description.translation_key in switch_names for description in EAC1_SWITCHES)
         assert "voltage_output" in number_names
         assert "fault_code" in sensor_names
         assert "air_conditioner" in climate_names
         assert "water_ac_panel" in climate_names
+        assert "eac1_air_conditioner" in climate_names
         assert len({switch_names[f"switch_{channel}"]["name"] for channel in range(1, 8)}) == 7
