@@ -12,8 +12,13 @@ import pytest
 pytest.importorskip("homeassistant")
 
 from homeassistant.components.climate.const import HVACMode  # noqa: E402
-from homeassistant.components.sensor import SensorDeviceClass  # noqa: E402
-from homeassistant.const import UnitOfElectricCurrent, UnitOfElectricPotential  # noqa: E402
+from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass  # noqa: E402
+from homeassistant.const import (  # noqa: E402
+    UnitOfElectricCurrent,
+    UnitOfElectricPotential,
+    UnitOfVolume,
+    UnitOfVolumeFlowRate,
+)
 from homeassistant.helpers.update_coordinator import UpdateFailed  # noqa: E402
 
 from aiolinknlink import (  # noqa: E402
@@ -21,6 +26,7 @@ from aiolinknlink import (  # noqa: E402
     PID_DTU,
     PID_MODBUS_AC,
     PID_MODBUS_MULTI_SENSOR,
+    PID_MODBUS_WATER_METER,
     IbgConnectionError,
     IbgDevice,
     IbgProtocolError,
@@ -42,6 +48,7 @@ from custom_components.linknlink.sensor import (  # noqa: E402
     DTU_ELECTRICAL_SENSORS,
     MODBUS_AC_SENSORS,
     MODBUS_MULTI_SENSORS,
+    MODBUS_WATER_SENSORS,
     SENSORS_BY_PID,
     SR3_SENSORS,
     IbgDtuAnalogInputSensor,
@@ -270,10 +277,18 @@ def test_entity_catalogs_are_pid_specific() -> None:
     assert len(SR3_SENSORS) == 4
     assert len(MODBUS_AC_SENSORS) == 1
     assert len(MODBUS_MULTI_SENSORS) == 4
+    assert len(MODBUS_WATER_SENSORS) == 2
     assert SENSORS_BY_PID[PID_BOX7_CONTROLLER] == BOX7_SENSORS
     assert SENSORS_BY_PID[PID_DTU] == DTU_ELECTRICAL_SENSORS
     assert SENSORS_BY_PID[PID_MODBUS_AC] == MODBUS_AC_SENSORS
     assert SENSORS_BY_PID[PID_MODBUS_MULTI_SENSOR] == MODBUS_MULTI_SENSORS
+    assert SENSORS_BY_PID[PID_MODBUS_WATER_METER] == MODBUS_WATER_SENSORS
+    assert MODBUS_WATER_SENSORS[0].device_class == SensorDeviceClass.WATER
+    assert MODBUS_WATER_SENSORS[0].native_unit_of_measurement == UnitOfVolume.CUBIC_METERS
+    assert MODBUS_WATER_SENSORS[0].state_class == SensorStateClass.TOTAL_INCREASING
+    assert MODBUS_WATER_SENSORS[1].device_class == SensorDeviceClass.VOLUME_FLOW_RATE
+    assert MODBUS_WATER_SENSORS[1].native_unit_of_measurement == UnitOfVolumeFlowRate.LITERS_PER_HOUR
+    assert MODBUS_WATER_SENSORS[1].state_class == SensorStateClass.MEASUREMENT
     assert [description.name for description in BOX7_SWITCHES] == [f"Switch {channel}" for channel in range(1, 8)]
     assert len({description.name for description in BOX7_SENSORS}) == 12
 
@@ -295,6 +310,7 @@ def test_entity_translations_cover_parameter_derived_names() -> None:
         assert all(description.translation_key in sensor_names for description in BOX7_SENSORS)
         assert all(description.translation_key in sensor_names for description in DTU_ANALOG_INPUTS)
         assert all(description.translation_key in sensor_names for description in MODBUS_MULTI_SENSORS)
+        assert all(description.translation_key in sensor_names for description in MODBUS_WATER_SENSORS)
         assert all(description.translation_key in binary_sensor_names for description in DTU_BINARY_SENSORS)
         assert all(description.translation_key in switch_names for description in BOX7_SWITCHES)
         assert "voltage_output" in number_names

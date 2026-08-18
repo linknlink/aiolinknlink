@@ -33,6 +33,8 @@
   current temperature, and a diagnostic fault-code sensor.
 - Add PID `0f160100` Modbus multifunction sensors with temperature, carbon
   dioxide, humidity, and illuminance measurements using documented scaling.
+- Add PID `34150100` Modbus water meters with cumulative water consumption in
+  cubic meters and optional instantaneous flow in liters per hour.
 
 ## 0.3.2
 

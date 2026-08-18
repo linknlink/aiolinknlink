@@ -14,12 +14,21 @@ from homeassistant.const import (
     UnitOfEnergy,
     UnitOfPower,
     UnitOfTemperature,
+    UnitOfVolume,
+    UnitOfVolumeFlowRate,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from aiolinknlink import PID_BOX7_CONTROLLER, PID_DTU, PID_MODBUS_AC, PID_MODBUS_MULTI_SENSOR, PID_SR3_SENSOR
+from aiolinknlink import (
+    PID_BOX7_CONTROLLER,
+    PID_DTU,
+    PID_MODBUS_AC,
+    PID_MODBUS_MULTI_SENSOR,
+    PID_MODBUS_WATER_METER,
+    PID_SR3_SENSOR,
+)
 
 from . import LinknLinkConfigEntry
 from .entity import IbgCoordinatorEntity
@@ -137,6 +146,25 @@ MODBUS_MULTI_SENSORS = (
     SR3_SENSORS[2],
 )
 
+MODBUS_WATER_SENSORS = (
+    SensorEntityDescription(
+        key="total_water",
+        name="Total water",
+        translation_key="total_water",
+        device_class=SensorDeviceClass.WATER,
+        native_unit_of_measurement=UnitOfVolume.CUBIC_METERS,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
+    SensorEntityDescription(
+        key="water_flow_rate",
+        name="Water flow rate",
+        translation_key="water_flow_rate",
+        device_class=SensorDeviceClass.VOLUME_FLOW_RATE,
+        native_unit_of_measurement=UnitOfVolumeFlowRate.LITERS_PER_HOUR,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+)
+
 
 @dataclass(frozen=True, kw_only=True)
 class DtuAnalogInputEntityDescription(SensorEntityDescription):
@@ -162,6 +190,7 @@ SENSORS_BY_PID = {
     PID_DTU: DTU_ELECTRICAL_SENSORS,
     PID_MODBUS_AC: MODBUS_AC_SENSORS,
     PID_MODBUS_MULTI_SENSOR: MODBUS_MULTI_SENSORS,
+    PID_MODBUS_WATER_METER: MODBUS_WATER_SENSORS,
 }
 
 

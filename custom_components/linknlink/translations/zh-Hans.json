@@ -36,7 +36,9 @@
       "analog_input_2": {"name": "模拟量输入2"},
       "analog_input_3": {"name": "模拟量输入3"},
       "fault_code": {"name": "故障码"},
-      "carbon_dioxide": {"name": "二氧化碳浓度"}
+      "carbon_dioxide": {"name": "二氧化碳浓度"},
+      "total_water": {"name": "累计用水量"},
+      "water_flow_rate": {"name": "瞬时流量"}
     },
     "binary_sensor": {
       "occupancy": {"name": "人体感应"},
