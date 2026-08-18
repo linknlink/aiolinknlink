@@ -38,13 +38,50 @@
       "fault_code": {"name": "Fault code"},
       "carbon_dioxide": {"name": "Carbon dioxide"},
       "total_water": {"name": "Total water"},
-      "water_flow_rate": {"name": "Water flow rate"}
+      "water_flow_rate": {"name": "Water flow rate"},
+      "combined_active_energy": {"name": "Combined active energy"},
+      "forward_active_energy": {"name": "Forward active energy"},
+      "reverse_active_energy": {"name": "Reverse active energy"},
+      "line_ab_voltage": {"name": "Line AB voltage"},
+      "line_bc_voltage": {"name": "Line BC voltage"},
+      "line_ac_voltage": {"name": "Line AC voltage"},
+      "total_active_power": {"name": "Total active power"},
+      "phase_a_active_power": {"name": "Phase A active power"},
+      "phase_b_active_power": {"name": "Phase B active power"},
+      "phase_c_active_power": {"name": "Phase C active power"},
+      "combined_power_factor": {"name": "Combined power factor"},
+      "phase_a_power_factor": {"name": "Phase A power factor"},
+      "phase_b_power_factor": {"name": "Phase B power factor"},
+      "phase_c_power_factor": {"name": "Phase C power factor"},
+      "phase_a_harmonic_current": {"name": "Phase A harmonic current"},
+      "phase_b_harmonic_current": {"name": "Phase B harmonic current"},
+      "phase_c_harmonic_current": {"name": "Phase C harmonic current"},
+      "frequency": {"name": "Frequency"},
+      "phase_a_reactive_power": {"name": "Phase A reactive power"},
+      "phase_b_reactive_power": {"name": "Phase B reactive power"},
+      "phase_c_reactive_power": {"name": "Phase C reactive power"},
+      "total_reactive_power": {"name": "Total reactive power"},
+      "reported_device_name": {"name": "Reported device name"},
+      "electrical_parameters": {"name": "Electrical parameters"},
+      "modbus_address": {"name": "Modbus address"},
+      "transformer_ratio": {"name": "Transformer ratio"},
+      "modbus_read_result": {
+        "name": "Modbus read result",
+        "state": {"success": "Success", "failure": "Failure", "partial_success": "Partial success"}
+      },
+      "modbus_write_result": {
+        "name": "Modbus write result",
+        "state": {"success": "Success", "failure": "Failure", "partial_success": "Partial success"}
+      }
     },
     "binary_sensor": {
       "occupancy": {"name": "Occupancy"},
       "signal_input_1": {"name": "Signal input 1"},
       "signal_input_2": {"name": "Signal input 2"},
-      "signal_input_3": {"name": "Signal input 3"}
+      "signal_input_3": {"name": "Signal input 3"},
+      "phase_a_overload": {"name": "Phase A overload"},
+      "phase_b_overload": {"name": "Phase B overload"},
+      "phase_c_overload": {"name": "Phase C overload"}
     },
     "event": {"key": {"name": "Key"}},
     "number": {"voltage_output": {"name": "Voltage output"}},

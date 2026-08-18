@@ -12,7 +12,9 @@ from homeassistant.const import (
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
     UnitOfEnergy,
+    UnitOfFrequency,
     UnitOfPower,
+    UnitOfReactivePower,
     UnitOfTemperature,
     UnitOfVolume,
     UnitOfVolumeFlowRate,
@@ -25,6 +27,7 @@ from aiolinknlink import (
     PID_BOX7_CONTROLLER,
     PID_DTU,
     PID_MODBUS_AC,
+    PID_MODBUS_ELECTRICITY_METER,
     PID_MODBUS_MULTI_SENSOR,
     PID_MODBUS_WATER_METER,
     PID_SR3_SENSOR,
@@ -165,6 +168,190 @@ MODBUS_WATER_SENSORS = (
     ),
 )
 
+MODBUS_ELECTRICITY_METER_SENSORS = (
+    SensorEntityDescription(
+        key="Combenergy",
+        name="Combined active energy",
+        translation_key="combined_active_energy",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
+    SensorEntityDescription(
+        key="totalconsum",
+        name="Forward active energy",
+        translation_key="forward_active_energy",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
+    SensorEntityDescription(
+        key="Reverenergy",
+        name="Reverse active energy",
+        translation_key="reverse_active_energy",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
+    *(
+        SensorEntityDescription(
+            key=f"{phase}phasevolt",
+            name=f"Phase {phase} voltage",
+            translation_key=f"phase_{phase.lower()}_voltage",
+            device_class=SensorDeviceClass.VOLTAGE,
+            native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+            state_class=SensorStateClass.MEASUREMENT,
+        )
+        for phase in "ABC"
+    ),
+    *(
+        SensorEntityDescription(
+            key=f"{pair}_linevoltage",
+            name=f"Line {pair} voltage",
+            translation_key=f"line_{pair.lower()}_voltage",
+            device_class=SensorDeviceClass.VOLTAGE,
+            native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+            state_class=SensorStateClass.MEASUREMENT,
+        )
+        for pair in ("AB", "BC", "AC")
+    ),
+    *(
+        SensorEntityDescription(
+            key=f"{phase}phasecurrent",
+            name=f"Phase {phase} current",
+            translation_key=f"phase_{phase.lower()}_current",
+            device_class=SensorDeviceClass.CURRENT,
+            native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+            state_class=SensorStateClass.MEASUREMENT,
+        )
+        for phase in "ABC"
+    ),
+    SensorEntityDescription(
+        key="power",
+        name="Total active power",
+        translation_key="total_active_power",
+        device_class=SensorDeviceClass.POWER,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    *(
+        SensorEntityDescription(
+            key=f"{phase}phasepower",
+            name=f"Phase {phase} active power",
+            translation_key=f"phase_{phase.lower()}_active_power",
+            device_class=SensorDeviceClass.POWER,
+            native_unit_of_measurement=UnitOfPower.WATT,
+            state_class=SensorStateClass.MEASUREMENT,
+        )
+        for phase in "ABC"
+    ),
+    SensorEntityDescription(
+        key="Combpowerfactor",
+        name="Combined power factor",
+        translation_key="combined_power_factor",
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:cosine-wave",
+    ),
+    *(
+        SensorEntityDescription(
+            key=f"{phase}powerfactor",
+            name=f"Phase {phase} power factor",
+            translation_key=f"phase_{phase.lower()}_power_factor",
+            state_class=SensorStateClass.MEASUREMENT,
+            icon="mdi:cosine-wave",
+        )
+        for phase in "ABC"
+    ),
+    *(
+        SensorEntityDescription(
+            key=f"{phase}phasehmccurrent",
+            name=f"Phase {phase} harmonic current",
+            translation_key=f"phase_{phase.lower()}_harmonic_current",
+            device_class=SensorDeviceClass.CURRENT,
+            native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+            state_class=SensorStateClass.MEASUREMENT,
+        )
+        for phase in "ABC"
+    ),
+    SensorEntityDescription(
+        key="frequency",
+        name="Frequency",
+        translation_key="frequency",
+        device_class=SensorDeviceClass.FREQUENCY,
+        native_unit_of_measurement=UnitOfFrequency.HERTZ,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    *(
+        SensorEntityDescription(
+            key=f"{phase}phase_reactivepower",
+            name=f"Phase {phase} reactive power",
+            translation_key=f"phase_{phase.lower()}_reactive_power",
+            native_unit_of_measurement=UnitOfReactivePower.VOLT_AMPERE_REACTIVE,
+            state_class=SensorStateClass.MEASUREMENT,
+            icon="mdi:flash-outline",
+        )
+        for phase in "ABC"
+    ),
+    SensorEntityDescription(
+        key="Total_reactivepower",
+        name="Total reactive power",
+        translation_key="total_reactive_power",
+        native_unit_of_measurement=UnitOfReactivePower.VOLT_AMPERE_REACTIVE,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:flash-outline",
+    ),
+    SensorEntityDescription(
+        key="devicename",
+        name="Reported device name",
+        translation_key="reported_device_name",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        icon="mdi:label-outline",
+    ),
+    SensorEntityDescription(
+        key="elec_param",
+        name="Electrical parameters",
+        translation_key="electrical_parameters",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        icon="mdi:text-box-outline",
+    ),
+    SensorEntityDescription(
+        key="address",
+        name="Modbus address",
+        translation_key="modbus_address",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        icon="mdi:numeric",
+    ),
+    SensorEntityDescription(
+        key="transformerratio",
+        name="Transformer ratio",
+        translation_key="transformer_ratio",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        icon="mdi:current-ac",
+    ),
+    SensorEntityDescription(
+        key="modbusreadresult",
+        name="Modbus read result",
+        translation_key="modbus_read_result",
+        device_class=SensorDeviceClass.ENUM,
+        options=["success", "failure", "partial_success"],
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+    ),
+    SensorEntityDescription(
+        key="modbuswriteresult",
+        name="Modbus write result",
+        translation_key="modbus_write_result",
+        device_class=SensorDeviceClass.ENUM,
+        options=["success", "failure", "partial_success"],
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+    ),
+)
+
 
 @dataclass(frozen=True, kw_only=True)
 class DtuAnalogInputEntityDescription(SensorEntityDescription):
@@ -191,6 +378,7 @@ SENSORS_BY_PID = {
     PID_MODBUS_AC: MODBUS_AC_SENSORS,
     PID_MODBUS_MULTI_SENSOR: MODBUS_MULTI_SENSORS,
     PID_MODBUS_WATER_METER: MODBUS_WATER_SENSORS,
+    PID_MODBUS_ELECTRICITY_METER: MODBUS_ELECTRICITY_METER_SENSORS,
 }
 
 
@@ -217,7 +405,7 @@ async def async_setup_entry(
 
 
 class IbgSensor(IbgCoordinatorEntity, SensorEntity):
-    """One numeric iBG subdevice sensor."""
+    """One reviewed iBG subdevice sensor."""
 
     entity_description: SensorEntityDescription
 
@@ -226,10 +414,10 @@ class IbgSensor(IbgCoordinatorEntity, SensorEntity):
         self.entity_description = description
 
     @property
-    def native_value(self) -> int | float | None:
-        """Return the latest safe numeric value."""
+    def native_value(self) -> int | float | str | None:
+        """Return the latest safe scalar value."""
         value = self._value()
-        return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+        return value if isinstance(value, (int, float, str)) and not isinstance(value, bool) else None
 
 
 class IbgDtuAnalogInputSensor(IbgSensor):

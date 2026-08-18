@@ -16,6 +16,8 @@ from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass 
 from homeassistant.const import (  # noqa: E402
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
+    UnitOfEnergy,
+    UnitOfReactivePower,
     UnitOfVolume,
     UnitOfVolumeFlowRate,
 )
@@ -25,6 +27,7 @@ from aiolinknlink import (  # noqa: E402
     PID_BOX7_CONTROLLER,
     PID_DTU,
     PID_MODBUS_AC,
+    PID_MODBUS_ELECTRICITY_METER,
     PID_MODBUS_MULTI_SENSOR,
     PID_MODBUS_WATER_METER,
     PID_WATER_AC_PANEL,
@@ -35,7 +38,11 @@ from aiolinknlink import (  # noqa: E402
     IbgSubDevice,
     IbgSubDeviceState,
 )
-from custom_components.linknlink.binary_sensor import DTU_BINARY_SENSORS, IbgBinarySensor  # noqa: E402
+from custom_components.linknlink.binary_sensor import (  # noqa: E402
+    DTU_BINARY_SENSORS,
+    MODBUS_ELECTRICITY_METER_BINARY_SENSORS,
+    IbgBinarySensor,
+)
 from custom_components.linknlink.climate import IbgModbusClimate, IbgWaterAcPanelClimate  # noqa: E402
 from custom_components.linknlink.const import resolve_local_key_hex  # noqa: E402
 from custom_components.linknlink.coordinator import (  # noqa: E402
@@ -49,11 +56,13 @@ from custom_components.linknlink.sensor import (  # noqa: E402
     DTU_ANALOG_INPUTS,
     DTU_ELECTRICAL_SENSORS,
     MODBUS_AC_SENSORS,
+    MODBUS_ELECTRICITY_METER_SENSORS,
     MODBUS_MULTI_SENSORS,
     MODBUS_WATER_SENSORS,
     SENSORS_BY_PID,
     SR3_SENSORS,
     IbgDtuAnalogInputSensor,
+    IbgSensor,
 )
 from custom_components.linknlink.switch import BOX7_SWITCHES, DTU_SWITCHES, IbgPowerSwitch  # noqa: E402
 
@@ -351,11 +360,14 @@ def test_entity_catalogs_are_pid_specific() -> None:
     assert len(MODBUS_AC_SENSORS) == 1
     assert len(MODBUS_MULTI_SENSORS) == 4
     assert len(MODBUS_WATER_SENSORS) == 2
+    assert len(MODBUS_ELECTRICITY_METER_SENSORS) == 34
+    assert len(MODBUS_ELECTRICITY_METER_BINARY_SENSORS) == 3
     assert SENSORS_BY_PID[PID_BOX7_CONTROLLER] == BOX7_SENSORS
     assert SENSORS_BY_PID[PID_DTU] == DTU_ELECTRICAL_SENSORS
     assert SENSORS_BY_PID[PID_MODBUS_AC] == MODBUS_AC_SENSORS
     assert SENSORS_BY_PID[PID_MODBUS_MULTI_SENSOR] == MODBUS_MULTI_SENSORS
     assert SENSORS_BY_PID[PID_MODBUS_WATER_METER] == MODBUS_WATER_SENSORS
+    assert SENSORS_BY_PID[PID_MODBUS_ELECTRICITY_METER] == MODBUS_ELECTRICITY_METER_SENSORS
     assert MODBUS_WATER_SENSORS[0].device_class == SensorDeviceClass.WATER
     assert MODBUS_WATER_SENSORS[0].native_unit_of_measurement == UnitOfVolume.CUBIC_METERS
     assert MODBUS_WATER_SENSORS[0].state_class == SensorStateClass.TOTAL_INCREASING
@@ -364,6 +376,45 @@ def test_entity_catalogs_are_pid_specific() -> None:
     assert MODBUS_WATER_SENSORS[1].state_class == SensorStateClass.MEASUREMENT
     assert [description.name for description in BOX7_SWITCHES] == [f"Switch {channel}" for channel in range(1, 8)]
     assert len({description.name for description in BOX7_SENSORS}) == 12
+
+    electricity_by_key = {description.key: description for description in MODBUS_ELECTRICITY_METER_SENSORS}
+    assert electricity_by_key["Combenergy"].native_unit_of_measurement == UnitOfEnergy.KILO_WATT_HOUR
+    assert electricity_by_key["Combenergy"].state_class == SensorStateClass.TOTAL_INCREASING
+    assert electricity_by_key["Total_reactivepower"].native_unit_of_measurement == (
+        UnitOfReactivePower.VOLT_AMPERE_REACTIVE
+    )
+    assert electricity_by_key["modbusreadresult"].device_class == SensorDeviceClass.ENUM
+    assert electricity_by_key["modbusreadresult"].entity_registry_enabled_default is False
+
+
+def test_modbus_electricity_meter_entity_uses_stable_inventory_and_reported_name() -> None:
+    device = IbgSubDevice(
+        did="00112233445566778899aabbccddeef5",
+        pid=PID_MODBUS_ELECTRICITY_METER,
+        name="PLC-20",
+        online=True,
+    )
+    coordinator = object.__new__(IbgDataUpdateCoordinator)
+    coordinator.device = GATEWAY
+    coordinator.data = IbgCoordinatorData(
+        (device,),
+        {
+            device.did: IbgSubDeviceState(
+                device,
+                {"power": 5052.4, "devicename": "第一路三相电表"},
+                datetime.now(UTC),
+            )
+        },
+    )
+    coordinator.last_update_success = True
+    power_description = next(
+        description for description in MODBUS_ELECTRICITY_METER_SENSORS if description.key == "power"
+    )
+    entity = IbgSensor(coordinator, device.did, power_description)
+
+    assert entity.native_value == 5052.4
+    assert entity.device_info["name"] == "PLC-20 第一路三相电表"
+    assert entity.unique_id == f"{GATEWAY.id}_{device.did}_power"
 
 
 def test_entity_translations_cover_parameter_derived_names() -> None:
@@ -384,7 +435,14 @@ def test_entity_translations_cover_parameter_derived_names() -> None:
         assert all(description.translation_key in sensor_names for description in DTU_ANALOG_INPUTS)
         assert all(description.translation_key in sensor_names for description in MODBUS_MULTI_SENSORS)
         assert all(description.translation_key in sensor_names for description in MODBUS_WATER_SENSORS)
+        assert all(
+            description.translation_key in sensor_names for description in MODBUS_ELECTRICITY_METER_SENSORS
+        )
         assert all(description.translation_key in binary_sensor_names for description in DTU_BINARY_SENSORS)
+        assert all(
+            description.translation_key in binary_sensor_names
+            for description in MODBUS_ELECTRICITY_METER_BINARY_SENSORS
+        )
         assert all(description.translation_key in switch_names for description in BOX7_SWITCHES)
         assert "voltage_output" in number_names
         assert "fault_code" in sensor_names
