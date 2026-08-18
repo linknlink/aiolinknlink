@@ -35,6 +35,11 @@
   dioxide, humidity, and illuminance measurements using documented scaling.
 - Add PID `34150100` Modbus water meters with cumulative water consumption in
   cubic meters and optional instantaneous flow in liters per hour.
+- Add PID `2b160100` RF water-cooled air-conditioner panels as native HA
+  climate entities with confirmed power, cooling/heating/fan-only modes,
+  four fan speeds, 5-35 °C target control, and indoor temperature.
+- Persist the negotiated iBG session key after unlocked first-time pairing so
+  the integration can reconnect after HA or container restarts.
 
 ## 0.3.2
 

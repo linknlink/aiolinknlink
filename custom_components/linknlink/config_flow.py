@@ -11,7 +11,7 @@ from homeassistant.helpers.selector import TextSelector, TextSelectorConfig, Tex
 
 from aiolinknlink import IbgClient, IbgConnectionError, IbgError
 
-from .const import CONF_LOCAL_KEY, DOMAIN
+from .const import CONF_LOCAL_KEY, DOMAIN, resolve_local_key_hex
 
 
 class LinknLinkConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -46,11 +46,12 @@ class LinknLinkConfigFlow(ConfigFlow, domain=DOMAIN):
             else:
                 await self.async_set_unique_id(device.id)
                 self._abort_if_unique_id_configured(updates={CONF_HOST: device.ip})
+                stored_local_key_hex = resolve_local_key_hex(local_key_hex, session.session_key)
                 return self.async_create_entry(
                     title=f"{device.model} ({device.ip})",
                     data={
                         CONF_HOST: device.ip,
-                        **({CONF_LOCAL_KEY: local_key_hex} if local_key_hex else {}),
+                        **({CONF_LOCAL_KEY: stored_local_key_hex} if stored_local_key_hex else {}),
                     },
                 )
         return self.async_show_form(

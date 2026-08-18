@@ -15,6 +15,7 @@ SUBDEVICE_MODELS = {
     "00000000000000000000000093150100": "Modbus air conditioner",
     "0000000000000000000000000f160100": "Modbus multifunction sensor",
     "00000000000000000000000034150100": "Modbus water meter",
+    "0000000000000000000000002b160100": "Water-cooled air-conditioner panel",
 }
 
 

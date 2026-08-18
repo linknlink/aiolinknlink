@@ -27,6 +27,7 @@ from aiolinknlink import (  # noqa: E402
     PID_MODBUS_AC,
     PID_MODBUS_MULTI_SENSOR,
     PID_MODBUS_WATER_METER,
+    PID_WATER_AC_PANEL,
     IbgConnectionError,
     IbgDevice,
     IbgProtocolError,
@@ -35,7 +36,8 @@ from aiolinknlink import (  # noqa: E402
     IbgSubDeviceState,
 )
 from custom_components.linknlink.binary_sensor import DTU_BINARY_SENSORS, IbgBinarySensor  # noqa: E402
-from custom_components.linknlink.climate import IbgModbusClimate  # noqa: E402
+from custom_components.linknlink.climate import IbgModbusClimate, IbgWaterAcPanelClimate  # noqa: E402
+from custom_components.linknlink.const import resolve_local_key_hex  # noqa: E402
 from custom_components.linknlink.coordinator import (  # noqa: E402
     IbgCoordinatorData,
     IbgDataUpdateCoordinator,
@@ -68,6 +70,14 @@ SUBDEVICE = IbgSubDevice(
     name="Room sensor",
     online=True,
 )
+
+
+def test_local_key_resolution_persists_negotiated_pairing_key() -> None:
+    negotiated = b"0123456789abcdef"
+
+    assert resolve_local_key_hex("", negotiated) == negotiated.hex()
+    assert resolve_local_key_hex("fedcba9876543210fedcba9876543210", negotiated) == ("fedcba9876543210fedcba9876543210")
+    assert resolve_local_key_hex("", None) == ""
 
 
 def _coordinator(client: object) -> IbgDataUpdateCoordinator:
@@ -267,6 +277,69 @@ async def test_modbus_ac_climate_maps_state_and_uses_confirmed_controls() -> Non
     coordinator.async_set_subdevice_state.assert_awaited_once_with(device.did, {"temp": 24.0})
 
 
+async def test_water_ac_panel_climate_maps_state_and_uses_confirmed_controls() -> None:
+    device = IbgSubDevice(
+        did="00112233445566778899aabbccddeef3",
+        pid=PID_WATER_AC_PANEL,
+        name="RF-b951a3b7",
+        online=True,
+    )
+    second_device = IbgSubDevice(
+        did="00112233445566778899aabbccddeef4",
+        pid=PID_WATER_AC_PANEL,
+        name="RF-second-panel",
+        online=True,
+    )
+    coordinator = object.__new__(IbgDataUpdateCoordinator)
+    coordinator.device = GATEWAY
+    coordinator.data = IbgCoordinatorData(
+        (device, second_device),
+        {
+            device.did: IbgSubDeviceState(
+                device,
+                {"pwr": True, "ac_mode": 0, "ac_mark": 0, "temp": 25, "insidetemp": 29},
+                datetime.now(UTC),
+            ),
+            second_device.did: IbgSubDeviceState(
+                second_device,
+                {"pwr": False, "ac_mode": 1, "ac_mark": 1, "temp": 20, "insidetemp": 22},
+                datetime.now(UTC),
+            ),
+        },
+    )
+    coordinator.last_update_success = True
+    coordinator.async_set_subdevice_state = AsyncMock()  # type: ignore[method-assign]
+    entity = IbgWaterAcPanelClimate(coordinator, device.did)
+    second_entity = IbgWaterAcPanelClimate(coordinator, second_device.did)
+
+    assert entity.hvac_mode == HVACMode.COOL
+    assert entity.fan_mode == "auto"
+    assert entity.target_temperature == 25.0
+    assert entity.current_temperature == 29.0
+    assert entity.min_temp == 5
+    assert entity.max_temp == 35
+    assert second_entity.hvac_mode == HVACMode.OFF
+    assert entity.unique_id != second_entity.unique_id
+
+    await entity.async_set_hvac_mode(HVACMode.OFF)
+    coordinator.async_set_subdevice_state.assert_awaited_once_with(device.did, {"pwr": False})
+    coordinator.async_set_subdevice_state.reset_mock()
+
+    await entity.async_set_hvac_mode(HVACMode.FAN_ONLY)
+    coordinator.async_set_subdevice_state.assert_awaited_once_with(device.did, {"pwr": True, "ac_mode": 3})
+    coordinator.async_set_subdevice_state.reset_mock()
+
+    await entity.async_set_fan_mode("high")
+    coordinator.async_set_subdevice_state.assert_awaited_once_with(device.did, {"ac_mark": 3})
+    coordinator.async_set_subdevice_state.reset_mock()
+
+    await entity.async_set_temperature(temperature=24.0)
+    coordinator.async_set_subdevice_state.assert_awaited_once_with(device.did, {"temp": 24.0})
+
+    with pytest.raises(ValueError, match="Unsupported HVAC mode"):
+        await entity.async_set_hvac_mode(HVACMode.DRY)
+
+
 def test_entity_catalogs_are_pid_specific() -> None:
     assert len(BOX7_SWITCHES) == 7
     assert len(BOX7_SENSORS) == 12
@@ -316,4 +389,5 @@ def test_entity_translations_cover_parameter_derived_names() -> None:
         assert "voltage_output" in number_names
         assert "fault_code" in sensor_names
         assert "air_conditioner" in climate_names
+        assert "water_ac_panel" in climate_names
         assert len({switch_names[f"switch_{channel}"]["name"] for channel in range(1, 8)}) == 7
