@@ -21,6 +21,7 @@ PID_DTU = "0000000000000000000000000b150100"
 PID_MODBUS_AC = "00000000000000000000000093150100"
 PID_MODBUS_MULTI_SENSOR = "0000000000000000000000000f160100"
 PID_MODBUS_WATER_METER = "00000000000000000000000034150100"
+PID_WATER_AC_PANEL = "0000000000000000000000002b160100"
 SUPPORTED_SUBDEVICE_PIDS = frozenset(
     {
         PID_SR3_SENSOR,
@@ -29,6 +30,7 @@ SUPPORTED_SUBDEVICE_PIDS = frozenset(
         PID_MODBUS_AC,
         PID_MODBUS_MULTI_SENSOR,
         PID_MODBUS_WATER_METER,
+        PID_WATER_AC_PANEL,
     }
 )
 BOX7_POWER_FIELDS = frozenset(f"pwr{channel}" for channel in range(1, 8))
@@ -45,6 +47,19 @@ MODBUS_AC_WRITABLE_FIELDS = frozenset(
         MODBUS_AC_FAN_FIELD,
         MODBUS_AC_MODE_FIELD,
         MODBUS_AC_TARGET_TEMPERATURE_FIELD,
+    }
+)
+WATER_AC_PANEL_POWER_FIELD = "pwr"
+WATER_AC_PANEL_FAN_FIELD = "ac_mark"
+WATER_AC_PANEL_MODE_FIELD = "ac_mode"
+WATER_AC_PANEL_TARGET_TEMPERATURE_FIELD = "temp"
+WATER_AC_PANEL_CURRENT_TEMPERATURE_FIELD = "insidetemp"
+WATER_AC_PANEL_WRITABLE_FIELDS = frozenset(
+    {
+        WATER_AC_PANEL_POWER_FIELD,
+        WATER_AC_PANEL_FAN_FIELD,
+        WATER_AC_PANEL_MODE_FIELD,
+        WATER_AC_PANEL_TARGET_TEMPERATURE_FIELD,
     }
 )
 DEFAULT_TIMEOUT = 5.0
@@ -281,7 +296,7 @@ class IbgClient:
     ) -> IbgSubDeviceState:
         """Set reviewed writable fields and return the confirmed device state."""
         pid = device.pid.lower()
-        if pid not in {PID_BOX7_CONTROLLER, PID_DTU, PID_MODBUS_AC}:
+        if pid not in {PID_BOX7_CONTROLLER, PID_DTU, PID_MODBUS_AC, PID_WATER_AC_PANEL}:
             raise IbgProtocolError(f"unsupported writable iBG subdevice PID: {device.pid}")
         if not device.online:
             raise IbgConnectionError(f"iBG subdevice is offline: {device.did}")
@@ -291,8 +306,10 @@ class IbgClient:
             writable_fields = BOX7_POWER_FIELDS
         elif pid == PID_DTU:
             writable_fields = DTU_WRITABLE_FIELDS
-        else:
+        elif pid == PID_MODBUS_AC:
             writable_fields = MODBUS_AC_WRITABLE_FIELDS
+        else:
+            writable_fields = WATER_AC_PANEL_WRITABLE_FIELDS
         invalid_fields = set(changes) - writable_fields
         if invalid_fields:
             raise IbgProtocolError(f"unsupported writable iBG subdevice field: {sorted(invalid_fields)[0]}")
@@ -300,28 +317,38 @@ class IbgClient:
         request_values: dict[str, int] = {}
         expected_values: dict[str, bool | int | float] = {}
         for key, value in changes.items():
-            if key in BOX7_POWER_FIELDS or key in DTU_POWER_FIELDS or key == MODBUS_AC_POWER_FIELD:
+            if (
+                key in BOX7_POWER_FIELDS
+                or key in DTU_POWER_FIELDS
+                or key in {MODBUS_AC_POWER_FIELD, WATER_AC_PANEL_POWER_FIELD}
+            ):
                 if not isinstance(value, bool):
                     raise IbgProtocolError("iBG subdevice power values must be boolean")
                 request_values[key] = int(value)
                 expected_values[key] = value
                 continue
-            if pid == PID_MODBUS_AC:
-                if key in {MODBUS_AC_FAN_FIELD, MODBUS_AC_MODE_FIELD}:
+            if pid in {PID_MODBUS_AC, PID_WATER_AC_PANEL}:
+                fan_field = MODBUS_AC_FAN_FIELD if pid == PID_MODBUS_AC else WATER_AC_PANEL_FAN_FIELD
+                mode_field = MODBUS_AC_MODE_FIELD if pid == PID_MODBUS_AC else WATER_AC_PANEL_MODE_FIELD
+                if key in {fan_field, mode_field}:
                     if not isinstance(value, int) or isinstance(value, bool):
-                        raise IbgProtocolError("Modbus AC mode values must be integers")
+                        raise IbgProtocolError("air-conditioner mode values must be integers")
                     integer = value
-                    if key == MODBUS_AC_FAN_FIELD and not 0 <= integer <= 3:
-                        raise IbgProtocolError("Modbus AC fan mode must be between 0 and 3")
-                    if key == MODBUS_AC_MODE_FIELD and not 0 <= integer <= 4:
+                    if key == fan_field and not 0 <= integer <= 3:
+                        raise IbgProtocolError("air-conditioner fan mode must be between 0 and 3")
+                    if pid == PID_MODBUS_AC and key == mode_field and not 0 <= integer <= 4:
                         raise IbgProtocolError("Modbus AC mode must be between 0 and 4")
+                    if pid == PID_WATER_AC_PANEL and key == mode_field and integer not in {0, 1, 3}:
+                        raise IbgProtocolError("water AC panel mode must be one of 0, 1, or 3")
                 else:
                     number = _number(value)
                     if number is None or not float(number).is_integer():
-                        raise IbgProtocolError("Modbus AC target temperature must use 1 C steps")
+                        raise IbgProtocolError("air-conditioner target temperature must use 1 C steps")
                     integer = int(number)
-                    if not 16 <= integer <= 32:
+                    if pid == PID_MODBUS_AC and not 16 <= integer <= 32:
                         raise IbgProtocolError("Modbus AC target temperature must be between 16 and 32 C")
+                    if pid == PID_WATER_AC_PANEL and not 5 <= integer <= 35:
+                        raise IbgProtocolError("water AC panel target temperature must be between 5 and 35 C")
                 request_values[key] = integer
                 expected_values[key] = integer
                 continue
@@ -419,6 +446,8 @@ def normalize_subdevice_state(pid: str, payload: dict[str, Any]) -> dict[str, in
         return _normalize_modbus_multi_sensor_state(payload)
     if pid.lower() == PID_MODBUS_WATER_METER:
         return _normalize_modbus_water_meter_state(payload)
+    if pid.lower() == PID_WATER_AC_PANEL:
+        return _normalize_water_ac_panel_state(payload)
     if pid.lower() != PID_SR3_SENSOR:
         return {}
     values: dict[str, int | float | bool] = {}
@@ -573,6 +602,37 @@ def _normalize_modbus_water_meter_state(payload: dict[str, Any]) -> dict[str, in
         raw = _number(payload.get(raw_key))
         if raw is not None and minimum <= raw <= maximum:
             values[normalized_key] = raw / divisor
+    return values
+
+
+def _normalize_water_ac_panel_state(payload: dict[str, Any]) -> dict[str, int | float | bool]:
+    """Normalize the reviewed RF water-cooled air-conditioner panel profile."""
+    values: dict[str, int | float | bool] = {}
+    power = payload.get(WATER_AC_PANEL_POWER_FIELD)
+    if isinstance(power, bool):
+        values[WATER_AC_PANEL_POWER_FIELD] = power
+    elif isinstance(power, int) and power in {0, 1}:
+        values[WATER_AC_PANEL_POWER_FIELD] = bool(power)
+
+    fan = payload.get(WATER_AC_PANEL_FAN_FIELD)
+    if isinstance(fan, int) and not isinstance(fan, bool) and 0 <= fan <= 3:
+        values[WATER_AC_PANEL_FAN_FIELD] = fan
+
+    mode = payload.get(WATER_AC_PANEL_MODE_FIELD)
+    if isinstance(mode, int) and not isinstance(mode, bool) and mode in {0, 1, 3}:
+        values[WATER_AC_PANEL_MODE_FIELD] = mode
+
+    target_temperature = payload.get(WATER_AC_PANEL_TARGET_TEMPERATURE_FIELD)
+    if (
+        isinstance(target_temperature, int)
+        and not isinstance(target_temperature, bool)
+        and 5 <= target_temperature <= 35
+    ):
+        values[WATER_AC_PANEL_TARGET_TEMPERATURE_FIELD] = target_temperature
+
+    current_temperature = _number(payload.get(WATER_AC_PANEL_CURRENT_TEMPERATURE_FIELD))
+    if current_temperature is not None and -10 <= current_temperature <= 100:
+        values[WATER_AC_PANEL_CURRENT_TEMPERATURE_FIELD] = current_temperature
     return values
 
 

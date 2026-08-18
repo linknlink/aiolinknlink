@@ -66,6 +66,18 @@ PID `00000000000000000000000034150100` Modbus water meters expose:
 The profile is read-only. A missing instantaneous-flow field remains unknown;
 the integration does not fabricate a zero-flow reading.
 
+PID `0000000000000000000000002b160100` RF water-cooled air-conditioner
+panels expose:
+
+- one native climate entity with confirmed power, cool, heat, and fan-only
+  operating modes;
+- automatic, low, medium, and high fan speeds;
+- a 5-35 °C target temperature in 1 °C steps;
+- the panel's read-only indoor temperature.
+
+Every writable panel field is range-, enum-, and type-whitelisted. HA accepts
+a control only after the device response confirms every requested value.
+
 Gateway credentials, MQTT settings, network keys, raw snapshots, AES session
 keys, and unreviewed fields are deliberately excluded. Dynamic addition of new
 entity types while HA is running, Zigbee, other Modbus profiles, and other RF
@@ -111,9 +123,10 @@ exits unsuccessfully and prints the retained backup location.
 
 In HA, select **Settings → Devices & services → Add integration → LinknLink**,
 then enter the iBG LAN address. Leave **Local key** empty for an unlocked
-gateway. A locked gateway requires its existing 32-character hexadecimal local
-key; the integration stores it only in config-entry data and never exposes it
-through an entity or log message.
+gateway; after successful pairing, the integration stores the negotiated key
+in config-entry data for restart-safe reconnection. A locked gateway requires
+its existing 32-character hexadecimal local key. The integration never exposes
+either form of key through an entity or log message.
 
 ## Verification
 
@@ -133,8 +146,9 @@ entities: two switches, eleven sensors, three binary sensors, and one number.
 Each PID `93150100` Modbus air conditioner has two entities: one climate entity
 and one diagnostic fault-code sensor. Each PID `0f160100` Modbus multifunction
 sensor has four measurement entities. Each PID `34150100` Modbus water meter
-has two entities: cumulative water and instantaneous flow. Counts can differ
-on another gateway.
+has two entities: cumulative water and instantaneous flow. Each PID `2b160100`
+water-cooled air-conditioner panel has one climate entity. Counts can differ on
+another gateway.
 
 ## Upgrade and rollback
 

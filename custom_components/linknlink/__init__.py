@@ -23,7 +23,7 @@ from homeassistant.helpers import device_registry as dr  # noqa: E402
 
 from aiolinknlink import IbgClient, IbgError  # noqa: E402
 
-from .const import CONF_LOCAL_KEY, PLATFORMS  # noqa: E402
+from .const import CONF_LOCAL_KEY, PLATFORMS, resolve_local_key_hex  # noqa: E402
 from .coordinator import IbgDataUpdateCoordinator  # noqa: E402
 
 LinknLinkConfigEntry: TypeAlias = ConfigEntry[IbgDataUpdateCoordinator]
@@ -39,6 +39,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: LinknLinkConfigEntry) ->
         session = await client.connect(device, local_key=local_key)
     except IbgError as err:
         raise ConfigEntryNotReady(f"Could not connect to iBG gateway: {err}") from err
+    if local_key is None and session.session_key is not None:
+        stored_local_key_hex = resolve_local_key_hex(local_key_hex, session.session_key)
+        local_key = bytes.fromhex(stored_local_key_hex)
+        hass.config_entries.async_update_entry(
+            entry,
+            data={**entry.data, CONF_LOCAL_KEY: stored_local_key_hex},
+        )
     coordinator = IbgDataUpdateCoordinator(hass, client, device, session, local_key=local_key)
     await coordinator.async_config_entry_first_refresh()
     await coordinator.async_start_push()

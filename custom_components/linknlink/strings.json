@@ -48,7 +48,10 @@
     },
     "event": {"key": {"name": "Key"}},
     "number": {"voltage_output": {"name": "Voltage output"}},
-    "climate": {"air_conditioner": {"name": "Air conditioner"}},
+    "climate": {
+      "air_conditioner": {"name": "Air conditioner"},
+      "water_ac_panel": {"name": "Water-cooled air conditioner"}
+    },
     "switch": {
       "switch_1": {"name": "Switch 1"},
       "switch_2": {"name": "Switch 2"},

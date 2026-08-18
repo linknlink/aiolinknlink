@@ -48,7 +48,10 @@
     },
     "event": {"key": {"name": "按键"}},
     "number": {"voltage_output": {"name": "电压输出"}},
-    "climate": {"air_conditioner": {"name": "空调"}},
+    "climate": {
+      "air_conditioner": {"name": "空调"},
+      "water_ac_panel": {"name": "水冷空调"}
+    },
     "switch": {
       "switch_1": {"name": "开关1"},
       "switch_2": {"name": "开关2"},
