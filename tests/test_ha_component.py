@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -27,6 +27,7 @@ from aiolinknlink import (  # noqa: E402
     PID_BOX7_CONTROLLER,
     PID_DTU,
     PID_EAC1_PANEL,
+    PID_ESENSOR_2000,
     PID_MODBUS_AC,
     PID_MODBUS_ELECTRICITY_METER,
     PID_MODBUS_MULTI_SENSOR,
@@ -40,8 +41,10 @@ from aiolinknlink import (  # noqa: E402
     IbgSubDeviceState,
 )
 from custom_components.linknlink.binary_sensor import (  # noqa: E402
+    BINARY_SENSORS_BY_PID,
     DTU_BINARY_SENSORS,
     MODBUS_ELECTRICITY_METER_BINARY_SENSORS,
+    SR3_BINARY_SENSORS,
     IbgBinarySensor,
 )
 from custom_components.linknlink.climate import (  # noqa: E402
@@ -55,6 +58,12 @@ from custom_components.linknlink.coordinator import (  # noqa: E402
     IbgDataUpdateCoordinator,
 )
 from custom_components.linknlink.entity import IbgCoordinatorEntity  # noqa: E402
+from custom_components.linknlink.event import (  # noqa: E402
+    EVENT_TYPE_DOUBLE_PRESSED,
+    EVENT_TYPE_LONG_PRESSED,
+    EVENT_TYPE_PRESSED,
+    IbgEsensorKeyEvent,
+)
 from custom_components.linknlink.number import IbgDtuVoltageOutput  # noqa: E402
 from custom_components.linknlink.sensor import (  # noqa: E402
     BOX7_SENSORS,
@@ -109,6 +118,7 @@ def _coordinator(client: object) -> IbgDataUpdateCoordinator:
     coordinator.push_subscription = None
     coordinator._last_keypressed = {}
     coordinator._key_event_counts = {}
+    coordinator._key_event_values = {}
     return coordinator
 
 
@@ -183,6 +193,62 @@ def test_coordinator_counts_only_two_to_one_key_edges() -> None:
     coordinator._track_key_edges({SUBDEVICE.did: key_state(2)})
 
     assert coordinator._key_event_counts == {SUBDEVICE.did: 1}
+
+
+def test_coordinator_tracks_each_esensor_2000_push_without_poll_false_events() -> None:
+    device = IbgSubDevice(
+        did="00112233445566778899aabbccddeef6",
+        pid=PID_ESENSOR_2000,
+        name="RF-4102563d",
+        online=True,
+    )
+    coordinator = _coordinator(AsyncMock())
+
+    def key_state(value: int) -> IbgSubDeviceState:
+        return IbgSubDeviceState(device, {"keypressed": value}, datetime.now(UTC))
+
+    coordinator._track_key_edges({device.did: key_state(1)})
+    assert coordinator._key_event_counts == {}
+    coordinator._track_key_edges({device.did: key_state(1)})
+    assert coordinator._key_event_counts == {}
+    coordinator._track_key_edges({device.did: key_state(1)}, from_push=True)
+    coordinator._track_key_edges({device.did: key_state(1)}, from_push=True)
+    coordinator._track_key_edges({device.did: key_state(3)}, from_push=True)
+    coordinator._track_key_edges({device.did: key_state(4)}, from_push=True)
+
+    assert coordinator._key_event_counts == {device.did: 4}
+    assert coordinator._key_event_values == {device.did: 4}
+
+
+def test_esensor_2000_event_entity_maps_all_documented_actions() -> None:
+    device = IbgSubDevice(
+        did="00112233445566778899aabbccddeef6",
+        pid=PID_ESENSOR_2000,
+        name="RF-4102563d",
+        online=True,
+    )
+    state = IbgSubDeviceState(device, {"keypressed": 0}, datetime.now(UTC))
+    coordinator = object.__new__(IbgDataUpdateCoordinator)
+    coordinator.device = GATEWAY
+    coordinator.data = IbgCoordinatorData((device,), {device.did: state})
+    coordinator.last_update_success = True
+    entity = IbgEsensorKeyEvent(coordinator, device.did)
+    entity._trigger_event = Mock()  # type: ignore[method-assign]
+    entity.async_write_ha_state = Mock()  # type: ignore[method-assign]
+
+    for count, value, expected in (
+        (1, 1, EVENT_TYPE_PRESSED),
+        (2, 3, EVENT_TYPE_DOUBLE_PRESSED),
+        (3, 4, EVENT_TYPE_LONG_PRESSED),
+    ):
+        coordinator.data = IbgCoordinatorData(
+            (device,),
+            {device.did: state},
+            {device.did: count},
+            {device.did: value},
+        )
+        entity._handle_coordinator_update()
+        entity._trigger_event.assert_called_with(expected, {"keypressed": value})
 
 
 async def test_box7_switch_uses_confirmed_coordinator_control() -> None:
@@ -451,6 +517,8 @@ def test_entity_catalogs_are_pid_specific() -> None:
     assert SENSORS_BY_PID[PID_MODBUS_WATER_METER] == MODBUS_WATER_SENSORS
     assert SENSORS_BY_PID[PID_MODBUS_ELECTRICITY_METER] == MODBUS_ELECTRICITY_METER_SENSORS
     assert SENSORS_BY_PID[PID_EAC1_PANEL] == EAC1_SENSORS
+    assert SENSORS_BY_PID[PID_ESENSOR_2000] == SR3_SENSORS
+    assert BINARY_SENSORS_BY_PID[PID_ESENSOR_2000] == SR3_BINARY_SENSORS
     assert MODBUS_WATER_SENSORS[0].device_class == SensorDeviceClass.WATER
     assert MODBUS_WATER_SENSORS[0].native_unit_of_measurement == UnitOfVolume.CUBIC_METERS
     assert MODBUS_WATER_SENSORS[0].state_class == SensorStateClass.TOTAL_INCREASING
@@ -514,6 +582,7 @@ def test_entity_translations_cover_parameter_derived_names() -> None:
         number_names = catalog["entity"]["number"]
         switch_names = catalog["entity"]["switch"]
         climate_names = catalog["entity"]["climate"]
+        event_names = catalog["entity"]["event"]
         assert all(description.translation_key in sensor_names for description in BOX7_SENSORS)
         assert all(description.translation_key in sensor_names for description in DTU_ANALOG_INPUTS)
         assert all(description.translation_key in sensor_names for description in MODBUS_MULTI_SENSORS)
@@ -534,4 +603,10 @@ def test_entity_translations_cover_parameter_derived_names() -> None:
         assert "air_conditioner" in climate_names
         assert "water_ac_panel" in climate_names
         assert "eac1_air_conditioner" in climate_names
+        assert "esensor_key" in event_names
+        assert set(event_names["esensor_key"]["event_type"]) == {
+            EVENT_TYPE_PRESSED,
+            EVENT_TYPE_DOUBLE_PRESSED,
+            EVENT_TYPE_LONG_PRESSED,
+        }
         assert len({switch_names[f"switch_{channel}"]["name"] for channel in range(1, 8)}) == 7

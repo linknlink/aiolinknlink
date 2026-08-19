@@ -18,6 +18,7 @@ SUBDEVICE_MODELS = {
     "000000000000000000000000ed140100": "Modbus electricity meter",
     "0000000000000000000000002b160100": "Water-cooled air-conditioner panel",
     "0000000000000000000000009b100100": "433 smart air-conditioner panel eAC1",
+    "00000000000000000000000043160100": "eSensor-2000",
 }
 
 

@@ -46,6 +46,9 @@
 - Add PID `9b100100` 433 MHz eAC1 smart air-conditioner panels with a native HA
   climate entity, confirmed power/mode/fan/temperature writes, indoor humidity,
   a confirmed key-lock switch, and a device-type diagnostic.
+- Add read-only PID `43160100` eSensor-2000 devices with documented temperature
+  and humidity scaling, battery, illuminance, occupancy, and press,
+  double-press, and long-press HA events.
 
 ## 0.3.2
 

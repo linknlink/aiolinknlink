@@ -24,6 +24,7 @@ PID_MODBUS_WATER_METER = "00000000000000000000000034150100"
 PID_MODBUS_ELECTRICITY_METER = "000000000000000000000000ed140100"
 PID_WATER_AC_PANEL = "0000000000000000000000002b160100"
 PID_EAC1_PANEL = "0000000000000000000000009b100100"
+PID_ESENSOR_2000 = "00000000000000000000000043160100"
 SUPPORTED_SUBDEVICE_PIDS = frozenset(
     {
         PID_SR3_SENSOR,
@@ -35,6 +36,7 @@ SUPPORTED_SUBDEVICE_PIDS = frozenset(
         PID_MODBUS_ELECTRICITY_METER,
         PID_WATER_AC_PANEL,
         PID_EAC1_PANEL,
+        PID_ESENSOR_2000,
     }
 )
 BOX7_POWER_FIELDS = frozenset(f"pwr{channel}" for channel in range(1, 8))
@@ -480,6 +482,8 @@ def normalize_subdevice_state(pid: str, payload: dict[str, Any]) -> dict[str, in
         return _normalize_water_ac_panel_state(payload)
     if pid.lower() == PID_EAC1_PANEL:
         return _normalize_eac1_state(payload)
+    if pid.lower() == PID_ESENSOR_2000:
+        return _normalize_esensor_2000_state(payload)
     if pid.lower() != PID_SR3_SENSOR:
         return {}
     values: dict[str, int | float | bool] = {}
@@ -779,6 +783,34 @@ def _normalize_eac1_state(payload: dict[str, Any]) -> dict[str, int | float | bo
             values[EAC1_DEVICE_TYPE_FIELD] = "water_cooled"
         elif device_type == 1:
             values[EAC1_DEVICE_TYPE_FIELD] = "vrv"
+    return values
+
+
+def _normalize_esensor_2000_state(payload: dict[str, Any]) -> dict[str, int | float | bool]:
+    """Normalize the reviewed eSensor-2000 environmental sensor profile."""
+    values: dict[str, int | float | bool] = {}
+    temperature = _number(payload.get("envtemp"))
+    if temperature is not None and -400 <= temperature <= 12_500:
+        values["temperature"] = temperature / 10
+    humidity = _number(payload.get("envhumid"))
+    if humidity is not None and 0 <= humidity <= 10_000:
+        values["humidity"] = humidity / 100
+    battery = _number(payload.get("battery"))
+    if battery is not None and 0 <= battery <= 100:
+        values["battery"] = round(battery)
+    illuminance = _number(payload.get("envlux"))
+    if illuminance is not None and 0 <= illuminance <= 65_535:
+        values["illuminance"] = illuminance
+
+    presence = payload.get("pir_detected")
+    if isinstance(presence, bool):
+        values["occupancy"] = presence
+    elif isinstance(presence, int) and not isinstance(presence, bool) and presence in {0, 1}:
+        values["occupancy"] = bool(presence)
+
+    keypressed = payload.get("keypressed")
+    if isinstance(keypressed, int) and not isinstance(keypressed, bool) and keypressed in {0, 1, 3, 4}:
+        values["keypressed"] = keypressed
     return values
 
 

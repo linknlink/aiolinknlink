@@ -91,8 +91,8 @@ Supported iBG profiles include the RF environment/occupancy sensor, the
 seven-channel controller, the DTU, PID `93150100` Modbus air conditioners, PID
 `0f160100` Modbus multifunction sensors, PID `34150100` Modbus water meters,
 PID `ed140100` Modbus electricity meters, PID `2b160100` RF water-cooled
-air-conditioner panels, and PID `9b100100` 433 MHz eAC1 smart air-conditioner
-panels. The Home Assistant
+air-conditioner panels, PID `9b100100` 433 MHz eAC1 smart air-conditioner
+panels, and PID `43160100` eSensor-2000 environmental sensors. The Home Assistant
 integration exposes both air-conditioner profiles as native climate entities
 with confirmed power, mode, fan-speed, and target-temperature writes.
 Multifunction sensors expose temperature, carbon dioxide, humidity, and
@@ -104,6 +104,8 @@ reviewed Modbus diagnostics. The electricity-meter profile is read-only.
 eAC1 panels expose a native climate entity with confirmed power, mode,
 fan-speed, and 16-30 °C target-temperature controls, plus indoor humidity, a
 confirmed key-lock switch, and a device-type diagnostic.
+eSensor-2000 devices expose temperature, humidity, battery, illuminance,
+occupancy, and physical key events for press, double-press, and long-press.
 
 Locked gateways can reuse their existing 16-byte local key without changing the
 gateway lock setting:

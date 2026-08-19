@@ -88,7 +88,17 @@
       "phase_b_overload": {"name": "Phase B overload"},
       "phase_c_overload": {"name": "Phase C overload"}
     },
-    "event": {"key": {"name": "Key"}},
+    "event": {
+      "key": {"name": "Key"},
+      "esensor_key": {
+        "name": "Key",
+        "event_type": {
+          "pressed": "Pressed",
+          "double_pressed": "Double pressed",
+          "long_pressed": "Long pressed"
+        }
+      }
+    },
     "number": {"voltage_output": {"name": "Voltage output"}},
     "climate": {
       "air_conditioner": {"name": "Air conditioner"},
