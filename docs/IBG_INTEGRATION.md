@@ -121,6 +121,17 @@ PID `00000000000000000000000043160100` eSensor-2000 devices expose:
 The profile is read-only. Initial or repeatedly polled key values do not create
 false HA events; only a newly observed documented key action is emitted.
 
+PID `000000000000000000000000d7140100` eight-channel light switches expose:
+
+- seven independently confirmed circuit switches (`pwr1` through `pwr7`);
+- one confirmed all-on/all-off switch backed by `mpwr`;
+- immediate physical-state updates through authenticated iBG pushes.
+
+The integration sends `mpwr=0` for all off and `mpwr=1` for all on. The
+device's `mpwr=2` value means keep the individual outputs unchanged, so HA
+derives the master switch state from the seven actual circuit states instead
+of treating `2` as an on/off state.
+
 Gateway credentials, MQTT settings, network keys, raw snapshots, AES session
 keys, and unreviewed fields are deliberately excluded. Dynamic addition of new
 entity types while HA is running, Zigbee, other Modbus profiles, and other RF
@@ -197,7 +208,9 @@ differ on another gateway. Each PID `9b100100` eAC1 panel has four entities:
 one climate entity, one humidity sensor, one key-lock switch, and one
 disabled-by-default device-type diagnostic sensor. Each PID `43160100`
 eSensor-2000 has six entities: four measurement sensors, one occupancy binary
-sensor, and one physical-key event entity.
+sensor, and one physical-key event entity. Each PID `d7140100` eight-channel
+light switch has eight switch entities: seven circuits and one all-on/all-off
+control.
 
 ## Upgrade and rollback
 

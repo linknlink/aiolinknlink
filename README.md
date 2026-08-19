@@ -106,6 +106,10 @@ fan-speed, and 16-30 °C target-temperature controls, plus indoor humidity, a
 confirmed key-lock switch, and a device-type diagnostic.
 eSensor-2000 devices expose temperature, humidity, battery, illuminance,
 occupancy, and physical key events for press, double-press, and long-press.
+PID `d7140100` eight-channel light switches expose seven individual circuit
+switches plus one all-on/all-off switch. The integration sends only `0` or `1`
+for `mpwr`; a reported `2` means keep the existing circuit states and is never
+misrepresented as an on/off value.
 
 Locked gateways can reuse their existing 16-byte local key without changing the
 gateway lock setting:

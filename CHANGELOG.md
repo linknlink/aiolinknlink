@@ -49,6 +49,10 @@
 - Add read-only PID `43160100` eSensor-2000 devices with documented temperature
   and humidity scaling, battery, illuminance, occupancy, and press,
   double-press, and long-press HA events.
+- Add PID `d7140100` eight-channel light switches with seven independently
+  confirmed circuit switches and one confirmed all-on/all-off switch. Treat
+  the reported `mpwr=2` value as "keep current outputs" and derive the HA
+  master state from the seven actual circuits.
 
 ## 0.3.2
 

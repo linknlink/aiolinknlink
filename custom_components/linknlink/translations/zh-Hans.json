@@ -113,6 +113,7 @@
       "switch_5": {"name": "开关5"},
       "switch_6": {"name": "开关6"},
       "switch_7": {"name": "开关7"},
+      "all_switches": {"name": "全部开关"},
       "key_lock": {"name": "按键锁定"}
     }
   }
