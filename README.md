@@ -90,9 +90,10 @@ asyncio.run(main())
 Supported iBG profiles include the RF environment/occupancy sensor, the
 seven-channel controller, the DTU, PID `93150100` Modbus air conditioners, PID
 `0f160100` Modbus multifunction sensors, PID `34150100` Modbus water meters,
-PID `ed140100` Modbus electricity meters, PID `2b160100` RF water-cooled
-air-conditioner panels, PID `9b100100` 433 MHz eAC1 smart air-conditioner
-panels, and PID `43160100` eSensor-2000 environmental sensors. The Home Assistant
+PID `ed140100` Modbus electricity meters, PID `d10f0100` DLT645 electricity
+meters, PID `2b160100` RF water-cooled air-conditioner panels, PID `9b100100`
+433 MHz eAC1 smart air-conditioner panels, and PID `43160100` eSensor-2000
+environmental sensors. The Home Assistant
 integration exposes both air-conditioner profiles as native climate entities
 with confirmed power, mode, fan-speed, and target-temperature writes.
 Multifunction sensors expose temperature, carbon dioxide, humidity, and
@@ -100,7 +101,10 @@ illuminance measurements. Water meters expose cumulative consumption and
 instantaneous volume flow when reported by the device. Electricity meters
 expose active energy, phase and line voltage, phase current, active and
 reactive power, power factor, harmonic current, frequency, overload, and
-reviewed Modbus diagnostics. The electricity-meter profile is read-only.
+reviewed Modbus diagnostics. DLT645 electricity meters expose the documented
+active energy, phase voltage/current, active power, power factor, harmonic
+current, overload, electrical-parameter, and address fields. Both
+electricity-meter profiles are read-only.
 eAC1 panels expose a native climate entity with confirmed power, mode,
 fan-speed, and 16-30 °C target-temperature controls, plus indoor humidity, a
 confirmed key-lock switch, and a device-type diagnostic.

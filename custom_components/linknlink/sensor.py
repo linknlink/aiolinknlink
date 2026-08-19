@@ -25,6 +25,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from aiolinknlink import (
     PID_BOX7_CONTROLLER,
+    PID_DLT645_ELECTRICITY_METER,
     PID_DTU,
     PID_EAC1_PANEL,
     PID_ESENSOR_2000,
@@ -374,6 +375,41 @@ MODBUS_ELECTRICITY_METER_SENSORS = (
     ),
 )
 
+DLT645_MEASUREMENT_KEYS = frozenset(
+    {
+        "Combenergy",
+        "totalconsum",
+        "Reverenergy",
+        *(f"{phase}phasevolt" for phase in "ABC"),
+        *(f"{phase}phasecurrent" for phase in "ABC"),
+        "power",
+        *(f"{phase}phasepower" for phase in "ABC"),
+        "Combpowerfactor",
+        *(f"{phase}powerfactor" for phase in "ABC"),
+        *(f"{phase}phasehmccurrent" for phase in "ABC"),
+    }
+)
+DLT645_ELECTRICITY_METER_SENSORS = tuple(
+    description for description in MODBUS_ELECTRICITY_METER_SENSORS if description.key in DLT645_MEASUREMENT_KEYS
+) + (
+    SensorEntityDescription(
+        key="elec_param",
+        name="Electrical parameters",
+        translation_key="electrical_parameters",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        icon="mdi:text-box-outline",
+    ),
+    SensorEntityDescription(
+        key="address",
+        name="DLT645 address",
+        translation_key="dlt645_address",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        icon="mdi:numeric",
+    ),
+)
+
 
 @dataclass(frozen=True, kw_only=True)
 class DtuAnalogInputEntityDescription(SensorEntityDescription):
@@ -402,6 +438,7 @@ SENSORS_BY_PID = {
     PID_MODBUS_MULTI_SENSOR: MODBUS_MULTI_SENSORS,
     PID_MODBUS_WATER_METER: MODBUS_WATER_SENSORS,
     PID_MODBUS_ELECTRICITY_METER: MODBUS_ELECTRICITY_METER_SENSORS,
+    PID_DLT645_ELECTRICITY_METER: DLT645_ELECTRICITY_METER_SENSORS,
     PID_EAC1_PANEL: EAC1_SENSORS,
 }
 

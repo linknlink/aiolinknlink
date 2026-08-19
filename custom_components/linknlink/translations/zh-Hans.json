@@ -64,6 +64,7 @@
       "reported_device_name": {"name": "设备上报名称"},
       "electrical_parameters": {"name": "电参量配置"},
       "modbus_address": {"name": "Modbus地址"},
+      "dlt645_address": {"name": "DLT645地址"},
       "transformer_ratio": {"name": "互感器变比"},
       "modbus_read_result": {
         "name": "Modbus读取结果",

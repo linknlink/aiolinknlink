@@ -64,6 +64,7 @@
       "reported_device_name": {"name": "Reported device name"},
       "electrical_parameters": {"name": "Electrical parameters"},
       "modbus_address": {"name": "Modbus address"},
+      "dlt645_address": {"name": "DLT645 address"},
       "transformer_ratio": {"name": "Transformer ratio"},
       "modbus_read_result": {
         "name": "Modbus read result",

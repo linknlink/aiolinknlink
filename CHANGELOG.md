@@ -56,6 +56,10 @@
 - Fix PID `d7140100` all-on/all-off writes being reported as failed when the
   SET response confirms `mpwr=0/1` before its individual `pwr1` through `pwr7`
   fields finish updating.
+- Add read-only PID `d10f0100` DLT645 electricity meters with 20 documented
+  electrical measurements, three phase-overload problem sensors, and two
+  disabled-by-default diagnostics. Relay control and unreviewed fields remain
+  deliberately unavailable.
 
 ## 0.3.2
 
