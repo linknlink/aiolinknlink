@@ -24,6 +24,7 @@ from homeassistant.const import (  # noqa: E402
 from homeassistant.helpers.update_coordinator import UpdateFailed  # noqa: E402
 
 from aiolinknlink import (  # noqa: E402
+    PID_8_CHANNEL_LIGHT_SWITCH,
     PID_BOX7_CONTROLLER,
     PID_DTU,
     PID_EAC1_PANEL,
@@ -83,6 +84,8 @@ from custom_components.linknlink.switch import (  # noqa: E402
     BOX7_SWITCHES,
     DTU_SWITCHES,
     EAC1_SWITCHES,
+    LIGHT8_SWITCHES,
+    SWITCHES_BY_PID,
     IbgPowerSwitch,
 )
 
@@ -271,6 +274,31 @@ async def test_box7_switch_uses_confirmed_coordinator_control() -> None:
     assert entity.is_on is False
     await entity.async_turn_on()
     coordinator.async_set_subdevice_state.assert_awaited_once_with(device.did, {"pwr1": True})
+
+
+async def test_8_channel_light_switch_exposes_circuits_and_master_control() -> None:
+    device = IbgSubDevice(
+        did="00112233445566778899aabbccddeef6",
+        pid=PID_8_CHANNEL_LIGHT_SWITCH,
+        name="RF-light8",
+        online=True,
+    )
+    coordinator = object.__new__(IbgDataUpdateCoordinator)
+    coordinator.device = GATEWAY
+    coordinator.data = IbgCoordinatorData(
+        (device,),
+        {device.did: IbgSubDeviceState(device, {"pwr1": False, "mpwr": False}, datetime.now(UTC))},
+    )
+    coordinator.last_update_success = True
+    coordinator.async_set_subdevice_state = AsyncMock()  # type: ignore[method-assign]
+
+    circuit = IbgPowerSwitch(coordinator, device.did, LIGHT8_SWITCHES[0])
+    master = IbgPowerSwitch(coordinator, device.did, LIGHT8_SWITCHES[-1])
+
+    assert circuit.is_on is False
+    assert master.is_on is False
+    await master.async_turn_on()
+    coordinator.async_set_subdevice_state.assert_awaited_once_with(device.did, {"mpwr": True})
 
 
 async def test_dtu_entities_use_input_modes_and_confirmed_controls() -> None:
@@ -498,6 +526,7 @@ async def test_eac1_entities_map_state_and_use_confirmed_controls() -> None:
 def test_entity_catalogs_are_pid_specific() -> None:
     assert len(BOX7_SWITCHES) == 7
     assert len(BOX7_SENSORS) == 12
+    assert len(LIGHT8_SWITCHES) == 8
     assert len(DTU_SWITCHES) == 2
     assert len(EAC1_SWITCHES) == 1
     assert len(DTU_ELECTRICAL_SENSORS) == 8
@@ -519,6 +548,7 @@ def test_entity_catalogs_are_pid_specific() -> None:
     assert SENSORS_BY_PID[PID_EAC1_PANEL] == EAC1_SENSORS
     assert SENSORS_BY_PID[PID_ESENSOR_2000] == SR3_SENSORS
     assert BINARY_SENSORS_BY_PID[PID_ESENSOR_2000] == SR3_BINARY_SENSORS
+    assert SWITCHES_BY_PID[PID_8_CHANNEL_LIGHT_SWITCH] == LIGHT8_SWITCHES
     assert MODBUS_WATER_SENSORS[0].device_class == SensorDeviceClass.WATER
     assert MODBUS_WATER_SENSORS[0].native_unit_of_measurement == UnitOfVolume.CUBIC_METERS
     assert MODBUS_WATER_SENSORS[0].state_class == SensorStateClass.TOTAL_INCREASING
@@ -587,9 +617,7 @@ def test_entity_translations_cover_parameter_derived_names() -> None:
         assert all(description.translation_key in sensor_names for description in DTU_ANALOG_INPUTS)
         assert all(description.translation_key in sensor_names for description in MODBUS_MULTI_SENSORS)
         assert all(description.translation_key in sensor_names for description in MODBUS_WATER_SENSORS)
-        assert all(
-            description.translation_key in sensor_names for description in MODBUS_ELECTRICITY_METER_SENSORS
-        )
+        assert all(description.translation_key in sensor_names for description in MODBUS_ELECTRICITY_METER_SENSORS)
         assert all(description.translation_key in sensor_names for description in EAC1_SENSORS)
         assert all(description.translation_key in binary_sensor_names for description in DTU_BINARY_SENSORS)
         assert all(
@@ -597,6 +625,7 @@ def test_entity_translations_cover_parameter_derived_names() -> None:
             for description in MODBUS_ELECTRICITY_METER_BINARY_SENSORS
         )
         assert all(description.translation_key in switch_names for description in BOX7_SWITCHES)
+        assert all(description.translation_key in switch_names for description in LIGHT8_SWITCHES)
         assert all(description.translation_key in switch_names for description in EAC1_SWITCHES)
         assert "voltage_output" in number_names
         assert "fault_code" in sensor_names

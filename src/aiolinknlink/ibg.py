@@ -25,6 +25,7 @@ PID_MODBUS_ELECTRICITY_METER = "000000000000000000000000ed140100"
 PID_WATER_AC_PANEL = "0000000000000000000000002b160100"
 PID_EAC1_PANEL = "0000000000000000000000009b100100"
 PID_ESENSOR_2000 = "00000000000000000000000043160100"
+PID_8_CHANNEL_LIGHT_SWITCH = "000000000000000000000000d7140100"
 SUPPORTED_SUBDEVICE_PIDS = frozenset(
     {
         PID_SR3_SENSOR,
@@ -37,9 +38,13 @@ SUPPORTED_SUBDEVICE_PIDS = frozenset(
         PID_WATER_AC_PANEL,
         PID_EAC1_PANEL,
         PID_ESENSOR_2000,
+        PID_8_CHANNEL_LIGHT_SWITCH,
     }
 )
 BOX7_POWER_FIELDS = frozenset(f"pwr{channel}" for channel in range(1, 8))
+LIGHT8_POWER_FIELDS = frozenset(f"pwr{channel}" for channel in range(1, 8))
+LIGHT8_MASTER_POWER_FIELD = "mpwr"
+LIGHT8_WRITABLE_FIELDS = LIGHT8_POWER_FIELDS | {LIGHT8_MASTER_POWER_FIELD}
 DTU_POWER_FIELDS = frozenset(f"pwr{channel}" for channel in range(1, 3))
 DTU_VOLTAGE_OUTPUT_FIELD = "voltage"
 DTU_WRITABLE_FIELDS = DTU_POWER_FIELDS | {DTU_VOLTAGE_OUTPUT_FIELD}
@@ -319,7 +324,14 @@ class IbgClient:
     ) -> IbgSubDeviceState:
         """Set reviewed writable fields and return the confirmed device state."""
         pid = device.pid.lower()
-        if pid not in {PID_BOX7_CONTROLLER, PID_DTU, PID_MODBUS_AC, PID_WATER_AC_PANEL, PID_EAC1_PANEL}:
+        if pid not in {
+            PID_BOX7_CONTROLLER,
+            PID_8_CHANNEL_LIGHT_SWITCH,
+            PID_DTU,
+            PID_MODBUS_AC,
+            PID_WATER_AC_PANEL,
+            PID_EAC1_PANEL,
+        }:
             raise IbgProtocolError(f"unsupported writable iBG subdevice PID: {device.pid}")
         if not device.online:
             raise IbgConnectionError(f"iBG subdevice is offline: {device.did}")
@@ -327,6 +339,8 @@ class IbgClient:
             raise IbgProtocolError("at least one iBG subdevice change is required")
         if pid == PID_BOX7_CONTROLLER:
             writable_fields = BOX7_POWER_FIELDS
+        elif pid == PID_8_CHANNEL_LIGHT_SWITCH:
+            writable_fields = LIGHT8_WRITABLE_FIELDS
         elif pid == PID_DTU:
             writable_fields = DTU_WRITABLE_FIELDS
         elif pid == PID_MODBUS_AC:
@@ -344,6 +358,7 @@ class IbgClient:
         for key, value in changes.items():
             if (
                 key in BOX7_POWER_FIELDS
+                or key in LIGHT8_WRITABLE_FIELDS
                 or key in DTU_POWER_FIELDS
                 or key in {MODBUS_AC_POWER_FIELD, WATER_AC_PANEL_POWER_FIELD, EAC1_POWER_FIELD}
                 or key == EAC1_KEY_LOCK_FIELD
@@ -484,6 +499,8 @@ def normalize_subdevice_state(pid: str, payload: dict[str, Any]) -> dict[str, in
         return _normalize_eac1_state(payload)
     if pid.lower() == PID_ESENSOR_2000:
         return _normalize_esensor_2000_state(payload)
+    if pid.lower() == PID_8_CHANNEL_LIGHT_SWITCH:
+        return _normalize_8_channel_light_switch_state(payload)
     if pid.lower() != PID_SR3_SENSOR:
         return {}
     values: dict[str, int | float | bool] = {}
@@ -538,6 +555,30 @@ def _normalize_box7_state(payload: dict[str, Any]) -> dict[str, int | float | bo
         raw = _number(payload.get(key))
         if raw is not None and minimum <= raw <= maximum:
             values[key] = raw / divisor
+    return values
+
+
+def _normalize_8_channel_light_switch_state(payload: dict[str, Any]) -> dict[str, bool]:
+    """Normalize seven light circuits plus their all-on/all-off control."""
+    values: dict[str, bool] = {}
+    for key in LIGHT8_POWER_FIELDS:
+        raw = payload.get(key)
+        if isinstance(raw, bool):
+            values[key] = raw
+        elif isinstance(raw, int) and raw in {0, 1}:
+            values[key] = bool(raw)
+
+    # mpwr is a command field: 0 means all off, 1 means all on, and 2 means
+    # keep the individual outputs unchanged. Prefer the seven actual circuit
+    # states whenever all are present so "keep" never becomes a false HA state.
+    if LIGHT8_POWER_FIELDS <= values.keys():
+        values[LIGHT8_MASTER_POWER_FIELD] = all(values[key] for key in LIGHT8_POWER_FIELDS)
+    else:
+        master = payload.get(LIGHT8_MASTER_POWER_FIELD)
+        if isinstance(master, bool):
+            values[LIGHT8_MASTER_POWER_FIELD] = master
+        elif isinstance(master, int) and master in {0, 1}:
+            values[LIGHT8_MASTER_POWER_FIELD] = bool(master)
     return values
 
 

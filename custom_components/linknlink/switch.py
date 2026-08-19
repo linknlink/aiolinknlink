@@ -8,7 +8,14 @@ from homeassistant.components.switch import SwitchEntity, SwitchEntityDescriptio
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from aiolinknlink import EAC1_KEY_LOCK_FIELD, PID_BOX7_CONTROLLER, PID_DTU, PID_EAC1_PANEL
+from aiolinknlink import (
+    EAC1_KEY_LOCK_FIELD,
+    LIGHT8_MASTER_POWER_FIELD,
+    PID_8_CHANNEL_LIGHT_SWITCH,
+    PID_BOX7_CONTROLLER,
+    PID_DTU,
+    PID_EAC1_PANEL,
+)
 
 from . import LinknLinkConfigEntry
 from .entity import IbgCoordinatorEntity
@@ -22,6 +29,13 @@ BOX7_SWITCHES = tuple(
     for channel in range(1, 8)
 )
 DTU_SWITCHES = BOX7_SWITCHES[:2]
+LIGHT8_SWITCHES = BOX7_SWITCHES + (
+    SwitchEntityDescription(
+        key=LIGHT8_MASTER_POWER_FIELD,
+        name="All switches",
+        translation_key="all_switches",
+    ),
+)
 EAC1_SWITCHES = (
     SwitchEntityDescription(
         key=EAC1_KEY_LOCK_FIELD,
@@ -32,6 +46,7 @@ EAC1_SWITCHES = (
 )
 SWITCHES_BY_PID = {
     PID_BOX7_CONTROLLER: BOX7_SWITCHES,
+    PID_8_CHANNEL_LIGHT_SWITCH: LIGHT8_SWITCHES,
     PID_DTU: DTU_SWITCHES,
     PID_EAC1_PANEL: EAC1_SWITCHES,
 }

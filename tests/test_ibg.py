@@ -8,6 +8,7 @@ import struct
 import pytest
 
 from aiolinknlink import (
+    PID_8_CHANNEL_LIGHT_SWITCH,
     PID_DTU,
     PID_EAC1_PANEL,
     PID_ESENSOR_2000,
@@ -40,6 +41,7 @@ DTU_DID = "00112233445566778899aabbccddeef1"
 MODBUS_AC_DID = "00112233445566778899aabbccddeef2"
 WATER_AC_PANEL_DID = "00112233445566778899aabbccddeef3"
 EAC1_DID = "00112233445566778899aabbccddeef4"
+LIGHT8_DID = "00112233445566778899aabbccddeef6"
 
 
 def _response_packet(request: bytes, key: bytes, response: bytes) -> bytes:
@@ -200,9 +202,7 @@ def test_esensor_2000_state_normalization_uses_documented_scaling_and_enums() ->
 
 
 def test_esensor_2000_state_normalization_handles_unknown_and_invalid_values() -> None:
-    assert normalize_subdevice_state(PID_ESENSOR_2000, {"pir_detected": 3, "keypressed": 0}) == {
-        "keypressed": 0
-    }
+    assert normalize_subdevice_state(PID_ESENSOR_2000, {"pir_detected": 3, "keypressed": 0}) == {"keypressed": 0}
     assert (
         normalize_subdevice_state(
             PID_ESENSOR_2000,
@@ -257,6 +257,62 @@ def test_box7_state_normalization_uses_reviewed_fields_and_scales() -> None:
         "Aphasecurrent": 1.234,
         "Bphasecurrent": 999.999,
     }
+
+
+def test_8_channel_light_switch_normalizes_circuits_and_master_state() -> None:
+    values = normalize_subdevice_state(
+        PID_8_CHANNEL_LIGHT_SWITCH,
+        {
+            "pwr1": 1,
+            "pwr2": 1,
+            "pwr3": True,
+            "pwr4": 1,
+            "pwr5": 1,
+            "pwr6": 1,
+            "pwr7": 1,
+            "mpwr": 2,
+            "password": "must-not-be-exposed",
+        },
+    )
+
+    assert values == {
+        "pwr1": True,
+        "pwr2": True,
+        "pwr3": True,
+        "pwr4": True,
+        "pwr5": True,
+        "pwr6": True,
+        "pwr7": True,
+        "mpwr": True,
+    }
+
+    mixed = normalize_subdevice_state(
+        PID_8_CHANNEL_LIGHT_SWITCH,
+        {
+            "pwr1": 1,
+            "pwr2": 0,
+            "pwr3": 1,
+            "pwr4": 1,
+            "pwr5": 1,
+            "pwr6": 1,
+            "pwr7": 1,
+            "mpwr": 2,
+        },
+    )
+    assert mixed["mpwr"] is False
+
+
+def test_8_channel_light_switch_master_state_handles_partial_and_invalid_reports() -> None:
+    assert normalize_subdevice_state(PID_8_CHANNEL_LIGHT_SWITCH, {"mpwr": 1}) == {"mpwr": True}
+    assert normalize_subdevice_state(PID_8_CHANNEL_LIGHT_SWITCH, {"mpwr": 0}) == {"mpwr": False}
+    assert normalize_subdevice_state(PID_8_CHANNEL_LIGHT_SWITCH, {"mpwr": 2}) == {}
+    assert (
+        normalize_subdevice_state(
+            PID_8_CHANNEL_LIGHT_SWITCH,
+            {"pwr1": 2, "pwr2": -1, "mpwr": 3},
+        )
+        == {}
+    )
 
 
 def test_dtu_state_normalization_uses_modes_and_documented_scaling() -> None:
@@ -659,6 +715,60 @@ async def test_box7_set_state_sends_only_reviewed_boolean_control() -> None:
     assert state.values == {"pwr1": False, "pwr3": True, "power": 12.0}
 
 
+async def test_8_channel_light_switch_sets_master_and_confirms_actual_circuits() -> None:
+    device = IbgSubDevice(LIGHT8_DID, PID_8_CHANNEL_LIGHT_SWITCH, "RF-light8", True)
+
+    async def exchange(
+        _ip: str,
+        _port: int,
+        packet: bytes,
+        _timeout: float,
+        _accept: dna.PacketAcceptor | None,
+    ) -> bytes:
+        _header, body = dna.parse_blc_packet(packet)
+        _aes, plain = dna.parse_blc_encrypted_payload(body, SESSION_KEY)
+        frame = gateway.parse_gateway_frame(plain)
+        assert frame.command_type == gateway.CMD_SET_STATUS
+        assert frame.payload == {"did": LIGHT8_DID, "mpwr": 1}
+        return _response_packet(
+            packet,
+            SESSION_KEY,
+            gateway.build_gateway_frame(
+                gateway.CMD_STATUS_RESPONSE,
+                {
+                    "did": LIGHT8_DID,
+                    "pid": PID_8_CHANNEL_LIGHT_SWITCH,
+                    "pwr1": 1,
+                    "pwr2": 1,
+                    "pwr3": 1,
+                    "pwr4": 1,
+                    "pwr5": 1,
+                    "pwr6": 1,
+                    "pwr7": 1,
+                    "mpwr": 2,
+                },
+            ),
+        )
+
+    state = await IbgClient().set_subdevice_state(
+        IbgSession(device=GATEWAY, session_key=SESSION_KEY),
+        device,
+        {"mpwr": True},
+        exchange=exchange,
+    )
+
+    assert state.values == {
+        "pwr1": True,
+        "pwr2": True,
+        "pwr3": True,
+        "pwr4": True,
+        "pwr5": True,
+        "pwr6": True,
+        "pwr7": True,
+        "mpwr": True,
+    }
+
+
 async def test_dtu_set_state_encodes_voltage_and_confirms_all_fields() -> None:
     device = IbgSubDevice(DTU_DID, PID_DTU, "DTU", True)
 
@@ -981,6 +1091,11 @@ async def test_dtu_set_state_rejects_unsafe_requests(
         (IbgSubDevice(BOX7_DID, PID_BOX7_CONTROLLER, "BOX7", True), {}, "at least one"),
         (IbgSubDevice(BOX7_DID, PID_BOX7_CONTROLLER, "BOX7", True), {"alarm_state": True}, "field"),
         (IbgSubDevice(BOX7_DID, PID_BOX7_CONTROLLER, "BOX7", True), {"pwr1": 1}, "boolean"),
+        (
+            IbgSubDevice(LIGHT8_DID, PID_8_CHANNEL_LIGHT_SWITCH, "RF-light8", True),
+            {"mpwr": 2},
+            "boolean",
+        ),
     ],
 )
 async def test_box7_set_state_rejects_unsafe_requests(
