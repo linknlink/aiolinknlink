@@ -88,7 +88,17 @@
       "phase_b_overload": {"name": "B相过载"},
       "phase_c_overload": {"name": "C相过载"}
     },
-    "event": {"key": {"name": "按键"}},
+    "event": {
+      "key": {"name": "按键"},
+      "esensor_key": {
+        "name": "按键",
+        "event_type": {
+          "pressed": "按下",
+          "double_pressed": "双击",
+          "long_pressed": "长按"
+        }
+      }
+    },
     "number": {"voltage_output": {"name": "电压输出"}},
     "climate": {
       "air_conditioner": {"name": "空调"},

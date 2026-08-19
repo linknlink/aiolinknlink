@@ -10,7 +10,7 @@ from homeassistant.components.binary_sensor import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from aiolinknlink import PID_DTU, PID_MODBUS_ELECTRICITY_METER, PID_SR3_SENSOR
+from aiolinknlink import PID_DTU, PID_ESENSOR_2000, PID_MODBUS_ELECTRICITY_METER, PID_SR3_SENSOR
 
 from . import LinknLinkConfigEntry
 from .entity import IbgCoordinatorEntity
@@ -42,6 +42,7 @@ MODBUS_ELECTRICITY_METER_BINARY_SENSORS = tuple(
 )
 BINARY_SENSORS_BY_PID = {
     PID_SR3_SENSOR: SR3_BINARY_SENSORS,
+    PID_ESENSOR_2000: SR3_BINARY_SENSORS,
     PID_DTU: DTU_BINARY_SENSORS,
     PID_MODBUS_ELECTRICITY_METER: MODBUS_ELECTRICITY_METER_BINARY_SENSORS,
 }

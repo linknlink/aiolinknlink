@@ -10,6 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from aiolinknlink import (
+    PID_ESENSOR_2000,
     IbgClient,
     IbgConnectionError,
     IbgDevice,
@@ -32,6 +33,7 @@ class IbgCoordinatorData:
     subdevices: tuple[IbgSubDevice, ...]
     states: dict[str, IbgSubDeviceState | None]
     key_event_counts: dict[str, int] = field(default_factory=dict)
+    key_event_values: dict[str, int] = field(default_factory=dict)
 
 
 class IbgDataUpdateCoordinator(DataUpdateCoordinator[IbgCoordinatorData]):
@@ -59,6 +61,7 @@ class IbgDataUpdateCoordinator(DataUpdateCoordinator[IbgCoordinatorData]):
         self.push_subscription: IbgPushSubscription | None = None
         self._last_keypressed: dict[str, int] = {}
         self._key_event_counts: dict[str, int] = {}
+        self._key_event_values: dict[str, int] = {}
 
     async def _async_update_data(self) -> IbgCoordinatorData:
         try:
@@ -82,7 +85,12 @@ class IbgDataUpdateCoordinator(DataUpdateCoordinator[IbgCoordinatorData]):
         self._track_key_edges(states)
         if self.push_subscription is not None:
             self.push_subscription.update_devices(subdevices)
-        return IbgCoordinatorData(tuple(subdevices), states, dict(self._key_event_counts))
+        return IbgCoordinatorData(
+            tuple(subdevices),
+            states,
+            dict(self._key_event_counts),
+            dict(self._key_event_values),
+        )
 
     async def async_set_subdevice_state(self, did: str, changes: dict[str, bool | int | float]) -> None:
         """Write one reviewed subdevice state and merge its confirmed response."""
@@ -131,24 +139,34 @@ class IbgDataUpdateCoordinator(DataUpdateCoordinator[IbgCoordinatorData]):
             return
         states = dict(self.data.states)
         states[state.device.did] = state
-        self._track_key_edges({state.device.did: state})
+        self._track_key_edges({state.device.did: state}, from_push=True)
         self.async_set_updated_data(
             IbgCoordinatorData(
                 self.data.subdevices,
                 states,
                 dict(self._key_event_counts),
+                dict(self._key_event_values),
             )
         )
 
-    def _track_key_edges(self, states: dict[str, IbgSubDeviceState | None]) -> None:
-        """Count only confirmed 2-to-1 physical key transitions."""
+    def _track_key_edges(
+        self,
+        states: dict[str, IbgSubDeviceState | None],
+        *,
+        from_push: bool = False,
+    ) -> None:
+        """Count confirmed physical key transitions and eSensor key actions."""
         for did, state in states.items():
             if state is None:
                 continue
             value = state.values.get("keypressed")
-            if not isinstance(value, int) or isinstance(value, bool) or value not in {1, 2}:
+            if not isinstance(value, int) or isinstance(value, bool):
                 continue
             previous = self._last_keypressed.get(did)
             self._last_keypressed[did] = value
-            if previous == 2 and value == 1:
+            if state.device.pid == PID_ESENSOR_2000:
+                if from_push and value in {1, 3, 4}:
+                    self._key_event_counts[did] = self._key_event_counts.get(did, 0) + 1
+                    self._key_event_values[did] = value
+            elif value in {1, 2} and previous == 2 and value == 1:
                 self._key_event_counts[did] = self._key_event_counts.get(did, 0) + 1

@@ -10,6 +10,7 @@ import pytest
 from aiolinknlink import (
     PID_DTU,
     PID_EAC1_PANEL,
+    PID_ESENSOR_2000,
     PID_MODBUS_AC,
     PID_MODBUS_ELECTRICITY_METER,
     PID_MODBUS_MULTI_SENSOR,
@@ -172,6 +173,50 @@ def test_state_normalization_accepts_confirmed_key_values_only() -> None:
     assert normalize_subdevice_state(PID_SR3_SENSOR, {"keypressed": 1}) == {"keypressed": 1}
     assert normalize_subdevice_state(PID_SR3_SENSOR, {"keypressed": 2}) == {"keypressed": 2}
     assert normalize_subdevice_state(PID_SR3_SENSOR, {"keypressed": 0}) == {}
+
+
+def test_esensor_2000_state_normalization_uses_documented_scaling_and_enums() -> None:
+    values = normalize_subdevice_state(
+        PID_ESENSOR_2000,
+        {
+            "envtemp": 237,
+            "envhumid": 4960,
+            "battery": 100,
+            "pir_detected": 1,
+            "keypressed": 3,
+            "envlux": 1,
+            "password": "must-not-be-exposed",
+        },
+    )
+
+    assert values == {
+        "temperature": 23.7,
+        "humidity": 49.6,
+        "battery": 100,
+        "occupancy": True,
+        "keypressed": 3,
+        "illuminance": 1,
+    }
+
+
+def test_esensor_2000_state_normalization_handles_unknown_and_invalid_values() -> None:
+    assert normalize_subdevice_state(PID_ESENSOR_2000, {"pir_detected": 3, "keypressed": 0}) == {
+        "keypressed": 0
+    }
+    assert (
+        normalize_subdevice_state(
+            PID_ESENSOR_2000,
+            {
+                "envtemp": 12_501,
+                "envhumid": 10_001,
+                "battery": 101,
+                "pir_detected": 2,
+                "keypressed": 2,
+                "envlux": 65_536,
+            },
+        )
+        == {}
+    )
 
 
 def test_box7_state_normalization_uses_reviewed_fields_and_scales() -> None:
