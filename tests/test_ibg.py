@@ -9,6 +9,7 @@ import pytest
 
 from aiolinknlink import (
     PID_8_CHANNEL_LIGHT_SWITCH,
+    PID_DLT645_ELECTRICITY_METER,
     PID_DTU,
     PID_EAC1_PANEL,
     PID_ESENSOR_2000,
@@ -594,6 +595,94 @@ def test_modbus_electricity_meter_state_rejects_invalid_values() -> None:
     )
 
 
+def test_dlt645_electricity_meter_state_normalization_uses_documented_fields() -> None:
+    values = normalize_subdevice_state(
+        PID_DLT645_ELECTRICITY_METER,
+        {
+            "Combenergy": 123_456,
+            "totalconsum": 883_048,
+            "Reverenergy": 123,
+            "Aphasevolt": 2_347,
+            "Bphasevolt": 2_357,
+            "Cphasevolt": 2_352,
+            "Aphasecurrent": 9_283,
+            "Bphasecurrent": -6_187,
+            "Cphasecurrent": 11_901,
+            "power": 50_524,
+            "Aphasepower": 19_647,
+            "Bphasepower": 9_995,
+            "Cphasepower": 21_177,
+            "Combpowerfactor": 812,
+            "Apowerfactor": 901,
+            "Bpowerfactor": 685,
+            "Cpowerfactor": 756,
+            "Aphasehmccurrent": 321,
+            "Bphasehmccurrent": 654,
+            "Cphasehmccurrent": 987,
+            "elec_param": "645-address-configuration",
+            "address": 21,
+            "Aphaseoverload": 0,
+            "Bphaseoverload": 1,
+            "Cphaseoverload": False,
+            "pwr": 1,
+            "frequency": 5_001,
+            "modbusreadresult": 0,
+            "password": "must-not-be-exposed",
+        },
+    )
+
+    assert values == {
+        "Combenergy": 1234.56,
+        "totalconsum": 8830.48,
+        "Reverenergy": 1.23,
+        "Aphasevolt": 234.7,
+        "Bphasevolt": 235.7,
+        "Cphasevolt": 235.2,
+        "Aphasecurrent": 9.283,
+        "Bphasecurrent": -6.187,
+        "Cphasecurrent": 11.901,
+        "power": 5052.4,
+        "Aphasepower": 1964.7,
+        "Bphasepower": 999.5,
+        "Cphasepower": 2117.7,
+        "Combpowerfactor": 0.812,
+        "Apowerfactor": 0.901,
+        "Bpowerfactor": 0.685,
+        "Cpowerfactor": 0.756,
+        "Aphasehmccurrent": 0.321,
+        "Bphasehmccurrent": 0.654,
+        "Cphasehmccurrent": 0.987,
+        "Aphaseoverload": False,
+        "Bphaseoverload": True,
+        "Cphaseoverload": False,
+        "address": 21,
+        "elec_param": "645-address-configuration",
+    }
+
+
+def test_dlt645_electricity_meter_state_rejects_invalid_and_unreviewed_values() -> None:
+    assert (
+        normalize_subdevice_state(
+            PID_DLT645_ELECTRICITY_METER,
+            {
+                "Combenergy": -1,
+                "totalconsum": 4_294_967_296,
+                "Aphasevolt": 65_536,
+                "Aphasecurrent": 1_000_000,
+                "power": 2_147_483_648,
+                "Combpowerfactor": 10_000,
+                "Aphasehmccurrent": -1,
+                "Aphaseoverload": 2,
+                "address": 256,
+                "elec_param": "x" * 1_025,
+                "pwr": 1,
+                "frequency": 5_000,
+            },
+        )
+        == {}
+    )
+
+
 def test_water_ac_panel_state_normalization_uses_documented_fields() -> None:
     values = normalize_subdevice_state(
         PID_WATER_AC_PANEL,
@@ -1093,6 +1182,11 @@ async def test_dtu_set_state_rejects_unsafe_requests(
     ("device", "changes", "message"),
     [
         (IbgSubDevice(BOX7_DID, PID_SR3_SENSOR, "Sensor", True), {"pwr1": True}, "unsupported writable"),
+        (
+            IbgSubDevice(BOX7_DID, PID_DLT645_ELECTRICITY_METER, "DLT645", True),
+            {"pwr": True},
+            "unsupported writable",
+        ),
         (IbgSubDevice(BOX7_DID, PID_BOX7_CONTROLLER, "BOX7", False), {"pwr1": True}, "offline"),
         (IbgSubDevice(BOX7_DID, PID_BOX7_CONTROLLER, "BOX7", True), {}, "at least one"),
         (IbgSubDevice(BOX7_DID, PID_BOX7_CONTROLLER, "BOX7", True), {"alarm_state": True}, "field"),

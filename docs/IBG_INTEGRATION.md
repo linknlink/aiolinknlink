@@ -94,6 +94,21 @@ strictly read-only. HA uses the stable inventory name plus the reported device
 name for display, while registry identifiers remain based on gateway ID, DID,
 and field name so multiple meters cannot collide.
 
+PID `000000000000000000000000d10f0100` DLT645 electricity meters expose:
+
+- combined, forward, and reverse active energy in kWh;
+- A/B/C phase voltage and current;
+- total and per-phase active power;
+- combined and per-phase power factor;
+- A/B/C phase harmonic current;
+- A/B/C phase overload problem sensors;
+- disabled-by-default diagnostics for electrical parameters and the DLT645
+  address.
+
+All 25 documented entities are type-, range-, and scale-validated. The profile
+is strictly read-only: the integration does not expose the firmware's
+undocumented relay field or any unreviewed response fields.
+
 PID `0000000000000000000000009b100100` 433 MHz eAC1 smart air-conditioner
 panels expose:
 
@@ -204,9 +219,11 @@ has two entities: cumulative water and instantaneous flow. Each PID `2b160100`
 water-cooled air-conditioner panel has one climate entity. Each PID `ed140100`
 Modbus electricity meter has 37 entities: 28 measurements, three overload
 binary sensors, and six disabled-by-default diagnostic sensors. Counts can
-differ on another gateway. Each PID `9b100100` eAC1 panel has four entities:
-one climate entity, one humidity sensor, one key-lock switch, and one
-disabled-by-default device-type diagnostic sensor. Each PID `43160100`
+differ on another gateway. Each PID `d10f0100` DLT645 electricity meter has
+25 entities: 20 measurements, three overload binary sensors, and two
+disabled-by-default diagnostic sensors. Each PID `9b100100` eAC1 panel has four
+entities: one climate entity, one humidity sensor, one key-lock switch, and
+one disabled-by-default device-type diagnostic sensor. Each PID `43160100`
 eSensor-2000 has six entities: four measurement sensors, one occupancy binary
 sensor, and one physical-key event entity. Each PID `d7140100` eight-channel
 light switch has eight switch entities: seven circuits and one all-on/all-off

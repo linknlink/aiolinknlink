@@ -22,6 +22,7 @@ PID_MODBUS_AC = "00000000000000000000000093150100"
 PID_MODBUS_MULTI_SENSOR = "0000000000000000000000000f160100"
 PID_MODBUS_WATER_METER = "00000000000000000000000034150100"
 PID_MODBUS_ELECTRICITY_METER = "000000000000000000000000ed140100"
+PID_DLT645_ELECTRICITY_METER = "000000000000000000000000d10f0100"
 PID_WATER_AC_PANEL = "0000000000000000000000002b160100"
 PID_EAC1_PANEL = "0000000000000000000000009b100100"
 PID_ESENSOR_2000 = "00000000000000000000000043160100"
@@ -35,6 +36,7 @@ SUPPORTED_SUBDEVICE_PIDS = frozenset(
         PID_MODBUS_MULTI_SENSOR,
         PID_MODBUS_WATER_METER,
         PID_MODBUS_ELECTRICITY_METER,
+        PID_DLT645_ELECTRICITY_METER,
         PID_WATER_AC_PANEL,
         PID_EAC1_PANEL,
         PID_ESENSOR_2000,
@@ -493,6 +495,8 @@ def normalize_subdevice_state(pid: str, payload: dict[str, Any]) -> dict[str, in
         return _normalize_modbus_water_meter_state(payload)
     if pid.lower() == PID_MODBUS_ELECTRICITY_METER:
         return _normalize_modbus_electricity_meter_state(payload)
+    if pid.lower() == PID_DLT645_ELECTRICITY_METER:
+        return _normalize_dlt645_electricity_meter_state(payload)
     if pid.lower() == PID_WATER_AC_PANEL:
         return _normalize_water_ac_panel_state(payload)
     if pid.lower() == PID_EAC1_PANEL:
@@ -749,6 +753,57 @@ def _normalize_modbus_electricity_meter_state(
             text = raw.strip()
             if text and len(text) <= 1_024:
                 values[key] = text
+    return values
+
+
+def _normalize_dlt645_electricity_meter_state(
+    payload: dict[str, Any],
+) -> dict[str, int | float | bool | str]:
+    """Normalize the documented read-only DLT645 electricity-meter profile."""
+    values: dict[str, int | float | bool | str] = {}
+    scaled_fields = {
+        "Combenergy": (0, 999_999_999, 100),
+        "totalconsum": (0, 4_294_967_295, 100),
+        "Reverenergy": (0, 999_999_999, 100),
+        "Aphasevolt": (0, 65_535, 10),
+        "Bphasevolt": (0, 65_535, 10),
+        "Cphasevolt": (0, 65_535, 10),
+        "Aphasecurrent": (-999_999, 999_999, 1_000),
+        "Bphasecurrent": (-999_999, 999_999, 1_000),
+        "Cphasecurrent": (-999_999, 999_999, 1_000),
+        "power": (-2_147_483_648, 2_147_483_647, 10),
+        "Aphasepower": (-2_147_483_648, 2_147_483_647, 10),
+        "Bphasepower": (-2_147_483_648, 2_147_483_647, 10),
+        "Cphasepower": (-2_147_483_648, 2_147_483_647, 10),
+        "Combpowerfactor": (-9_999, 9_999, 1_000),
+        "Apowerfactor": (-9_999, 9_999, 1_000),
+        "Bpowerfactor": (-9_999, 9_999, 1_000),
+        "Cpowerfactor": (-9_999, 9_999, 1_000),
+        "Aphasehmccurrent": (0, 999_999, 1_000),
+        "Bphasehmccurrent": (0, 999_999, 1_000),
+        "Cphasehmccurrent": (0, 999_999, 1_000),
+    }
+    for key, (minimum, maximum, divisor) in scaled_fields.items():
+        raw = _number(payload.get(key))
+        if raw is not None and minimum <= raw <= maximum:
+            values[key] = raw / divisor
+
+    for key in ("Aphaseoverload", "Bphaseoverload", "Cphaseoverload"):
+        raw = payload.get(key)
+        if isinstance(raw, bool):
+            values[key] = raw
+        elif isinstance(raw, int) and raw in {0, 1}:
+            values[key] = bool(raw)
+
+    address = payload.get("address")
+    if isinstance(address, int) and not isinstance(address, bool) and 0 <= address <= 255:
+        values["address"] = address
+
+    electrical_parameters = payload.get("elec_param")
+    if isinstance(electrical_parameters, str):
+        text = electrical_parameters.strip()
+        if text and len(text) <= 1_024:
+            values["elec_param"] = text
     return values
 
 

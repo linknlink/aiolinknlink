@@ -26,6 +26,7 @@ from homeassistant.helpers.update_coordinator import UpdateFailed  # noqa: E402
 from aiolinknlink import (  # noqa: E402
     PID_8_CHANNEL_LIGHT_SWITCH,
     PID_BOX7_CONTROLLER,
+    PID_DLT645_ELECTRICITY_METER,
     PID_DTU,
     PID_EAC1_PANEL,
     PID_ESENSOR_2000,
@@ -43,6 +44,7 @@ from aiolinknlink import (  # noqa: E402
 )
 from custom_components.linknlink.binary_sensor import (  # noqa: E402
     BINARY_SENSORS_BY_PID,
+    DLT645_ELECTRICITY_METER_BINARY_SENSORS,
     DTU_BINARY_SENSORS,
     MODBUS_ELECTRICITY_METER_BINARY_SENSORS,
     SR3_BINARY_SENSORS,
@@ -68,6 +70,7 @@ from custom_components.linknlink.event import (  # noqa: E402
 from custom_components.linknlink.number import IbgDtuVoltageOutput  # noqa: E402
 from custom_components.linknlink.sensor import (  # noqa: E402
     BOX7_SENSORS,
+    DLT645_ELECTRICITY_METER_SENSORS,
     DTU_ANALOG_INPUTS,
     DTU_ELECTRICAL_SENSORS,
     EAC1_SENSORS,
@@ -538,6 +541,8 @@ def test_entity_catalogs_are_pid_specific() -> None:
     assert len(MODBUS_WATER_SENSORS) == 2
     assert len(MODBUS_ELECTRICITY_METER_SENSORS) == 34
     assert len(MODBUS_ELECTRICITY_METER_BINARY_SENSORS) == 3
+    assert len(DLT645_ELECTRICITY_METER_SENSORS) == 22
+    assert len(DLT645_ELECTRICITY_METER_BINARY_SENSORS) == 3
     assert len(EAC1_SENSORS) == 2
     assert SENSORS_BY_PID[PID_BOX7_CONTROLLER] == BOX7_SENSORS
     assert SENSORS_BY_PID[PID_DTU] == DTU_ELECTRICAL_SENSORS
@@ -545,9 +550,11 @@ def test_entity_catalogs_are_pid_specific() -> None:
     assert SENSORS_BY_PID[PID_MODBUS_MULTI_SENSOR] == MODBUS_MULTI_SENSORS
     assert SENSORS_BY_PID[PID_MODBUS_WATER_METER] == MODBUS_WATER_SENSORS
     assert SENSORS_BY_PID[PID_MODBUS_ELECTRICITY_METER] == MODBUS_ELECTRICITY_METER_SENSORS
+    assert SENSORS_BY_PID[PID_DLT645_ELECTRICITY_METER] == DLT645_ELECTRICITY_METER_SENSORS
     assert SENSORS_BY_PID[PID_EAC1_PANEL] == EAC1_SENSORS
     assert SENSORS_BY_PID[PID_ESENSOR_2000] == SR3_SENSORS
     assert BINARY_SENSORS_BY_PID[PID_ESENSOR_2000] == SR3_BINARY_SENSORS
+    assert BINARY_SENSORS_BY_PID[PID_DLT645_ELECTRICITY_METER] == DLT645_ELECTRICITY_METER_BINARY_SENSORS
     assert SWITCHES_BY_PID[PID_8_CHANNEL_LIGHT_SWITCH] == LIGHT8_SWITCHES
     assert MODBUS_WATER_SENSORS[0].device_class == SensorDeviceClass.WATER
     assert MODBUS_WATER_SENSORS[0].native_unit_of_measurement == UnitOfVolume.CUBIC_METERS
@@ -566,6 +573,33 @@ def test_entity_catalogs_are_pid_specific() -> None:
     )
     assert electricity_by_key["modbusreadresult"].device_class == SensorDeviceClass.ENUM
     assert electricity_by_key["modbusreadresult"].entity_registry_enabled_default is False
+    dlt645_by_key = {description.key: description for description in DLT645_ELECTRICITY_METER_SENSORS}
+    assert set(dlt645_by_key) == {
+        "Combenergy",
+        "totalconsum",
+        "Reverenergy",
+        "Aphasevolt",
+        "Bphasevolt",
+        "Cphasevolt",
+        "Aphasecurrent",
+        "Bphasecurrent",
+        "Cphasecurrent",
+        "power",
+        "Aphasepower",
+        "Bphasepower",
+        "Cphasepower",
+        "Combpowerfactor",
+        "Apowerfactor",
+        "Bpowerfactor",
+        "Cpowerfactor",
+        "Aphasehmccurrent",
+        "Bphasehmccurrent",
+        "Cphasehmccurrent",
+        "elec_param",
+        "address",
+    }
+    assert dlt645_by_key["address"].translation_key == "dlt645_address"
+    assert dlt645_by_key["address"].entity_registry_enabled_default is False
 
 
 def test_modbus_electricity_meter_entity_uses_stable_inventory_and_reported_name() -> None:
@@ -618,11 +652,16 @@ def test_entity_translations_cover_parameter_derived_names() -> None:
         assert all(description.translation_key in sensor_names for description in MODBUS_MULTI_SENSORS)
         assert all(description.translation_key in sensor_names for description in MODBUS_WATER_SENSORS)
         assert all(description.translation_key in sensor_names for description in MODBUS_ELECTRICITY_METER_SENSORS)
+        assert all(description.translation_key in sensor_names for description in DLT645_ELECTRICITY_METER_SENSORS)
         assert all(description.translation_key in sensor_names for description in EAC1_SENSORS)
         assert all(description.translation_key in binary_sensor_names for description in DTU_BINARY_SENSORS)
         assert all(
             description.translation_key in binary_sensor_names
             for description in MODBUS_ELECTRICITY_METER_BINARY_SENSORS
+        )
+        assert all(
+            description.translation_key in binary_sensor_names
+            for description in DLT645_ELECTRICITY_METER_BINARY_SENSORS
         )
         assert all(description.translation_key in switch_names for description in BOX7_SWITCHES)
         assert all(description.translation_key in switch_names for description in LIGHT8_SWITCHES)
