@@ -53,6 +53,9 @@
   confirmed circuit switches and one confirmed all-on/all-off switch. Treat
   the reported `mpwr=2` value as "keep current outputs" and derive the HA
   master state from the seven actual circuits.
+- Fix PID `d7140100` all-on/all-off writes being reported as failed when the
+  SET response confirms `mpwr=0/1` before its individual `pwr1` through `pwr7`
+  fields finish updating.
 
 ## 0.3.2
 
