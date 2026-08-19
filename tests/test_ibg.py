@@ -303,8 +303,14 @@ def test_8_channel_light_switch_normalizes_circuits_and_master_state() -> None:
 
 
 def test_8_channel_light_switch_master_state_handles_partial_and_invalid_reports() -> None:
-    assert normalize_subdevice_state(PID_8_CHANNEL_LIGHT_SWITCH, {"mpwr": 1}) == {"mpwr": True}
-    assert normalize_subdevice_state(PID_8_CHANNEL_LIGHT_SWITCH, {"mpwr": 0}) == {"mpwr": False}
+    stale_after_all_on = {f"pwr{channel}": 0 for channel in range(1, 8)}
+    stale_after_all_on["mpwr"] = 1
+    assert normalize_subdevice_state(PID_8_CHANNEL_LIGHT_SWITCH, stale_after_all_on)["mpwr"] is True
+
+    stale_after_all_off = {f"pwr{channel}": 1 for channel in range(1, 8)}
+    stale_after_all_off["mpwr"] = 0
+    assert normalize_subdevice_state(PID_8_CHANNEL_LIGHT_SWITCH, stale_after_all_off)["mpwr"] is False
+
     assert normalize_subdevice_state(PID_8_CHANNEL_LIGHT_SWITCH, {"mpwr": 2}) == {}
     assert (
         normalize_subdevice_state(
@@ -738,14 +744,14 @@ async def test_8_channel_light_switch_sets_master_and_confirms_actual_circuits()
                 {
                     "did": LIGHT8_DID,
                     "pid": PID_8_CHANNEL_LIGHT_SWITCH,
-                    "pwr1": 1,
-                    "pwr2": 1,
-                    "pwr3": 1,
-                    "pwr4": 1,
-                    "pwr5": 1,
-                    "pwr6": 1,
-                    "pwr7": 1,
-                    "mpwr": 2,
+                    "pwr1": 0,
+                    "pwr2": 0,
+                    "pwr3": 0,
+                    "pwr4": 0,
+                    "pwr5": 0,
+                    "pwr6": 0,
+                    "pwr7": 0,
+                    "mpwr": 1,
                 },
             ),
         )
@@ -758,13 +764,13 @@ async def test_8_channel_light_switch_sets_master_and_confirms_actual_circuits()
     )
 
     assert state.values == {
-        "pwr1": True,
-        "pwr2": True,
-        "pwr3": True,
-        "pwr4": True,
-        "pwr5": True,
-        "pwr6": True,
-        "pwr7": True,
+        "pwr1": False,
+        "pwr2": False,
+        "pwr3": False,
+        "pwr4": False,
+        "pwr5": False,
+        "pwr6": False,
+        "pwr7": False,
         "mpwr": True,
     }
 

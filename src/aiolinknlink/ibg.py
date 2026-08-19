@@ -568,17 +568,16 @@ def _normalize_8_channel_light_switch_state(payload: dict[str, Any]) -> dict[str
         elif isinstance(raw, int) and raw in {0, 1}:
             values[key] = bool(raw)
 
-    # mpwr is a command field: 0 means all off, 1 means all on, and 2 means
-    # keep the individual outputs unchanged. Prefer the seven actual circuit
-    # states whenever all are present so "keep" never becomes a false HA state.
-    if LIGHT8_POWER_FIELDS <= values.keys():
+    # A SET response returns the accepted 0/1 command before every pwr field
+    # necessarily reflects the new output. Polls report 2 ("keep"), at which
+    # point the seven actual circuit states are the source of truth.
+    master = payload.get(LIGHT8_MASTER_POWER_FIELD)
+    if isinstance(master, bool):
+        values[LIGHT8_MASTER_POWER_FIELD] = master
+    elif isinstance(master, int) and master in {0, 1}:
+        values[LIGHT8_MASTER_POWER_FIELD] = bool(master)
+    elif master == 2 and LIGHT8_POWER_FIELDS <= values.keys():
         values[LIGHT8_MASTER_POWER_FIELD] = all(values[key] for key in LIGHT8_POWER_FIELDS)
-    else:
-        master = payload.get(LIGHT8_MASTER_POWER_FIELD)
-        if isinstance(master, bool):
-            values[LIGHT8_MASTER_POWER_FIELD] = master
-        elif isinstance(master, int) and master in {0, 1}:
-            values[LIGHT8_MASTER_POWER_FIELD] = bool(master)
     return values
 
 
