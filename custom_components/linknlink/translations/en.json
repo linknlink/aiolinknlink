@@ -121,6 +121,14 @@
       "scene_key_4": {
         "name": "Scene button 4",
         "event_type": {"pressed": "Pressed"}
+      },
+      "scene_key_5": {
+        "name": "Scene button 5",
+        "event_type": {"pressed": "Pressed"}
+      },
+      "scene_key_6": {
+        "name": "Scene button 6",
+        "event_type": {"pressed": "Pressed"}
       }
     },
     "number": {"voltage_output": {"name": "Voltage output"}},

@@ -124,6 +124,10 @@ PID `21110100` two-channel light switches expose confirmed `pwr1`, `pwr2`,
 `bglight`, and `mpwr` controls, plus four separate momentary scene-button
 event entities. As with the eight-channel profile, `mpwr=2` means keep the
 current channel states and is derived from the actual channel outputs.
+PID `22110100` three-channel light switches expose confirmed `pwr1` through
+`pwr3`, `bglight`, and `mpwr` controls, plus six separate momentary
+scene-button event entities. A reported `mpwr=2` is likewise derived from the
+three actual channel outputs.
 
 Locked gateways can reuse their existing 16-byte local key without changing the
 gateway lock setting:

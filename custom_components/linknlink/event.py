@@ -11,6 +11,7 @@ from aiolinknlink import (
     PID_ESENSOR_2000_GEN2,
     PID_SINGLE_CHANNEL_LIGHT_SWITCH,
     PID_SR3_SENSOR,
+    PID_THREE_CHANNEL_LIGHT_SWITCH,
     PID_TWO_CHANNEL_LIGHT_SWITCH,
 )
 
@@ -46,6 +47,7 @@ async def async_setup_entry(
     scene_counts = {
         PID_SINGLE_CHANNEL_LIGHT_SWITCH: 2,
         PID_TWO_CHANNEL_LIGHT_SWITCH: 4,
+        PID_THREE_CHANNEL_LIGHT_SWITCH: 6,
     }
     async_add_entities(
         IbgSceneKeyEvent(

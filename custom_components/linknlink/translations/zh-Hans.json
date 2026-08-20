@@ -121,6 +121,14 @@
       "scene_key_4": {
         "name": "场景按键4",
         "event_type": {"pressed": "按下"}
+      },
+      "scene_key_5": {
+        "name": "场景按键5",
+        "event_type": {"pressed": "按下"}
+      },
+      "scene_key_6": {
+        "name": "场景按键6",
+        "event_type": {"pressed": "按下"}
       }
     },
     "number": {"voltage_output": {"name": "电压输出"}},

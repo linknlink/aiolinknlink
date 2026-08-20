@@ -20,6 +20,7 @@ from aiolinknlink import (
     PID_MODBUS_MULTI_SENSOR,
     PID_MODBUS_WATER_METER,
     PID_SINGLE_CHANNEL_LIGHT_SWITCH,
+    PID_THREE_CHANNEL_LIGHT_SWITCH,
     PID_TWO_CHANNEL_LIGHT_SWITCH,
     PID_WATER_AC_PANEL,
     IbgClient,
@@ -49,6 +50,7 @@ EAC1_DID = "00112233445566778899aabbccddeef4"
 LIGHT8_DID = "00112233445566778899aabbccddeef6"
 SINGLE_CHANNEL_LIGHT_DID = "00112233445566778899aabbccddeef7"
 TWO_CHANNEL_LIGHT_DID = "00112233445566778899aabbccddeef8"
+THREE_CHANNEL_LIGHT_DID = "00112233445566778899aabbccddeef9"
 
 
 def _response_packet(request: bytes, key: bytes, response: bytes) -> bytes:
@@ -427,6 +429,42 @@ def test_two_channel_light_switch_normalizes_controls_and_scene_keys() -> None:
     )
     assert all_on["mpwr"] is True
     assert normalize_subdevice_state(PID_TWO_CHANNEL_LIGHT_SWITCH, {"mpwr": 2}) == {}
+
+
+def test_three_channel_light_switch_normalizes_controls_and_scene_keys() -> None:
+    values = normalize_subdevice_state(
+        PID_THREE_CHANNEL_LIGHT_SWITCH,
+        {
+            "pwr1": 1,
+            "pwr2": 0,
+            "pwr3": 1,
+            "bglight": 0,
+            "mpwr": 2,
+            **{f"scenarioswitch_{channel}": channel % 2 for channel in range(1, 7)},
+            "password": "must-not-be-exposed",
+        },
+    )
+
+    assert values == {
+        "pwr1": True,
+        "pwr2": False,
+        "pwr3": True,
+        "bglight": False,
+        "mpwr": False,
+        "scenarioswitch_1": 1,
+        "scenarioswitch_2": 0,
+        "scenarioswitch_3": 1,
+        "scenarioswitch_4": 0,
+        "scenarioswitch_5": 1,
+        "scenarioswitch_6": 0,
+    }
+
+    all_on = normalize_subdevice_state(
+        PID_THREE_CHANNEL_LIGHT_SWITCH,
+        {"pwr1": 1, "pwr2": 1, "pwr3": 1, "mpwr": 2},
+    )
+    assert all_on["mpwr"] is True
+    assert normalize_subdevice_state(PID_THREE_CHANNEL_LIGHT_SWITCH, {"mpwr": 2}) == {}
 
 
 def test_dtu_state_normalization_uses_modes_and_documented_scaling() -> None:
@@ -1063,6 +1101,53 @@ async def test_two_channel_light_switch_sets_master_and_confirms() -> None:
     assert state.values["mpwr"] is True
 
 
+async def test_three_channel_light_switch_sets_master_and_confirms() -> None:
+    device = IbgSubDevice(
+        THREE_CHANNEL_LIGHT_DID,
+        PID_THREE_CHANNEL_LIGHT_SWITCH,
+        "RF-three-light",
+        True,
+    )
+
+    async def exchange(
+        _ip: str,
+        _port: int,
+        packet: bytes,
+        _timeout: float,
+        _accept: dna.PacketAcceptor | None,
+    ) -> bytes:
+        _header, body = dna.parse_blc_packet(packet)
+        _aes, plain = dna.parse_blc_encrypted_payload(body, SESSION_KEY)
+        frame = gateway.parse_gateway_frame(plain)
+        assert frame.command_type == gateway.CMD_SET_STATUS
+        assert frame.payload == {"did": THREE_CHANNEL_LIGHT_DID, "mpwr": 1}
+        return _response_packet(
+            packet,
+            SESSION_KEY,
+            gateway.build_gateway_frame(
+                gateway.CMD_STATUS_RESPONSE,
+                {
+                    "did": THREE_CHANNEL_LIGHT_DID,
+                    "pid": PID_THREE_CHANNEL_LIGHT_SWITCH,
+                    "pwr1": 1,
+                    "pwr2": 1,
+                    "pwr3": 1,
+                    "bglight": 0,
+                    "mpwr": 1,
+                },
+            ),
+        )
+
+    state = await IbgClient().set_subdevice_state(
+        IbgSession(device=GATEWAY, session_key=SESSION_KEY),
+        device,
+        {"mpwr": True},
+        exchange=exchange,
+    )
+
+    assert state.values["mpwr"] is True
+
+
 async def test_dtu_set_state_encodes_voltage_and_confirms_all_fields() -> None:
     device = IbgSubDevice(DTU_DID, PID_DTU, "DTU", True)
 
@@ -1420,6 +1505,26 @@ async def test_dtu_set_state_rejects_unsafe_requests(
                 TWO_CHANNEL_LIGHT_DID,
                 PID_TWO_CHANNEL_LIGHT_SWITCH,
                 "RF-two-light",
+                True,
+            ),
+            {"mpwr": 2},
+            "boolean",
+        ),
+        (
+            IbgSubDevice(
+                THREE_CHANNEL_LIGHT_DID,
+                PID_THREE_CHANNEL_LIGHT_SWITCH,
+                "RF-three-light",
+                True,
+            ),
+            {"scenarioswitch_6": True},
+            "field",
+        ),
+        (
+            IbgSubDevice(
+                THREE_CHANNEL_LIGHT_DID,
+                PID_THREE_CHANNEL_LIGHT_SWITCH,
+                "RF-three-light",
                 True,
             ),
             {"mpwr": 2},
