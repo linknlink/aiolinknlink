@@ -30,6 +30,8 @@ from aiolinknlink import (  # noqa: E402
     PID_DTU,
     PID_EAC1_PANEL,
     PID_ESENSOR_2000,
+    PID_ESENSOR_2000_GEN1,
+    PID_ESENSOR_2000_GEN2,
     PID_MODBUS_AC,
     PID_MODBUS_ELECTRICITY_METER,
     PID_MODBUS_MULTI_SENSOR,
@@ -65,6 +67,7 @@ from custom_components.linknlink.event import (  # noqa: E402
     EVENT_TYPE_DOUBLE_PRESSED,
     EVENT_TYPE_LONG_PRESSED,
     EVENT_TYPE_PRESSED,
+    IbgEsensorGen1KeyEvent,
     IbgEsensorKeyEvent,
 )
 from custom_components.linknlink.number import IbgDtuVoltageOutput  # noqa: E402
@@ -74,6 +77,7 @@ from custom_components.linknlink.sensor import (  # noqa: E402
     DTU_ANALOG_INPUTS,
     DTU_ELECTRICAL_SENSORS,
     EAC1_SENSORS,
+    ESENSOR_2000_GEN1_SENSORS,
     MODBUS_AC_SENSORS,
     MODBUS_ELECTRICITY_METER_SENSORS,
     MODBUS_MULTI_SENSORS,
@@ -246,6 +250,60 @@ def test_esensor_2000_event_entity_maps_all_documented_actions() -> None:
         (1, 1, EVENT_TYPE_PRESSED),
         (2, 3, EVENT_TYPE_DOUBLE_PRESSED),
         (3, 4, EVENT_TYPE_LONG_PRESSED),
+    ):
+        coordinator.data = IbgCoordinatorData(
+            (device,),
+            {device.did: state},
+            {device.did: count},
+            {device.did: value},
+        )
+        entity._handle_coordinator_update()
+        entity._trigger_event.assert_called_with(expected, {"keypressed": value})
+
+
+def test_coordinator_tracks_only_documented_esensor_2000_gen1_push_actions() -> None:
+    device = IbgSubDevice(
+        did="00112233445566778899aabbccddeef7",
+        pid=PID_ESENSOR_2000_GEN1,
+        name="RF-548dd25a",
+        online=True,
+    )
+    coordinator = _coordinator(AsyncMock())
+
+    def key_state(value: int) -> IbgSubDeviceState:
+        return IbgSubDeviceState(device, {"keypressed": value}, datetime.now(UTC))
+
+    coordinator._track_key_edges({device.did: key_state(1)})
+    coordinator._track_key_edges({device.did: key_state(3)})
+    coordinator._track_key_edges({device.did: key_state(4)}, from_push=True)
+    assert coordinator._key_event_counts == {}
+
+    coordinator._track_key_edges({device.did: key_state(1)}, from_push=True)
+    coordinator._track_key_edges({device.did: key_state(3)}, from_push=True)
+
+    assert coordinator._key_event_counts == {device.did: 2}
+    assert coordinator._key_event_values == {device.did: 3}
+
+
+def test_esensor_2000_gen1_event_entity_maps_press_and_double_press() -> None:
+    device = IbgSubDevice(
+        did="00112233445566778899aabbccddeef7",
+        pid=PID_ESENSOR_2000_GEN1,
+        name="RF-548dd25a",
+        online=True,
+    )
+    state = IbgSubDeviceState(device, {"keypressed": 0}, datetime.now(UTC))
+    coordinator = object.__new__(IbgDataUpdateCoordinator)
+    coordinator.device = GATEWAY
+    coordinator.data = IbgCoordinatorData((device,), {device.did: state})
+    coordinator.last_update_success = True
+    entity = IbgEsensorGen1KeyEvent(coordinator, device.did)
+    entity._trigger_event = Mock()  # type: ignore[method-assign]
+    entity.async_write_ha_state = Mock()  # type: ignore[method-assign]
+
+    for count, value, expected in (
+        (1, 1, EVENT_TYPE_PRESSED),
+        (2, 3, EVENT_TYPE_DOUBLE_PRESSED),
     ):
         coordinator.data = IbgCoordinatorData(
             (device,),
@@ -544,6 +602,7 @@ def test_entity_catalogs_are_pid_specific() -> None:
     assert len(DLT645_ELECTRICITY_METER_SENSORS) == 22
     assert len(DLT645_ELECTRICITY_METER_BINARY_SENSORS) == 3
     assert len(EAC1_SENSORS) == 2
+    assert len(ESENSOR_2000_GEN1_SENSORS) == 3
     assert SENSORS_BY_PID[PID_BOX7_CONTROLLER] == BOX7_SENSORS
     assert SENSORS_BY_PID[PID_DTU] == DTU_ELECTRICAL_SENSORS
     assert SENSORS_BY_PID[PID_MODBUS_AC] == MODBUS_AC_SENSORS
@@ -552,8 +611,11 @@ def test_entity_catalogs_are_pid_specific() -> None:
     assert SENSORS_BY_PID[PID_MODBUS_ELECTRICITY_METER] == MODBUS_ELECTRICITY_METER_SENSORS
     assert SENSORS_BY_PID[PID_DLT645_ELECTRICITY_METER] == DLT645_ELECTRICITY_METER_SENSORS
     assert SENSORS_BY_PID[PID_EAC1_PANEL] == EAC1_SENSORS
-    assert SENSORS_BY_PID[PID_ESENSOR_2000] == SR3_SENSORS
-    assert BINARY_SENSORS_BY_PID[PID_ESENSOR_2000] == SR3_BINARY_SENSORS
+    assert PID_ESENSOR_2000 == PID_ESENSOR_2000_GEN2
+    assert SENSORS_BY_PID[PID_ESENSOR_2000_GEN1] == ESENSOR_2000_GEN1_SENSORS
+    assert SENSORS_BY_PID[PID_ESENSOR_2000_GEN2] == SR3_SENSORS
+    assert BINARY_SENSORS_BY_PID[PID_ESENSOR_2000_GEN1] == SR3_BINARY_SENSORS
+    assert BINARY_SENSORS_BY_PID[PID_ESENSOR_2000_GEN2] == SR3_BINARY_SENSORS
     assert BINARY_SENSORS_BY_PID[PID_DLT645_ELECTRICITY_METER] == DLT645_ELECTRICITY_METER_BINARY_SENSORS
     assert SWITCHES_BY_PID[PID_8_CHANNEL_LIGHT_SWITCH] == LIGHT8_SWITCHES
     assert MODBUS_WATER_SENSORS[0].device_class == SensorDeviceClass.WATER
@@ -677,4 +739,31 @@ def test_entity_translations_cover_parameter_derived_names() -> None:
             EVENT_TYPE_DOUBLE_PRESSED,
             EVENT_TYPE_LONG_PRESSED,
         }
+        assert set(event_names["esensor_gen1_key"]["event_type"]) == {
+            EVENT_TYPE_PRESSED,
+            EVENT_TYPE_DOUBLE_PRESSED,
+        }
         assert len({switch_names[f"switch_{channel}"]["name"] for channel in range(1, 8)}) == 7
+
+
+def test_esensor_2000_generations_have_distinct_device_models() -> None:
+    coordinator = object.__new__(IbgDataUpdateCoordinator)
+    coordinator.device = GATEWAY
+    coordinator.last_update_success = True
+
+    for pid, expected_model in (
+        (PID_ESENSOR_2000_GEN1, "eSensor-2000 Gen 1"),
+        (PID_ESENSOR_2000_GEN2, "eSensor-2000 Gen 2"),
+    ):
+        device = IbgSubDevice(
+            did=f"00112233445566778899aabb{pid[-8:]}",
+            pid=pid,
+            name="eSensor-2000",
+            online=True,
+        )
+        coordinator.data = IbgCoordinatorData(
+            (device,),
+            {device.did: IbgSubDeviceState(device, {"temperature": 23.7}, datetime.now(UTC))},
+        )
+        entity = IbgSensor(coordinator, device.did, ESENSOR_2000_GEN1_SENSORS[0])
+        assert entity.device_info["model"] == expected_model

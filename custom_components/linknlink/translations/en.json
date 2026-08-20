@@ -98,6 +98,13 @@
           "double_pressed": "Double pressed",
           "long_pressed": "Long pressed"
         }
+      },
+      "esensor_gen1_key": {
+        "name": "Key",
+        "event_type": {
+          "pressed": "Pressed",
+          "double_pressed": "Double pressed"
+        }
       }
     },
     "number": {"voltage_output": {"name": "Voltage output"}},

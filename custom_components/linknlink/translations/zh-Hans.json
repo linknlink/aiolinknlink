@@ -98,6 +98,13 @@
           "double_pressed": "双击",
           "long_pressed": "长按"
         }
+      },
+      "esensor_gen1_key": {
+        "name": "按键",
+        "event_type": {
+          "pressed": "按下",
+          "double_pressed": "双击"
+        }
       }
     },
     "number": {"voltage_output": {"name": "电压输出"}},
