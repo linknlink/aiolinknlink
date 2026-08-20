@@ -16,8 +16,11 @@ from aiolinknlink import (
     PID_DTU,
     PID_EAC1_PANEL,
     PID_SINGLE_CHANNEL_LIGHT_SWITCH,
+    PID_TWO_CHANNEL_LIGHT_SWITCH,
     SINGLE_CHANNEL_LIGHT_BACKLIGHT_FIELD,
     SINGLE_CHANNEL_LIGHT_POWER_FIELD,
+    TWO_CHANNEL_LIGHT_BACKLIGHT_FIELD,
+    TWO_CHANNEL_LIGHT_MASTER_POWER_FIELD,
 )
 
 from . import LinknLinkConfigEntry
@@ -52,6 +55,20 @@ SINGLE_CHANNEL_LIGHT_SWITCHES = (
         icon="mdi:lightbulb-outline",
     ),
 )
+TWO_CHANNEL_LIGHT_SWITCHES = (
+    *BOX7_SWITCHES[:2],
+    SwitchEntityDescription(
+        key=TWO_CHANNEL_LIGHT_BACKLIGHT_FIELD,
+        name="Panel backlight",
+        translation_key="panel_backlight",
+        icon="mdi:lightbulb-outline",
+    ),
+    SwitchEntityDescription(
+        key=TWO_CHANNEL_LIGHT_MASTER_POWER_FIELD,
+        name="All switches",
+        translation_key="all_switches",
+    ),
+)
 EAC1_SWITCHES = (
     SwitchEntityDescription(
         key=EAC1_KEY_LOCK_FIELD,
@@ -66,6 +83,7 @@ SWITCHES_BY_PID = {
     PID_DTU: DTU_SWITCHES,
     PID_EAC1_PANEL: EAC1_SWITCHES,
     PID_SINGLE_CHANNEL_LIGHT_SWITCH: SINGLE_CHANNEL_LIGHT_SWITCHES,
+    PID_TWO_CHANNEL_LIGHT_SWITCH: TWO_CHANNEL_LIGHT_SWITCHES,
 }
 
 

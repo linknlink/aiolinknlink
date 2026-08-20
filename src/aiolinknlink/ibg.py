@@ -30,6 +30,7 @@ PID_ESENSOR_2000_GEN2 = "00000000000000000000000043160100"
 PID_ESENSOR_2000 = PID_ESENSOR_2000_GEN2
 PID_8_CHANNEL_LIGHT_SWITCH = "000000000000000000000000d7140100"
 PID_SINGLE_CHANNEL_LIGHT_SWITCH = "00000000000000000000000020110100"
+PID_TWO_CHANNEL_LIGHT_SWITCH = "00000000000000000000000021110100"
 SUPPORTED_SUBDEVICE_PIDS = frozenset(
     {
         PID_SR3_SENSOR,
@@ -46,6 +47,7 @@ SUPPORTED_SUBDEVICE_PIDS = frozenset(
         PID_ESENSOR_2000_GEN2,
         PID_8_CHANNEL_LIGHT_SWITCH,
         PID_SINGLE_CHANNEL_LIGHT_SWITCH,
+        PID_TWO_CHANNEL_LIGHT_SWITCH,
     }
 )
 BOX7_POWER_FIELDS = frozenset(f"pwr{channel}" for channel in range(1, 8))
@@ -57,6 +59,16 @@ SINGLE_CHANNEL_LIGHT_BACKLIGHT_FIELD = "bglight"
 SINGLE_CHANNEL_LIGHT_SCENE_FIELDS = frozenset({"scenarioswitch_1", "scenarioswitch_2"})
 SINGLE_CHANNEL_LIGHT_WRITABLE_FIELDS = frozenset(
     {SINGLE_CHANNEL_LIGHT_POWER_FIELD, SINGLE_CHANNEL_LIGHT_BACKLIGHT_FIELD}
+)
+TWO_CHANNEL_LIGHT_POWER_FIELDS = frozenset({"pwr1", "pwr2"})
+TWO_CHANNEL_LIGHT_MASTER_POWER_FIELD = "mpwr"
+TWO_CHANNEL_LIGHT_BACKLIGHT_FIELD = "bglight"
+TWO_CHANNEL_LIGHT_SCENE_FIELDS = frozenset(
+    {f"scenarioswitch_{channel}" for channel in range(1, 5)}
+)
+TWO_CHANNEL_LIGHT_WRITABLE_FIELDS = (
+    TWO_CHANNEL_LIGHT_POWER_FIELDS
+    | {TWO_CHANNEL_LIGHT_MASTER_POWER_FIELD, TWO_CHANNEL_LIGHT_BACKLIGHT_FIELD}
 )
 DTU_POWER_FIELDS = frozenset(f"pwr{channel}" for channel in range(1, 3))
 DTU_VOLTAGE_OUTPUT_FIELD = "voltage"
@@ -341,6 +353,7 @@ class IbgClient:
             PID_BOX7_CONTROLLER,
             PID_8_CHANNEL_LIGHT_SWITCH,
             PID_SINGLE_CHANNEL_LIGHT_SWITCH,
+            PID_TWO_CHANNEL_LIGHT_SWITCH,
             PID_DTU,
             PID_MODBUS_AC,
             PID_WATER_AC_PANEL,
@@ -357,6 +370,8 @@ class IbgClient:
             writable_fields = LIGHT8_WRITABLE_FIELDS
         elif pid == PID_SINGLE_CHANNEL_LIGHT_SWITCH:
             writable_fields = SINGLE_CHANNEL_LIGHT_WRITABLE_FIELDS
+        elif pid == PID_TWO_CHANNEL_LIGHT_SWITCH:
+            writable_fields = TWO_CHANNEL_LIGHT_WRITABLE_FIELDS
         elif pid == PID_DTU:
             writable_fields = DTU_WRITABLE_FIELDS
         elif pid == PID_MODBUS_AC:
@@ -376,6 +391,7 @@ class IbgClient:
                 key in BOX7_POWER_FIELDS
                 or key in LIGHT8_WRITABLE_FIELDS
                 or key in SINGLE_CHANNEL_LIGHT_WRITABLE_FIELDS
+                or key in TWO_CHANNEL_LIGHT_WRITABLE_FIELDS
                 or key in DTU_POWER_FIELDS
                 or key in {MODBUS_AC_POWER_FIELD, WATER_AC_PANEL_POWER_FIELD, EAC1_POWER_FIELD}
                 or key == EAC1_KEY_LOCK_FIELD
@@ -524,6 +540,8 @@ def normalize_subdevice_state(pid: str, payload: dict[str, Any]) -> dict[str, in
         return _normalize_8_channel_light_switch_state(payload)
     if pid.lower() == PID_SINGLE_CHANNEL_LIGHT_SWITCH:
         return _normalize_single_channel_light_switch_state(payload)
+    if pid.lower() == PID_TWO_CHANNEL_LIGHT_SWITCH:
+        return _normalize_two_channel_light_switch_state(payload)
     if pid.lower() != PID_SR3_SENSOR:
         return {}
     values: dict[str, int | float | bool] = {}
@@ -620,6 +638,35 @@ def _normalize_single_channel_light_switch_state(
             values[key] = bool(raw)
 
     for key in SINGLE_CHANNEL_LIGHT_SCENE_FIELDS:
+        raw = payload.get(key)
+        if isinstance(raw, int) and not isinstance(raw, bool) and raw in {0, 1}:
+            values[key] = raw
+    return values
+
+
+def _normalize_two_channel_light_switch_state(
+    payload: dict[str, Any],
+) -> dict[str, int | bool]:
+    """Normalize two light circuits, master/backlight controls, and scene keys."""
+    values: dict[str, int | bool] = {}
+    for key in TWO_CHANNEL_LIGHT_POWER_FIELDS | {TWO_CHANNEL_LIGHT_BACKLIGHT_FIELD}:
+        raw = payload.get(key)
+        if isinstance(raw, bool):
+            values[key] = raw
+        elif isinstance(raw, int) and raw in {0, 1}:
+            values[key] = bool(raw)
+
+    master = payload.get(TWO_CHANNEL_LIGHT_MASTER_POWER_FIELD)
+    if isinstance(master, bool):
+        values[TWO_CHANNEL_LIGHT_MASTER_POWER_FIELD] = master
+    elif isinstance(master, int) and master in {0, 1}:
+        values[TWO_CHANNEL_LIGHT_MASTER_POWER_FIELD] = bool(master)
+    elif master == 2 and TWO_CHANNEL_LIGHT_POWER_FIELDS <= values.keys():
+        values[TWO_CHANNEL_LIGHT_MASTER_POWER_FIELD] = all(
+            values[key] for key in TWO_CHANNEL_LIGHT_POWER_FIELDS
+        )
+
+    for key in TWO_CHANNEL_LIGHT_SCENE_FIELDS:
         raw = payload.get(key)
         if isinstance(raw, int) and not isinstance(raw, bool) and raw in {0, 1}:
             values[key] = raw

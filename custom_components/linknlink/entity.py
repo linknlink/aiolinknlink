@@ -23,6 +23,7 @@ SUBDEVICE_MODELS = {
     "00000000000000000000000043160100": "eSensor-2000 Gen 2",
     "000000000000000000000000d7140100": "Eight-channel light switch",
     "00000000000000000000000020110100": "Single-channel light switch",
+    "00000000000000000000000021110100": "Two-channel light switch",
 }
 
 

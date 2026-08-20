@@ -11,6 +11,7 @@ from aiolinknlink import (
     PID_ESENSOR_2000_GEN2,
     PID_SINGLE_CHANNEL_LIGHT_SWITCH,
     PID_SR3_SENSOR,
+    PID_TWO_CHANNEL_LIGHT_SWITCH,
 )
 
 from . import LinknLinkConfigEntry
@@ -42,15 +43,20 @@ async def async_setup_entry(
         for device in coordinator.data.subdevices
         if device.pid == PID_ESENSOR_2000_GEN2
     )
-    for scene_key, name in (
-        ("scenarioswitch_1", "Scene button 1"),
-        ("scenarioswitch_2", "Scene button 2"),
-    ):
-        async_add_entities(
-            IbgSceneKeyEvent(coordinator, device.did, scene_key, name)
-            for device in coordinator.data.subdevices
-            if device.pid == PID_SINGLE_CHANNEL_LIGHT_SWITCH
+    scene_counts = {
+        PID_SINGLE_CHANNEL_LIGHT_SWITCH: 2,
+        PID_TWO_CHANNEL_LIGHT_SWITCH: 4,
+    }
+    async_add_entities(
+        IbgSceneKeyEvent(
+            coordinator,
+            device.did,
+            f"scenarioswitch_{channel}",
+            f"Scene button {channel}",
         )
+        for device in coordinator.data.subdevices
+        for channel in range(1, scene_counts.get(device.pid, 0) + 1)
+    )
 
 
 class IbgKeyEvent(IbgCoordinatorEntity, EventEntity):
@@ -125,9 +131,10 @@ class IbgEsensorGen1KeyEvent(IbgCoordinatorEntity, EventEntity):
 
 
 class IbgSceneKeyEvent(IbgCoordinatorEntity, EventEntity):
-    """Momentary scene key events reported by a single-channel light switch."""
+    """Momentary scene key events reported by a light switch."""
 
     _attr_event_types = [EVENT_TYPE_PRESSED]
+
     def __init__(self, coordinator, did: str, scene_key: str, name: str) -> None:
         super().__init__(coordinator, did, scene_key)
         self._scene_key = scene_key

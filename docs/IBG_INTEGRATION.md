@@ -166,6 +166,18 @@ PID `00000000000000000000000020110100` single-channel light switches expose:
 The scene fields are not writable switches. The firmware automatically returns
 them to `0`; HA emits an event only for a pushed `0` to `1` transition.
 
+PID `00000000000000000000000021110100` two-channel light switches expose:
+
+- two confirmed load switches backed by `pwr1` and `pwr2`;
+- one confirmed panel-backlight switch backed by `bglight`;
+- one confirmed all-on/all-off switch backed by `mpwr`;
+- separate momentary `pressed` event entities for
+  `scenarioswitch_1` through `scenarioswitch_4`.
+
+The `mpwr` field accepts only `0` or `1` when written. A reported `2` means
+keep the individual outputs unchanged, so HA derives the master state from
+`pwr1` and `pwr2`.
+
 Gateway credentials, MQTT settings, network keys, raw snapshots, AES session
 keys, and unreviewed fields are deliberately excluded. Dynamic addition of new
 entity types while HA is running, Zigbee, other Modbus profiles, and other RF
@@ -251,6 +263,9 @@ eight-channel light switch has eight switch entities: seven circuits and one
 all-on/all-off control.
 Each PID `20110100` single-channel light switch has four entities: the load
 switch, panel-backlight switch, and two scene-button event entities.
+Each PID `21110100` two-channel light switch has eight entities: two load
+switches, a panel-backlight switch, an all-on/all-off switch, and four
+scene-button event entities.
 
 ## Upgrade and rollback
 

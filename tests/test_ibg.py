@@ -20,6 +20,7 @@ from aiolinknlink import (
     PID_MODBUS_MULTI_SENSOR,
     PID_MODBUS_WATER_METER,
     PID_SINGLE_CHANNEL_LIGHT_SWITCH,
+    PID_TWO_CHANNEL_LIGHT_SWITCH,
     PID_WATER_AC_PANEL,
     IbgClient,
     IbgConnectionError,
@@ -47,6 +48,7 @@ WATER_AC_PANEL_DID = "00112233445566778899aabbccddeef3"
 EAC1_DID = "00112233445566778899aabbccddeef4"
 LIGHT8_DID = "00112233445566778899aabbccddeef6"
 SINGLE_CHANNEL_LIGHT_DID = "00112233445566778899aabbccddeef7"
+TWO_CHANNEL_LIGHT_DID = "00112233445566778899aabbccddeef8"
 
 
 def _response_packet(request: bytes, key: bytes, response: bytes) -> bytes:
@@ -390,6 +392,41 @@ def test_single_channel_light_switch_normalizes_backlight_and_scene_keys() -> No
         "scenarioswitch_1": 1,
         "scenarioswitch_2": 0,
     }
+
+
+def test_two_channel_light_switch_normalizes_controls_and_scene_keys() -> None:
+    values = normalize_subdevice_state(
+        PID_TWO_CHANNEL_LIGHT_SWITCH,
+        {
+            "pwr1": 1,
+            "pwr2": 0,
+            "bglight": 1,
+            "mpwr": 2,
+            "scenarioswitch_1": 1,
+            "scenarioswitch_2": 0,
+            "scenarioswitch_3": 1,
+            "scenarioswitch_4": 0,
+            "password": "must-not-be-exposed",
+        },
+    )
+
+    assert values == {
+        "pwr1": True,
+        "pwr2": False,
+        "bglight": True,
+        "mpwr": False,
+        "scenarioswitch_1": 1,
+        "scenarioswitch_2": 0,
+        "scenarioswitch_3": 1,
+        "scenarioswitch_4": 0,
+    }
+
+    all_on = normalize_subdevice_state(
+        PID_TWO_CHANNEL_LIGHT_SWITCH,
+        {"pwr1": 1, "pwr2": 1, "mpwr": 2},
+    )
+    assert all_on["mpwr"] is True
+    assert normalize_subdevice_state(PID_TWO_CHANNEL_LIGHT_SWITCH, {"mpwr": 2}) == {}
 
 
 def test_dtu_state_normalization_uses_modes_and_documented_scaling() -> None:
@@ -980,6 +1017,52 @@ async def test_single_channel_light_switch_sets_backlight_and_confirms() -> None
     assert state.values["bglight"] is True
 
 
+async def test_two_channel_light_switch_sets_master_and_confirms() -> None:
+    device = IbgSubDevice(
+        TWO_CHANNEL_LIGHT_DID,
+        PID_TWO_CHANNEL_LIGHT_SWITCH,
+        "RF-two-light",
+        True,
+    )
+
+    async def exchange(
+        _ip: str,
+        _port: int,
+        packet: bytes,
+        _timeout: float,
+        _accept: dna.PacketAcceptor | None,
+    ) -> bytes:
+        _header, body = dna.parse_blc_packet(packet)
+        _aes, plain = dna.parse_blc_encrypted_payload(body, SESSION_KEY)
+        frame = gateway.parse_gateway_frame(plain)
+        assert frame.command_type == gateway.CMD_SET_STATUS
+        assert frame.payload == {"did": TWO_CHANNEL_LIGHT_DID, "mpwr": 1}
+        return _response_packet(
+            packet,
+            SESSION_KEY,
+            gateway.build_gateway_frame(
+                gateway.CMD_STATUS_RESPONSE,
+                {
+                    "did": TWO_CHANNEL_LIGHT_DID,
+                    "pid": PID_TWO_CHANNEL_LIGHT_SWITCH,
+                    "pwr1": 0,
+                    "pwr2": 0,
+                    "bglight": 0,
+                    "mpwr": 1,
+                },
+            ),
+        )
+
+    state = await IbgClient().set_subdevice_state(
+        IbgSession(device=GATEWAY, session_key=SESSION_KEY),
+        device,
+        {"mpwr": True},
+        exchange=exchange,
+    )
+
+    assert state.values["mpwr"] is True
+
+
 async def test_dtu_set_state_encodes_voltage_and_confirms_all_fields() -> None:
     device = IbgSubDevice(DTU_DID, PID_DTU, "DTU", True)
 
@@ -1321,6 +1404,26 @@ async def test_dtu_set_state_rejects_unsafe_requests(
             ),
             {"scenarioswitch_1": True},
             "field",
+        ),
+        (
+            IbgSubDevice(
+                TWO_CHANNEL_LIGHT_DID,
+                PID_TWO_CHANNEL_LIGHT_SWITCH,
+                "RF-two-light",
+                True,
+            ),
+            {"scenarioswitch_4": True},
+            "field",
+        ),
+        (
+            IbgSubDevice(
+                TWO_CHANNEL_LIGHT_DID,
+                PID_TWO_CHANNEL_LIGHT_SWITCH,
+                "RF-two-light",
+                True,
+            ),
+            {"mpwr": 2},
+            "boolean",
         ),
     ],
 )
