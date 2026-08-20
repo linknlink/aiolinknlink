@@ -105,6 +105,14 @@
           "pressed": "Pressed",
           "double_pressed": "Double pressed"
         }
+      },
+      "scene_key_1": {
+        "name": "Scene button 1",
+        "event_type": {"pressed": "Pressed"}
+      },
+      "scene_key_2": {
+        "name": "Scene button 2",
+        "event_type": {"pressed": "Pressed"}
       }
     },
     "number": {"voltage_output": {"name": "Voltage output"}},
@@ -122,7 +130,8 @@
       "switch_6": {"name": "Switch 6"},
       "switch_7": {"name": "Switch 7"},
       "all_switches": {"name": "All switches"},
-      "key_lock": {"name": "Key lock"}
+      "key_lock": {"name": "Key lock"},
+      "panel_backlight": {"name": "Panel backlight"}
     }
   }
 }

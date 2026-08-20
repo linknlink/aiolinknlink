@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add PID `20110100` single-channel light switches with confirmed `pwr1` and
+  panel-backlight (`bglight`) switches, plus separate momentary scene-button
+  events for `scenarioswitch_1` and `scenarioswitch_2`.
 - Add local iBG2 SE discovery, compact DNA authentication, paginated subdevice
   inventory, and read-only sensor state polling.
 - Add strict safe-state normalization for PID `05000100` temperature, humidity,

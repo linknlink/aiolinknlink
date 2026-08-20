@@ -116,6 +116,10 @@ PID `d7140100` eight-channel light switches expose seven individual circuit
 switches plus one all-on/all-off switch. The integration sends only `0` or `1`
 for `mpwr`; a reported `2` means keep the existing circuit states and is never
 misrepresented as an on/off value.
+PID `20110100` single-channel light switches expose a confirmed `pwr1` load
+switch, a confirmed `bglight` panel-backlight switch, and two separate
+momentary scene-button event entities for `scenarioswitch_1` and
+`scenarioswitch_2`.
 
 Locked gateways can reuse their existing 16-byte local key without changing the
 gateway lock setting:

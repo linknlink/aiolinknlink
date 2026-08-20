@@ -19,6 +19,7 @@ from aiolinknlink import (
     PID_MODBUS_ELECTRICITY_METER,
     PID_MODBUS_MULTI_SENSOR,
     PID_MODBUS_WATER_METER,
+    PID_SINGLE_CHANNEL_LIGHT_SWITCH,
     PID_WATER_AC_PANEL,
     IbgClient,
     IbgConnectionError,
@@ -45,6 +46,7 @@ MODBUS_AC_DID = "00112233445566778899aabbccddeef2"
 WATER_AC_PANEL_DID = "00112233445566778899aabbccddeef3"
 EAC1_DID = "00112233445566778899aabbccddeef4"
 LIGHT8_DID = "00112233445566778899aabbccddeef6"
+SINGLE_CHANNEL_LIGHT_DID = "00112233445566778899aabbccddeef7"
 
 
 def _response_packet(request: bytes, key: bytes, response: bytes) -> bytes:
@@ -368,6 +370,26 @@ def test_8_channel_light_switch_master_state_handles_partial_and_invalid_reports
         )
         == {}
     )
+
+
+def test_single_channel_light_switch_normalizes_backlight_and_scene_keys() -> None:
+    values = normalize_subdevice_state(
+        PID_SINGLE_CHANNEL_LIGHT_SWITCH,
+        {
+            "pwr1": 1,
+            "bglight": 0,
+            "scenarioswitch_1": 1,
+            "scenarioswitch_2": 0,
+            "password": "must-not-be-exposed",
+        },
+    )
+
+    assert values == {
+        "pwr1": True,
+        "bglight": False,
+        "scenarioswitch_1": 1,
+        "scenarioswitch_2": 0,
+    }
 
 
 def test_dtu_state_normalization_uses_modes_and_documented_scaling() -> None:
@@ -912,6 +934,52 @@ async def test_8_channel_light_switch_sets_master_and_confirms_actual_circuits()
     }
 
 
+async def test_single_channel_light_switch_sets_backlight_and_confirms() -> None:
+    device = IbgSubDevice(
+        SINGLE_CHANNEL_LIGHT_DID,
+        PID_SINGLE_CHANNEL_LIGHT_SWITCH,
+        "RF-single-light",
+        True,
+    )
+
+    async def exchange(
+        _ip: str,
+        _port: int,
+        packet: bytes,
+        _timeout: float,
+        _accept: dna.PacketAcceptor | None,
+    ) -> bytes:
+        _header, body = dna.parse_blc_packet(packet)
+        _aes, plain = dna.parse_blc_encrypted_payload(body, SESSION_KEY)
+        frame = gateway.parse_gateway_frame(plain)
+        assert frame.command_type == gateway.CMD_SET_STATUS
+        assert frame.payload == {"did": SINGLE_CHANNEL_LIGHT_DID, "bglight": 1}
+        return _response_packet(
+            packet,
+            SESSION_KEY,
+            gateway.build_gateway_frame(
+                gateway.CMD_STATUS_RESPONSE,
+                {
+                    "did": SINGLE_CHANNEL_LIGHT_DID,
+                    "pid": PID_SINGLE_CHANNEL_LIGHT_SWITCH,
+                    "pwr1": 0,
+                    "bglight": 1,
+                    "scenarioswitch_1": 0,
+                    "scenarioswitch_2": 0,
+                },
+            ),
+        )
+
+    state = await IbgClient().set_subdevice_state(
+        IbgSession(device=GATEWAY, session_key=SESSION_KEY),
+        device,
+        {"bglight": True},
+        exchange=exchange,
+    )
+
+    assert state.values["bglight"] is True
+
+
 async def test_dtu_set_state_encodes_voltage_and_confirms_all_fields() -> None:
     device = IbgSubDevice(DTU_DID, PID_DTU, "DTU", True)
 
@@ -1243,6 +1311,16 @@ async def test_dtu_set_state_rejects_unsafe_requests(
             IbgSubDevice(LIGHT8_DID, PID_8_CHANNEL_LIGHT_SWITCH, "RF-light8", True),
             {"mpwr": 2},
             "boolean",
+        ),
+        (
+            IbgSubDevice(
+                SINGLE_CHANNEL_LIGHT_DID,
+                PID_SINGLE_CHANNEL_LIGHT_SWITCH,
+                "RF-single-light",
+                True,
+            ),
+            {"scenarioswitch_1": True},
+            "field",
         ),
     ],
 )

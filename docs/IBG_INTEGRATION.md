@@ -156,6 +156,16 @@ device's `mpwr=2` value means keep the individual outputs unchanged, so HA
 derives the master switch state from the seven actual circuit states instead
 of treating `2` as an on/off state.
 
+PID `00000000000000000000000020110100` single-channel light switches expose:
+
+- one confirmed load switch backed by `pwr1`;
+- one confirmed panel-backlight switch backed by `bglight`;
+- separate momentary `pressed` event entities for `scenarioswitch_1` and
+  `scenarioswitch_2`.
+
+The scene fields are not writable switches. The firmware automatically returns
+them to `0`; HA emits an event only for a pushed `0` to `1` transition.
+
 Gateway credentials, MQTT settings, network keys, raw snapshots, AES session
 keys, and unreviewed fields are deliberately excluded. Dynamic addition of new
 entity types while HA is running, Zigbee, other Modbus profiles, and other RF
@@ -239,6 +249,8 @@ second-generation eSensor-2000 has six entities: four measurement sensors, one
 occupancy binary sensor, and one physical-key event entity. Each PID `d7140100`
 eight-channel light switch has eight switch entities: seven circuits and one
 all-on/all-off control.
+Each PID `20110100` single-channel light switch has four entities: the load
+switch, panel-backlight switch, and two scene-button event entities.
 
 ## Upgrade and rollback
 

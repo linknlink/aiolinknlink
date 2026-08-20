@@ -12,6 +12,8 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from aiolinknlink import (
     PID_ESENSOR_2000_GEN1,
     PID_ESENSOR_2000_GEN2,
+    PID_SINGLE_CHANNEL_LIGHT_SWITCH,
+    SINGLE_CHANNEL_LIGHT_SCENE_FIELDS,
     IbgClient,
     IbgConnectionError,
     IbgDevice,
@@ -35,6 +37,8 @@ class IbgCoordinatorData:
     states: dict[str, IbgSubDeviceState | None]
     key_event_counts: dict[str, int] = field(default_factory=dict)
     key_event_values: dict[str, int] = field(default_factory=dict)
+    scene_event_counts: dict[tuple[str, str], int] = field(default_factory=dict)
+    scene_event_values: dict[tuple[str, str], int] = field(default_factory=dict)
 
 
 class IbgDataUpdateCoordinator(DataUpdateCoordinator[IbgCoordinatorData]):
@@ -63,6 +67,9 @@ class IbgDataUpdateCoordinator(DataUpdateCoordinator[IbgCoordinatorData]):
         self._last_keypressed: dict[str, int] = {}
         self._key_event_counts: dict[str, int] = {}
         self._key_event_values: dict[str, int] = {}
+        self._last_scene_values: dict[tuple[str, str], int] = {}
+        self._scene_event_counts: dict[tuple[str, str], int] = {}
+        self._scene_event_values: dict[tuple[str, str], int] = {}
 
     async def _async_update_data(self) -> IbgCoordinatorData:
         try:
@@ -84,6 +91,7 @@ class IbgDataUpdateCoordinator(DataUpdateCoordinator[IbgCoordinatorData]):
         subdevices = await self.client.list_subdevices(self.session)
         states = await self.client.read_supported_states(self.session, subdevices)
         self._track_key_edges(states)
+        self._track_scene_edges(states)
         if self.push_subscription is not None:
             self.push_subscription.update_devices(subdevices)
         return IbgCoordinatorData(
@@ -91,6 +99,8 @@ class IbgDataUpdateCoordinator(DataUpdateCoordinator[IbgCoordinatorData]):
             states,
             dict(self._key_event_counts),
             dict(self._key_event_values),
+            dict(self._scene_event_counts),
+            dict(self._scene_event_values),
         )
 
     async def async_set_subdevice_state(self, did: str, changes: dict[str, bool | int | float]) -> None:
@@ -107,7 +117,7 @@ class IbgDataUpdateCoordinator(DataUpdateCoordinator[IbgCoordinatorData]):
             if self.push_subscription is not None:
                 self.push_subscription.update_session(self.session)
             state = await self.client.set_subdevice_state(self.session, device, changes)
-        self._handle_push_state(state)
+        self._handle_push_state(state, from_push=False)
 
     async def async_start_push(self) -> None:
         """Start the best-effort iBG local status push listener."""
@@ -134,19 +144,27 @@ class IbgDataUpdateCoordinator(DataUpdateCoordinator[IbgCoordinatorData]):
         await self.push_subscription.stop()
         self.push_subscription = None
 
-    def _handle_push_state(self, state: IbgSubDeviceState) -> None:
-        """Merge one authenticated local push and notify entities immediately."""
+    def _handle_push_state(
+        self,
+        state: IbgSubDeviceState,
+        *,
+        from_push: bool = True,
+    ) -> None:
+        """Merge one confirmed state and notify entities immediately."""
         if self.data is None or state.device.did not in self.data.states:
             return
         states = dict(self.data.states)
         states[state.device.did] = state
-        self._track_key_edges({state.device.did: state}, from_push=True)
+        self._track_key_edges({state.device.did: state}, from_push=from_push)
+        self._track_scene_edges({state.device.did: state}, from_push=from_push)
         self.async_set_updated_data(
             IbgCoordinatorData(
                 self.data.subdevices,
                 states,
                 dict(self._key_event_counts),
                 dict(self._key_event_values),
+                dict(self._scene_event_counts),
+                dict(self._scene_event_values),
             )
         )
 
@@ -172,3 +190,24 @@ class IbgDataUpdateCoordinator(DataUpdateCoordinator[IbgCoordinatorData]):
                     self._key_event_values[did] = value
             elif value in {1, 2} and previous == 2 and value == 1:
                 self._key_event_counts[did] = self._key_event_counts.get(did, 0) + 1
+
+    def _track_scene_edges(
+        self,
+        states: dict[str, IbgSubDeviceState | None],
+        *,
+        from_push: bool = False,
+    ) -> None:
+        """Count only pushed zero-to-one transitions from momentary scene keys."""
+        for did, state in states.items():
+            if state is None or state.device.pid != PID_SINGLE_CHANNEL_LIGHT_SWITCH:
+                continue
+            for field_name in SINGLE_CHANNEL_LIGHT_SCENE_FIELDS:
+                value = state.values.get(field_name)
+                if not isinstance(value, int) or isinstance(value, bool) or value not in {0, 1}:
+                    continue
+                event_key = (did, field_name)
+                previous = self._last_scene_values.get(event_key)
+                self._last_scene_values[event_key] = value
+                if from_push and previous == 0 and value == 1:
+                    self._scene_event_counts[event_key] = self._scene_event_counts.get(event_key, 0) + 1
+                    self._scene_event_values[event_key] = value
