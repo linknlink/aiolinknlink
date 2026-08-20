@@ -13,7 +13,9 @@ from aiolinknlink import (
     PID_ESENSOR_2000_GEN1,
     PID_ESENSOR_2000_GEN2,
     PID_SINGLE_CHANNEL_LIGHT_SWITCH,
+    PID_TWO_CHANNEL_LIGHT_SWITCH,
     SINGLE_CHANNEL_LIGHT_SCENE_FIELDS,
+    TWO_CHANNEL_LIGHT_SCENE_FIELDS,
     IbgClient,
     IbgConnectionError,
     IbgDevice,
@@ -199,9 +201,15 @@ class IbgDataUpdateCoordinator(DataUpdateCoordinator[IbgCoordinatorData]):
     ) -> None:
         """Count only pushed zero-to-one transitions from momentary scene keys."""
         for did, state in states.items():
-            if state is None or state.device.pid != PID_SINGLE_CHANNEL_LIGHT_SWITCH:
+            if state is None:
                 continue
-            for field_name in SINGLE_CHANNEL_LIGHT_SCENE_FIELDS:
+            scene_fields = {
+                PID_SINGLE_CHANNEL_LIGHT_SWITCH: SINGLE_CHANNEL_LIGHT_SCENE_FIELDS,
+                PID_TWO_CHANNEL_LIGHT_SWITCH: TWO_CHANNEL_LIGHT_SCENE_FIELDS,
+            }.get(state.device.pid)
+            if scene_fields is None:
+                continue
+            for field_name in scene_fields:
                 value = state.values.get(field_name)
                 if not isinstance(value, int) or isinstance(value, bool) or value not in {0, 1}:
                     continue

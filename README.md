@@ -120,6 +120,10 @@ PID `20110100` single-channel light switches expose a confirmed `pwr1` load
 switch, a confirmed `bglight` panel-backlight switch, and two separate
 momentary scene-button event entities for `scenarioswitch_1` and
 `scenarioswitch_2`.
+PID `21110100` two-channel light switches expose confirmed `pwr1`, `pwr2`,
+`bglight`, and `mpwr` controls, plus four separate momentary scene-button
+event entities. As with the eight-channel profile, `mpwr=2` means keep the
+current channel states and is derived from the actual channel outputs.
 
 Locked gateways can reuse their existing 16-byte local key without changing the
 gateway lock setting:
