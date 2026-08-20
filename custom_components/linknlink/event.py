@@ -6,7 +6,12 @@ from homeassistant.components.event import EventEntity
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from aiolinknlink import PID_ESENSOR_2000_GEN1, PID_ESENSOR_2000_GEN2, PID_SR3_SENSOR
+from aiolinknlink import (
+    PID_ESENSOR_2000_GEN1,
+    PID_ESENSOR_2000_GEN2,
+    PID_SINGLE_CHANNEL_LIGHT_SWITCH,
+    PID_SR3_SENSOR,
+)
 
 from . import LinknLinkConfigEntry
 from .entity import IbgCoordinatorEntity
@@ -37,6 +42,15 @@ async def async_setup_entry(
         for device in coordinator.data.subdevices
         if device.pid == PID_ESENSOR_2000_GEN2
     )
+    for scene_key, name in (
+        ("scenarioswitch_1", "Scene button 1"),
+        ("scenarioswitch_2", "Scene button 2"),
+    ):
+        async_add_entities(
+            IbgSceneKeyEvent(coordinator, device.did, scene_key, name)
+            for device in coordinator.data.subdevices
+            if device.pid == PID_SINGLE_CHANNEL_LIGHT_SWITCH
+        )
 
 
 class IbgKeyEvent(IbgCoordinatorEntity, EventEntity):
@@ -107,4 +121,28 @@ class IbgEsensorGen1KeyEvent(IbgCoordinatorEntity, EventEntity):
             }.get(value)
             if event_type is not None:
                 self._trigger_event(event_type, {"keypressed": value})
+        super()._handle_coordinator_update()
+
+
+class IbgSceneKeyEvent(IbgCoordinatorEntity, EventEntity):
+    """Momentary scene key events reported by a single-channel light switch."""
+
+    _attr_event_types = [EVENT_TYPE_PRESSED]
+    def __init__(self, coordinator, did: str, scene_key: str, name: str) -> None:
+        super().__init__(coordinator, did, scene_key)
+        self._scene_key = scene_key
+        self._attr_translation_key = f"scene_key_{scene_key.rsplit('_', 1)[-1]}"
+        self._attr_name = name
+        self._seen_count = coordinator.data.scene_event_counts.get((did, scene_key), 0)
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        event_key = (self.did, self._scene_key)
+        count = self.coordinator.data.scene_event_counts.get(event_key, 0)
+        if count > self._seen_count:
+            self._seen_count = count
+            self._trigger_event(
+                EVENT_TYPE_PRESSED,
+                {self._scene_key: self.coordinator.data.scene_event_values.get(event_key, 1)},
+            )
         super()._handle_coordinator_update()

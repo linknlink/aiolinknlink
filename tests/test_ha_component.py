@@ -36,6 +36,7 @@ from aiolinknlink import (  # noqa: E402
     PID_MODBUS_ELECTRICITY_METER,
     PID_MODBUS_MULTI_SENSOR,
     PID_MODBUS_WATER_METER,
+    PID_SINGLE_CHANNEL_LIGHT_SWITCH,
     PID_WATER_AC_PANEL,
     IbgConnectionError,
     IbgDevice,
@@ -69,6 +70,7 @@ from custom_components.linknlink.event import (  # noqa: E402
     EVENT_TYPE_PRESSED,
     IbgEsensorGen1KeyEvent,
     IbgEsensorKeyEvent,
+    IbgSceneKeyEvent,
 )
 from custom_components.linknlink.number import IbgDtuVoltageOutput  # noqa: E402
 from custom_components.linknlink.sensor import (  # noqa: E402
@@ -92,6 +94,7 @@ from custom_components.linknlink.switch import (  # noqa: E402
     DTU_SWITCHES,
     EAC1_SWITCHES,
     LIGHT8_SWITCHES,
+    SINGLE_CHANNEL_LIGHT_SWITCHES,
     SWITCHES_BY_PID,
     IbgPowerSwitch,
 )
@@ -129,6 +132,9 @@ def _coordinator(client: object) -> IbgDataUpdateCoordinator:
     coordinator._last_keypressed = {}
     coordinator._key_event_counts = {}
     coordinator._key_event_values = {}
+    coordinator._last_scene_values = {}
+    coordinator._scene_event_counts = {}
+    coordinator._scene_event_values = {}
     return coordinator
 
 
@@ -285,6 +291,74 @@ def test_coordinator_tracks_only_documented_esensor_2000_gen1_push_actions() -> 
     assert coordinator._key_event_values == {device.did: 3}
 
 
+def test_coordinator_tracks_only_pushed_single_channel_scene_edges() -> None:
+    device = IbgSubDevice(
+        did="00112233445566778899aabbccddeef8",
+        pid=PID_SINGLE_CHANNEL_LIGHT_SWITCH,
+        name="RF-single-light",
+        online=True,
+    )
+    coordinator = _coordinator(AsyncMock())
+
+    def scene_state(first: int, second: int) -> IbgSubDeviceState:
+        return IbgSubDeviceState(
+            device,
+            {"scenarioswitch_1": first, "scenarioswitch_2": second},
+            datetime.now(UTC),
+        )
+
+    coordinator._track_scene_edges({device.did: scene_state(0, 0)})
+    coordinator._track_scene_edges({device.did: scene_state(1, 0)})
+    assert coordinator._scene_event_counts == {}
+    coordinator._track_scene_edges({device.did: scene_state(0, 0)}, from_push=True)
+    coordinator._track_scene_edges({device.did: scene_state(1, 1)}, from_push=True)
+    coordinator._track_scene_edges({device.did: scene_state(0, 0)}, from_push=True)
+
+    assert coordinator._scene_event_counts == {
+        (device.did, "scenarioswitch_1"): 1,
+        (device.did, "scenarioswitch_2"): 1,
+    }
+
+
+def test_single_channel_scene_event_entity_emits_pressed_event() -> None:
+    device = IbgSubDevice(
+        did="00112233445566778899aabbccddeef9",
+        pid=PID_SINGLE_CHANNEL_LIGHT_SWITCH,
+        name="RF-single-light",
+        online=True,
+    )
+    coordinator = object.__new__(IbgDataUpdateCoordinator)
+    coordinator.device = GATEWAY
+    coordinator.data = IbgCoordinatorData(
+        (device,),
+        {device.did: IbgSubDeviceState(device, {}, datetime.now(UTC))},
+        scene_event_counts={(device.did, "scenarioswitch_1"): 0},
+        scene_event_values={(device.did, "scenarioswitch_1"): 1},
+    )
+    coordinator.last_update_success = True
+    entity = IbgSceneKeyEvent(
+        coordinator,
+        device.did,
+        "scenarioswitch_1",
+        "Scene button 1",
+    )
+    entity._trigger_event = Mock()  # type: ignore[method-assign]
+    entity.async_write_ha_state = Mock()  # type: ignore[method-assign]
+    coordinator.data = IbgCoordinatorData(
+        (device,),
+        {device.did: IbgSubDeviceState(device, {}, datetime.now(UTC))},
+        scene_event_counts={(device.did, "scenarioswitch_1"): 1},
+        scene_event_values={(device.did, "scenarioswitch_1"): 1},
+    )
+
+    entity._handle_coordinator_update()
+
+    entity._trigger_event.assert_called_once_with(
+        EVENT_TYPE_PRESSED,
+        {"scenarioswitch_1": 1},
+    )
+
+
 def test_esensor_2000_gen1_event_entity_maps_press_and_double_press() -> None:
     device = IbgSubDevice(
         did="00112233445566778899aabbccddeef7",
@@ -360,6 +434,40 @@ async def test_8_channel_light_switch_exposes_circuits_and_master_control() -> N
     assert master.is_on is False
     await master.async_turn_on()
     coordinator.async_set_subdevice_state.assert_awaited_once_with(device.did, {"mpwr": True})
+
+
+async def test_single_channel_light_switch_exposes_load_and_backlight_controls() -> None:
+    device = IbgSubDevice(
+        did="00112233445566778899aabbccddeef8",
+        pid=PID_SINGLE_CHANNEL_LIGHT_SWITCH,
+        name="RF-single-light",
+        online=True,
+    )
+    coordinator = object.__new__(IbgDataUpdateCoordinator)
+    coordinator.device = GATEWAY
+    coordinator.data = IbgCoordinatorData(
+        (device,),
+        {
+            device.did: IbgSubDeviceState(
+                device,
+                {"pwr1": False, "bglight": True},
+                datetime.now(UTC),
+            )
+        },
+    )
+    coordinator.last_update_success = True
+    coordinator.async_set_subdevice_state = AsyncMock()  # type: ignore[method-assign]
+
+    load = IbgPowerSwitch(coordinator, device.did, SINGLE_CHANNEL_LIGHT_SWITCHES[0])
+    backlight = IbgPowerSwitch(coordinator, device.did, SINGLE_CHANNEL_LIGHT_SWITCHES[1])
+
+    assert load.is_on is False
+    assert backlight.is_on is True
+    await backlight.async_turn_off()
+    coordinator.async_set_subdevice_state.assert_awaited_once_with(
+        device.did,
+        {"bglight": False},
+    )
 
 
 async def test_dtu_entities_use_input_modes_and_confirmed_controls() -> None:
@@ -588,6 +696,7 @@ def test_entity_catalogs_are_pid_specific() -> None:
     assert len(BOX7_SWITCHES) == 7
     assert len(BOX7_SENSORS) == 12
     assert len(LIGHT8_SWITCHES) == 8
+    assert len(SINGLE_CHANNEL_LIGHT_SWITCHES) == 2
     assert len(DTU_SWITCHES) == 2
     assert len(EAC1_SWITCHES) == 1
     assert len(DTU_ELECTRICAL_SENSORS) == 8
@@ -618,6 +727,7 @@ def test_entity_catalogs_are_pid_specific() -> None:
     assert BINARY_SENSORS_BY_PID[PID_ESENSOR_2000_GEN2] == SR3_BINARY_SENSORS
     assert BINARY_SENSORS_BY_PID[PID_DLT645_ELECTRICITY_METER] == DLT645_ELECTRICITY_METER_BINARY_SENSORS
     assert SWITCHES_BY_PID[PID_8_CHANNEL_LIGHT_SWITCH] == LIGHT8_SWITCHES
+    assert SWITCHES_BY_PID[PID_SINGLE_CHANNEL_LIGHT_SWITCH] == SINGLE_CHANNEL_LIGHT_SWITCHES
     assert MODBUS_WATER_SENSORS[0].device_class == SensorDeviceClass.WATER
     assert MODBUS_WATER_SENSORS[0].native_unit_of_measurement == UnitOfVolume.CUBIC_METERS
     assert MODBUS_WATER_SENSORS[0].state_class == SensorStateClass.TOTAL_INCREASING
@@ -727,6 +837,7 @@ def test_entity_translations_cover_parameter_derived_names() -> None:
         )
         assert all(description.translation_key in switch_names for description in BOX7_SWITCHES)
         assert all(description.translation_key in switch_names for description in LIGHT8_SWITCHES)
+        assert all(description.translation_key in switch_names for description in SINGLE_CHANNEL_LIGHT_SWITCHES)
         assert all(description.translation_key in switch_names for description in EAC1_SWITCHES)
         assert "voltage_output" in number_names
         assert "fault_code" in sensor_names
@@ -743,6 +854,8 @@ def test_entity_translations_cover_parameter_derived_names() -> None:
             EVENT_TYPE_PRESSED,
             EVENT_TYPE_DOUBLE_PRESSED,
         }
+        assert set(event_names["scene_key_1"]["event_type"]) == {EVENT_TYPE_PRESSED}
+        assert set(event_names["scene_key_2"]["event_type"]) == {EVENT_TYPE_PRESSED}
         assert len({switch_names[f"switch_{channel}"]["name"] for channel in range(1, 8)}) == 7
 
 
