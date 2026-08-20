@@ -25,7 +25,9 @@ PID_MODBUS_ELECTRICITY_METER = "000000000000000000000000ed140100"
 PID_DLT645_ELECTRICITY_METER = "000000000000000000000000d10f0100"
 PID_WATER_AC_PANEL = "0000000000000000000000002b160100"
 PID_EAC1_PANEL = "0000000000000000000000009b100100"
-PID_ESENSOR_2000 = "00000000000000000000000043160100"
+PID_ESENSOR_2000_GEN1 = "000000000000000000000000b5120100"
+PID_ESENSOR_2000_GEN2 = "00000000000000000000000043160100"
+PID_ESENSOR_2000 = PID_ESENSOR_2000_GEN2
 PID_8_CHANNEL_LIGHT_SWITCH = "000000000000000000000000d7140100"
 SUPPORTED_SUBDEVICE_PIDS = frozenset(
     {
@@ -39,7 +41,8 @@ SUPPORTED_SUBDEVICE_PIDS = frozenset(
         PID_DLT645_ELECTRICITY_METER,
         PID_WATER_AC_PANEL,
         PID_EAC1_PANEL,
-        PID_ESENSOR_2000,
+        PID_ESENSOR_2000_GEN1,
+        PID_ESENSOR_2000_GEN2,
         PID_8_CHANNEL_LIGHT_SWITCH,
     }
 )
@@ -501,8 +504,10 @@ def normalize_subdevice_state(pid: str, payload: dict[str, Any]) -> dict[str, in
         return _normalize_water_ac_panel_state(payload)
     if pid.lower() == PID_EAC1_PANEL:
         return _normalize_eac1_state(payload)
-    if pid.lower() == PID_ESENSOR_2000:
-        return _normalize_esensor_2000_state(payload)
+    if pid.lower() == PID_ESENSOR_2000_GEN1:
+        return _normalize_esensor_2000_gen1_state(payload)
+    if pid.lower() == PID_ESENSOR_2000_GEN2:
+        return _normalize_esensor_2000_gen2_state(payload)
     if pid.lower() == PID_8_CHANNEL_LIGHT_SWITCH:
         return _normalize_8_channel_light_switch_state(payload)
     if pid.lower() != PID_SR3_SENSOR:
@@ -881,8 +886,33 @@ def _normalize_eac1_state(payload: dict[str, Any]) -> dict[str, int | float | bo
     return values
 
 
-def _normalize_esensor_2000_state(payload: dict[str, Any]) -> dict[str, int | float | bool]:
-    """Normalize the reviewed eSensor-2000 environmental sensor profile."""
+def _normalize_esensor_2000_gen1_state(payload: dict[str, Any]) -> dict[str, int | float | bool]:
+    """Normalize the reviewed eSensor-2000 first-generation profile."""
+    values: dict[str, int | float | bool] = {}
+    temperature = _number(payload.get("envtemp"))
+    if temperature is not None and -400 <= temperature <= 1_000:
+        values["temperature"] = temperature / 10
+    humidity = _number(payload.get("envhumid"))
+    if humidity is not None and 0 <= humidity <= 1_000:
+        values["humidity"] = humidity / 10
+    battery = _number(payload.get("battery"))
+    if battery is not None and 0 <= battery <= 100:
+        values["battery"] = round(battery)
+
+    presence = payload.get("pir_detected")
+    if isinstance(presence, bool):
+        values["occupancy"] = presence
+    elif isinstance(presence, int) and not isinstance(presence, bool) and presence in {0, 1}:
+        values["occupancy"] = bool(presence)
+
+    keypressed = payload.get("keypressed")
+    if isinstance(keypressed, int) and not isinstance(keypressed, bool) and keypressed in {0, 1, 3}:
+        values["keypressed"] = keypressed
+    return values
+
+
+def _normalize_esensor_2000_gen2_state(payload: dict[str, Any]) -> dict[str, int | float | bool]:
+    """Normalize the reviewed eSensor-2000 second-generation profile."""
     values: dict[str, int | float | bool] = {}
     temperature = _number(payload.get("envtemp"))
     if temperature is not None and -400 <= temperature <= 12_500:

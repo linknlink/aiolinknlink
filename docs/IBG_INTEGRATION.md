@@ -125,7 +125,16 @@ and type-whitelisted. HA accepts a control only after the panel response
 confirms every requested value. Indoor temperature, humidity, and device type
 remain read-only.
 
-PID `00000000000000000000000043160100` eSensor-2000 devices expose:
+PID `000000000000000000000000b5120100` first-generation eSensor-2000 devices
+expose:
+
+- temperature divided by 10 and reported in °C;
+- relative humidity divided by 10 and reported as a percentage;
+- battery percentage and occupancy;
+- press and double-press physical-key events.
+
+PID `00000000000000000000000043160100` second-generation eSensor-2000 devices
+expose:
 
 - temperature divided by 10 and reported in °C;
 - relative humidity divided by 100 and reported as a percentage;
@@ -133,8 +142,8 @@ PID `00000000000000000000000043160100` eSensor-2000 devices expose:
 - occupancy, while the documented unknown value remains unavailable;
 - press, double-press, and long-press physical-key events.
 
-The profile is read-only. Initial or repeatedly polled key values do not create
-false HA events; only a newly observed documented key action is emitted.
+Both profiles are read-only. Initial or repeatedly polled key values do not
+create false HA events; only a newly observed documented key action is emitted.
 
 PID `000000000000000000000000d7140100` eight-channel light switches expose:
 
@@ -223,11 +232,13 @@ differ on another gateway. Each PID `d10f0100` DLT645 electricity meter has
 25 entities: 20 measurements, three overload binary sensors, and two
 disabled-by-default diagnostic sensors. Each PID `9b100100` eAC1 panel has four
 entities: one climate entity, one humidity sensor, one key-lock switch, and
-one disabled-by-default device-type diagnostic sensor. Each PID `43160100`
-eSensor-2000 has six entities: four measurement sensors, one occupancy binary
-sensor, and one physical-key event entity. Each PID `d7140100` eight-channel
-light switch has eight switch entities: seven circuits and one all-on/all-off
-control.
+one disabled-by-default device-type diagnostic sensor. Each PID `b5120100`
+first-generation eSensor-2000 has five entities: three measurement sensors, one
+occupancy binary sensor, and one physical-key event entity. Each PID `43160100`
+second-generation eSensor-2000 has six entities: four measurement sensors, one
+occupancy binary sensor, and one physical-key event entity. Each PID `d7140100`
+eight-channel light switch has eight switch entities: seven circuits and one
+all-on/all-off control.
 
 ## Upgrade and rollback
 

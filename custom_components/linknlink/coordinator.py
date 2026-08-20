@@ -10,7 +10,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from aiolinknlink import (
-    PID_ESENSOR_2000,
+    PID_ESENSOR_2000_GEN1,
+    PID_ESENSOR_2000_GEN2,
     IbgClient,
     IbgConnectionError,
     IbgDevice,
@@ -164,8 +165,9 @@ class IbgDataUpdateCoordinator(DataUpdateCoordinator[IbgCoordinatorData]):
                 continue
             previous = self._last_keypressed.get(did)
             self._last_keypressed[did] = value
-            if state.device.pid == PID_ESENSOR_2000:
-                if from_push and value in {1, 3, 4}:
+            if state.device.pid in {PID_ESENSOR_2000_GEN1, PID_ESENSOR_2000_GEN2}:
+                supported_actions = {1, 3} if state.device.pid == PID_ESENSOR_2000_GEN1 else {1, 3, 4}
+                if from_push and value in supported_actions:
                     self._key_event_counts[did] = self._key_event_counts.get(did, 0) + 1
                     self._key_event_values[did] = value
             elif value in {1, 2} and previous == 2 and value == 1:
