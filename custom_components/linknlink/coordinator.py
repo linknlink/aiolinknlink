@@ -13,8 +13,10 @@ from aiolinknlink import (
     PID_ESENSOR_2000_GEN1,
     PID_ESENSOR_2000_GEN2,
     PID_SINGLE_CHANNEL_LIGHT_SWITCH,
+    PID_THREE_CHANNEL_LIGHT_SWITCH,
     PID_TWO_CHANNEL_LIGHT_SWITCH,
     SINGLE_CHANNEL_LIGHT_SCENE_FIELDS,
+    THREE_CHANNEL_LIGHT_SCENE_FIELDS,
     TWO_CHANNEL_LIGHT_SCENE_FIELDS,
     IbgClient,
     IbgConnectionError,
@@ -206,6 +208,7 @@ class IbgDataUpdateCoordinator(DataUpdateCoordinator[IbgCoordinatorData]):
             scene_fields = {
                 PID_SINGLE_CHANNEL_LIGHT_SWITCH: SINGLE_CHANNEL_LIGHT_SCENE_FIELDS,
                 PID_TWO_CHANNEL_LIGHT_SWITCH: TWO_CHANNEL_LIGHT_SCENE_FIELDS,
+                PID_THREE_CHANNEL_LIGHT_SWITCH: THREE_CHANNEL_LIGHT_SCENE_FIELDS,
             }.get(state.device.pid)
             if scene_fields is None:
                 continue

@@ -24,6 +24,7 @@ SUBDEVICE_MODELS = {
     "000000000000000000000000d7140100": "Eight-channel light switch",
     "00000000000000000000000020110100": "Single-channel light switch",
     "00000000000000000000000021110100": "Two-channel light switch",
+    "00000000000000000000000022110100": "Three-channel light switch",
 }
 
 

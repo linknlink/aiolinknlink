@@ -7,6 +7,8 @@
   events for `scenarioswitch_1` and `scenarioswitch_2`.
 - Add PID `21110100` two-channel light switches with confirmed `pwr1`, `pwr2`,
   `bglight`, and `mpwr` controls, plus four momentary scene-button events.
+- Add PID `22110100` three-channel light switches with confirmed `pwr1` through
+  `pwr3`, `bglight`, and `mpwr` controls, plus six momentary scene-button events.
 - Add local iBG2 SE discovery, compact DNA authentication, paginated subdevice
   inventory, and read-only sensor state polling.
 - Add strict safe-state normalization for PID `05000100` temperature, humidity,

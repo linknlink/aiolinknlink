@@ -178,6 +178,19 @@ The `mpwr` field accepts only `0` or `1` when written. A reported `2` means
 keep the individual outputs unchanged, so HA derives the master state from
 `pwr1` and `pwr2`.
 
+PID `00000000000000000000000022110100` three-channel light switches expose:
+
+- three confirmed load switches backed by `pwr1` through `pwr3`;
+- one confirmed panel-backlight switch backed by `bglight`;
+- one confirmed all-on/all-off switch backed by `mpwr`;
+- separate momentary `pressed` event entities for
+  `scenarioswitch_1` through `scenarioswitch_6`.
+
+The `mpwr` field accepts only `0` or `1` when written. A reported `2` means
+keep the individual outputs unchanged, so HA derives the master state from
+`pwr1` through `pwr3`. Scene fields are read-only and emit an event only for
+a pushed `0` to `1` transition.
+
 Gateway credentials, MQTT settings, network keys, raw snapshots, AES session
 keys, and unreviewed fields are deliberately excluded. Dynamic addition of new
 entity types while HA is running, Zigbee, other Modbus profiles, and other RF
@@ -265,6 +278,9 @@ Each PID `20110100` single-channel light switch has four entities: the load
 switch, panel-backlight switch, and two scene-button event entities.
 Each PID `21110100` two-channel light switch has eight entities: two load
 switches, a panel-backlight switch, an all-on/all-off switch, and four
+scene-button event entities.
+Each PID `22110100` three-channel light switch has eleven entities: three load
+switches, a panel-backlight switch, an all-on/all-off switch, and six
 scene-button event entities.
 
 ## Upgrade and rollback
