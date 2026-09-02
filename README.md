@@ -1,6 +1,6 @@
 # aiolinknlink
 
-`aiolinknlink` is an asynchronous Python client for direct local communication with LinknLink eMotion Ultra2 devices.
+`aiolinknlink` is an asynchronous Python client for direct local communication with LinknLink devices.
 
 The library implements LinknLink DNA discovery, authentication, encrypted UDP transport, local multi-target radar position subscriptions, environmental and occupancy state reads, and device-verified radar configuration. It communicates directly with devices on the local network and does not require a cloud service or MQTT broker.
 
@@ -10,10 +10,34 @@ Supported radar configuration includes sensitivity, trigger speed, installation 
 
 Temperature and humidity require the optional sensor power cable. Environment reads refresh the device's ESPHome entity list so connecting or disconnecting the cable is detected after the device restarts.
 
+## eMotion Max development support
+
+The `feature/emotion-max` branch contains source-derived protocol support for
+three eMotion Max generations. These implementations are not release-ready
+until each generation has passed real-device validation.
+
+| Model | DNA type | Local application protocol |
+| --- | --- | --- |
+| eMotion Max | `0x9EAC` | KeyValue status frames |
+| eMotion Max 2 | `0xD6AC` | Virtual-peripheral passthrough frames |
+| eMotion Max 3 | `0xDEAC` | Virtual-peripheral passthrough frames |
+
+The implemented state surface includes temperature, humidity, illuminance,
+occupancy, target count, and four presence zones. Radar configuration includes
+sensitivity, trigger speed, installation mode, height, direction, Z-axis
+limits, default absence delay, and four zone absence delays. Local UDP position
+updates contain X/Y/Z coordinates; distance is calculated locally. The local
+protocol does not report target speed.
+
+Legacy BLC firmware can lock local pairing after setup. When discovery reports
+`device.is_locked`, applications must securely retain the 16-byte local control
+key returned during Wi-Fi provisioning and pass it as `local_key`. This library
+does not perform Wi-Fi provisioning.
+
 ## Requirements
 
 - Python 3.11 or newer
-- An eMotion Ultra2 already connected to Wi-Fi
+- A supported LinknLink device already connected to Wi-Fi
 - The client and device on the same local network
 
 ## Example

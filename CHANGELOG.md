@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.0 (unreleased)
+
+- Add model-specific local protocol support for eMotion Max, eMotion Max 2,
+  and eMotion Max 3.
+- Read environment state through KeyValue frames on Max and virtual peripheral
+  frames on Max 2 and Max 3.
+- Add device-verified radar configuration and local UDP position subscription
+  support for all three generations.
+- Use the wire-order MAC and 80-byte terminal structure required by legacy BLC
+  pairing, and accept a provisioning-time local control key for locked units.
+- Keep this version unreleased until the claimed generation has passed
+  discovery, authentication, state, control, restart, and IP-change tests on a
+  real device.
+
 ## 0.3.2
 
 - Refresh ESPHome entity capabilities on every state read so optional

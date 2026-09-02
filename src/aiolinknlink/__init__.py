@@ -7,6 +7,8 @@ from .client import (
     UltraConnectionError,
     UltraError,
     UltraProtocolError,
+    derive_peripheral_did,
+    derive_radar_did,
     derive_ultra2_protocol_mac,
     derive_ultra2_radar_did,
 )
@@ -95,6 +97,8 @@ __all__ = [
     "UltraRadarZRange",
     "UltraSession",
     "UltraTargetPosition",
+    "derive_peripheral_did",
+    "derive_radar_did",
     "derive_ultra2_protocol_mac",
     "derive_ultra2_radar_did",
     "get_device_profile",

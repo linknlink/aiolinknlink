@@ -36,12 +36,14 @@ from .models import (
     UltraRadarZRange,
     UltraSession,
 )
-from .protocol import dna, emotion
+from .protocol import dna, emotion, keyvalue
 
 _LOGGER = logging.getLogger(__name__)
 
 PROVIDER = "ultra"
 TYPE_ULTRA2_RADAR = 0xACDB
+TYPE_LEGACY_OPT3004 = 0xACD8
+TYPE_LEGACY_SHTXX = 0xACDC
 DEFAULT_TIMEOUT = 5.0
 DEFAULT_AUTH_TIMEOUT = 15.0
 DEFAULT_PREFERRED_COMMAND_TIMEOUT = 15.0
@@ -271,6 +273,13 @@ class UltraClient:
     async def get_environment_state(self, session: UltraSession) -> UltraEnvironmentState:
         """Read environmental, occupancy, and count states from the local API."""
         profile = session.device.profile
+        if profile is not None and profile.model is DeviceModel.EMOTION_MAX1:
+            return await self._get_max1_environment_state(session)
+        if profile is not None and profile.model in {
+            DeviceModel.EMOTION_MAX2,
+            DeviceModel.EMOTION_MAX3,
+        }:
+            return await self._get_max_subdevice_environment_state(session)
         if profile is not None and profile.model is not DeviceModel.EMOTION_ULTRA2:
             raise UltraProtocolError(f"environment state is not implemented for {profile.display_name}")
         client = APIClient(
@@ -335,6 +344,107 @@ class UltraClient:
             received_at=datetime.now(UTC),
         )
 
+    async def _get_max1_environment_state(
+        self,
+        session: UltraSession,
+    ) -> UltraEnvironmentState:
+        """Read first-generation Max state from its KeyValue endpoint."""
+        payload = await self._get_keyvalue_state(session)
+        values = _environment_values_from_legacy_payload(payload)
+        session.last_seen = datetime.now(UTC)
+        return UltraEnvironmentState(
+            device_id=session.device.id,
+            values=values,
+            available_fields=frozenset(values),
+            received_at=datetime.now(UTC),
+        )
+
+    async def _get_max_subdevice_environment_state(
+        self,
+        session: UltraSession,
+    ) -> UltraEnvironmentState:
+        """Read Max2/Max3 radar and environmental virtual peripherals."""
+        radar = await self._get_subdevice_state(
+            session,
+            derive_peripheral_did(session.device.mac, TYPE_ULTRA2_RADAR),
+            required=True,
+        )
+        assert radar is not None
+        values = _environment_values_from_legacy_payload(radar)
+
+        illuminance = await self._get_subdevice_state(
+            session,
+            derive_peripheral_did(session.device.mac, TYPE_LEGACY_OPT3004),
+        )
+        if illuminance is not None and (lux := _optional_number(illuminance, "envlux")) is not None:
+            values["illuminance"] = lux
+        climate = await self._get_subdevice_state(
+            session,
+            derive_peripheral_did(session.device.mac, TYPE_LEGACY_SHTXX),
+        )
+        if climate is not None:
+            _add_temperature_humidity(values, climate)
+
+        session.last_seen = datetime.now(UTC)
+        return UltraEnvironmentState(
+            device_id=session.device.id,
+            values=values,
+            available_fields=frozenset(values),
+            received_at=datetime.now(UTC),
+        )
+
+    async def _get_keyvalue_state(
+        self,
+        session: UltraSession,
+        *,
+        exchange: dna.PacketExchange | None = None,
+    ) -> dict[str, object]:
+        """Read and validate a DNA KeyValue state object."""
+        response = await self.send_command(
+            session,
+            keyvalue.build_get_status_frame(),
+            exchange=exchange,
+        )
+        try:
+            return keyvalue.parse_status_response(response)
+        except keyvalue.KeyValueError as err:
+            raise UltraProtocolError(str(err)) from err
+
+    async def _get_subdevice_state(
+        self,
+        session: UltraSession,
+        did: str,
+        *,
+        required: bool = False,
+        exchange: dna.PacketExchange | None = None,
+    ) -> dict[str, object] | None:
+        """Read one Max virtual peripheral."""
+        try:
+            response = await self.send_command(
+                session,
+                emotion.build_get_status_frame(did),
+                exchange=exchange,
+            )
+            frame = emotion.parse_subdevice_frame(response)
+            payload = emotion.parse_subdevice_json_payload(frame)
+        except emotion.EmotionError as err:
+            if required:
+                raise UltraProtocolError(str(err)) from err
+            return None
+        except UltraError:
+            if required:
+                raise
+            return None
+        if (
+            str(payload.get("did", "")).lower() != did
+            or isinstance(payload.get("status"), bool)
+            or payload.get("status") != 0
+        ):
+            if required:
+                raise UltraProtocolError(f"subdevice status read failed for {did}")
+            return None
+        return payload
+
     async def subscribe_local_udp_push(
         self,
         session: UltraSession,
@@ -347,6 +457,19 @@ class UltraClient:
         """Ask the device to push position updates to a local UDP port."""
         if not session.session_key:
             raise UltraAuthError("missing DNA session key")
+        profile = session.device.profile
+        if profile is not None and profile.model is DeviceModel.EMOTION_MAX1:
+            response = await self.send_command(
+                session,
+                keyvalue.build_set_status_frame({"port": port, "timeout": timeout}),
+                try_all=try_all,
+                exchange=exchange,
+            )
+            try:
+                keyvalue.parse_status_response(response)
+            except keyvalue.KeyValueError as err:
+                raise UltraProtocolError(str(err)) from err
+            return UltraLocalUDPConfig(ip="0.0.0.0", port=port, timeout=timeout)
         payload = await self.send_command(
             session,
             emotion.build_local_udp_upload_command(port, timeout),
@@ -365,7 +488,11 @@ class UltraClient:
         exchange: dna.PacketExchange | None = None,
     ) -> UltraRadarStatus:
         """Read the validated Ultra2 radar configuration fields."""
-        radar_did = derive_ultra2_radar_did(session.device.mac)
+        profile = session.device.profile
+        if profile is not None and profile.model is DeviceModel.EMOTION_MAX1:
+            status = await self._get_keyvalue_state(session, exchange=exchange)
+            return _radar_status_from_payload(status, "", require_status=False)
+        radar_did = derive_radar_did(session.device.mac)
         try:
             payload = await self.send_command(
                 session,
@@ -377,40 +504,7 @@ class UltraClient:
         except emotion.EmotionError as err:
             raise UltraProtocolError(str(err)) from err
 
-        response_did = str(status.get("did", ""))
-        if response_did.lower() != radar_did:
-            raise UltraProtocolError(f"radar status DID mismatch: {response_did or 'missing'}")
-        response_status = status.get("status")
-        if isinstance(response_status, bool) or response_status != 0:
-            raise UltraProtocolError(f"radar status read failed: {response_status!r}")
-        sensitivity = _required_int(status, "level_of_sensitivity", valid_values=range(3))
-        return UltraRadarStatus(
-            did=radar_did,
-            sensitivity=sensitivity,
-            received_at=datetime.now(UTC),
-            trigger_speed=_optional_int(status, "triger_speed", valid_values=range(3)),
-            install_mode=_optional_int(status, "install_mode", valid_values=range(2)),
-            height=_optional_int(status, "height", minimum=0, maximum=0xFFFF),
-            install_direction=_optional_int(
-                status,
-                "install_direction",
-                minimum=0,
-                maximum=0xFF,
-            ),
-            z_range=_optional_z_range(status),
-            default_absence_delay=_optional_int(
-                status,
-                "delaytime",
-                minimum=0,
-                maximum=0xFFFF,
-            ),
-            zone_absence_delays=(
-                _optional_int(status, "duration1", minimum=0, maximum=0xFFFF),
-                _optional_int(status, "duration2", minimum=0, maximum=0xFFFF),
-                _optional_int(status, "duration3", minimum=0, maximum=0xFFFF),
-                _optional_int(status, "duration4", minimum=0, maximum=0xFFFF),
-            ),
-        )
+        return _radar_status_from_payload(status, radar_did, require_status=True)
 
     async def set_radar_sensitivity(
         self,
@@ -586,12 +680,25 @@ class UltraClient:
         values_match: Callable[[object, object], bool] | None = None,
     ) -> UltraRadarStatus:
         """Write one radar field and require a matching independent read-back."""
-        radar_did = derive_ultra2_radar_did(session.device.mac)
-        await self.send_command(
-            session,
-            emotion.build_set_status_frame(radar_did, {field: value}),
-            exchange=exchange,
-        )
+        profile = session.device.profile
+        if profile is not None and profile.model is DeviceModel.EMOTION_MAX1:
+            wire_field = "delaytime1" if field == "delaytime" else field
+            response = await self.send_command(
+                session,
+                keyvalue.build_set_status_frame({wire_field: value}),
+                exchange=exchange,
+            )
+            try:
+                keyvalue.parse_status_response(response)
+            except keyvalue.KeyValueError as err:
+                raise UltraProtocolError(str(err)) from err
+        else:
+            radar_did = derive_radar_did(session.device.mac)
+            await self.send_command(
+                session,
+                emotion.build_set_status_frame(radar_did, {field: value}),
+                exchange=exchange,
+            )
         status = await self.get_radar_status(session, exchange=exchange)
         actual = read_value(status)
         matches = values_match(actual, expected) if values_match else actual == expected
@@ -874,11 +981,107 @@ def derive_ultra2_protocol_mac(lan_mac: str) -> str:
 
 def derive_ultra2_radar_did(lan_mac: str) -> str:
     """Derive the Ultra2 radar peripheral DID from its Wi-Fi station MAC."""
+    if not dna.mac_bytes(lan_mac):
+        raise ValueError(f"invalid Ultra2 LAN MAC: {lan_mac}")
+    return derive_peripheral_did(lan_mac, TYPE_ULTRA2_RADAR)
+
+
+def derive_radar_did(lan_mac: str) -> str:
+    """Derive the shared Ultra/Max radar peripheral DID."""
+    return derive_peripheral_did(lan_mac, TYPE_ULTRA2_RADAR)
+
+
+def derive_peripheral_did(lan_mac: str, peripheral_type: int) -> str:
+    """Derive a legacy virtual-peripheral DID from the Wi-Fi MAC."""
     mac = dna.mac_bytes(lan_mac)
     if not mac:
-        raise ValueError(f"invalid Ultra2 LAN MAC: {lan_mac}")
-    radar_type = TYPE_ULTRA2_RADAR.to_bytes(4, "little")
-    return (mac + radar_type + b"\x00\x00" + radar_type[:3] + b"\x01").hex()
+        raise ValueError(f"invalid LinknLink LAN MAC: {lan_mac}")
+    if not 0 <= peripheral_type <= 0xFFFFFF:
+        raise ValueError("peripheral type must fit in 24 bits")
+    device_type = peripheral_type.to_bytes(4, "little")
+    return (mac + device_type + b"\x00\x00" + device_type[:3] + b"\x01").hex()
+
+
+def _environment_values_from_legacy_payload(
+    payload: dict[str, object],
+) -> dict[str, int | float | bool]:
+    values: dict[str, int | float | bool] = {}
+    occupancy = _optional_bool_int(payload, "pir_detected")
+    if occupancy is not None:
+        values["occupancy"] = occupancy
+    count = _optional_number(payload, "sf_opcount")
+    if count is not None:
+        values["target_count"] = round(count)
+    for zone in range(1, 5):
+        present = _optional_bool_int(payload, f"area{zone}")
+        if present is not None:
+            values[f"zone_{zone}_presence"] = present
+    if (illuminance := _optional_number(payload, "envlux")) is not None:
+        values["illuminance"] = illuminance
+    _add_temperature_humidity(values, payload)
+    return values
+
+
+def _add_temperature_humidity(
+    values: dict[str, int | float | bool],
+    payload: dict[str, object],
+) -> None:
+    if (temperature := _optional_number(payload, "envtemp")) is not None:
+        values["temperature"] = round(temperature / 100, 2)
+    if (humidity := _optional_number(payload, "envhumid")) is not None:
+        values["humidity"] = round(humidity / 100, 2)
+
+
+def _optional_number(payload: dict[str, object], key: str) -> float | None:
+    value = payload.get(key)
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    numeric = float(value)
+    return numeric if math.isfinite(numeric) else None
+
+
+def _optional_bool_int(payload: dict[str, object], key: str) -> bool | None:
+    value = payload.get(key)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int) and value in {0, 1}:
+        return bool(value)
+    return None
+
+
+def _radar_status_from_payload(
+    status: dict[str, object],
+    radar_did: str,
+    *,
+    require_status: bool,
+) -> UltraRadarStatus:
+    if radar_did:
+        response_did = str(status.get("did", ""))
+        if response_did.lower() != radar_did:
+            raise UltraProtocolError(f"radar status DID mismatch: {response_did or 'missing'}")
+    if require_status:
+        response_status = status.get("status")
+        if isinstance(response_status, bool) or response_status != 0:
+            raise UltraProtocolError(f"radar status read failed: {response_status!r}")
+    sensitivity = _required_int(status, "level_of_sensitivity", valid_values=range(3))
+    default_delay_key = "delaytime" if "delaytime" in status else "delaytime1"
+    return UltraRadarStatus(
+        did=radar_did,
+        sensitivity=sensitivity,
+        received_at=datetime.now(UTC),
+        trigger_speed=_optional_int(status, "triger_speed", valid_values=range(3)),
+        install_mode=_optional_int(status, "install_mode", valid_values=range(2)),
+        height=_optional_int(status, "height", minimum=0, maximum=0xFFFF),
+        install_direction=_optional_int(status, "install_direction", minimum=0, maximum=0xFF),
+        z_range=_optional_z_range(status),
+        default_absence_delay=_optional_int(status, default_delay_key, minimum=0, maximum=0xFFFF),
+        zone_absence_delays=(
+            _optional_int(status, "duration1", minimum=0, maximum=0xFFFF),
+            _optional_int(status, "duration2", minimum=0, maximum=0xFFFF),
+            _optional_int(status, "duration3", minimum=0, maximum=0xFFFF),
+            _optional_int(status, "duration4", minimum=0, maximum=0xFFFF),
+        ),
+    )
 
 
 def _required_int(
