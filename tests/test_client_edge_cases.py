@@ -29,14 +29,14 @@ from aiolinknlink import (
 from aiolinknlink.models import UltraSession
 from aiolinknlink.protocol import dna, emotion
 
-MAC = "e0:4b:41:02:44:c7"
+MAC = "02:00:00:00:00:10"
 
 
 def device(**changes: object) -> UltraDevice:
     """Create a fresh device for a test."""
     values: dict[str, object] = {
-        "id": "e04b410244c7",
-        "ip": "192.168.3.159",
+        "id": "020000000010",
+        "ip": "192.0.2.159",
         "port": 80,
         "mac": MAC,
         "type_id": TYPE_ULTRA2,
@@ -82,14 +82,14 @@ async def test_discover_deduplicates_supported_devices(
 ) -> None:
     raw = dna.DiscoveredDevice(
         id="first",
-        ip="192.168.3.159",
+        ip="192.0.2.159",
         port=80,
         mac=MAC,
         device_type=TYPE_ULTRA2,
     )
     duplicate = dna.DiscoveredDevice(
         id="second",
-        ip="192.168.3.160",
+        ip="192.0.2.160",
         port=80,
         mac=MAC,
         device_type=TYPE_ULTRA2,
@@ -117,6 +117,46 @@ async def test_discover_host_input_and_resolution_errors(
     )
     with pytest.raises(UltraConnectionError, match="could not resolve"):
         await UltraClient().discover_host("ultra.local")
+
+
+async def test_rediscover_finds_same_mac_on_new_address(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    found = dna.DiscoveredDevice(
+        id="found",
+        ip="192.0.2.85",
+        port=80,
+        mac=MAC,
+        device_type=TYPE_ULTRA2,
+    )
+    discover = AsyncMock(side_effect=[[], [], [found]])
+    monkeypatch.setattr(client_module, "_discover_dna_devices", discover)
+    monkeypatch.setattr(client_module, "_directed_broadcast", lambda _host: "192.0.2.255")
+    stale = device(ip="192.0.2.159")
+
+    refreshed = await UltraClient(discovery_timeout=0.1).rediscover(stale)
+
+    assert refreshed.ip == "192.0.2.85"
+    assert [call.kwargs["broadcast_address"] for call in discover.await_args_list] == [
+        "192.0.2.159",
+        "192.0.2.255",
+        "192.0.2.255",
+    ]
+
+
+async def test_rediscover_requires_mac_and_reports_missing_device(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with pytest.raises(UltraConnectionError, match="MAC is required"):
+        await UltraClient().rediscover(device(mac=""))
+
+    monkeypatch.setattr(
+        client_module,
+        "_discover_dna_devices",
+        AsyncMock(return_value=[]),
+    )
+    with pytest.raises(UltraConnectionError, match="was not rediscovered"):
+        await UltraClient().rediscover(device())
 
 
 async def test_connect_retries_and_normalizes_unknown_identity(
@@ -283,7 +323,7 @@ class DiscoveryServer(asyncio.DatagramProtocol):
         response[:8] = dna.MAGIC
         struct.pack_into("<H", response, 0x24, TYPE_ULTRA2)
         struct.pack_into("<H", response, 0x26, dna.MESSAGE_TYPE_DISCOVERY_RESPONSE)
-        response[0x2A:0x30] = bytes.fromhex("e04b410244c7")
+        response[0x2A:0x30] = bytes.fromhex("020000000010")
         self.transport.sendto(response, addr)
 
 
@@ -332,7 +372,21 @@ def test_discovery_and_sequence_helpers(monkeypatch: pytest.MonkeyPatch) -> None
             raise OSError("no route")
 
     monkeypatch.setattr(socket, "socket", lambda *_args, **_kwargs: FailingSocket())
-    assert client_module._outbound_ipv4() == "127.0.0.1"
+    assert client_module._outbound_ipv4("198.51.100.7") == "127.0.0.1"
+
+    connected_to: list[tuple[str, int]] = []
+
+    class RoutedSocket(FailingSocket):
+        def connect(self, target: tuple[str, int]) -> None:
+            connected_to.append(target)
+
+        def getsockname(self) -> tuple[str, int]:
+            return ("198.51.100.85", 12345)
+
+    monkeypatch.setattr(socket, "socket", lambda *_args, **_kwargs: RoutedSocket())
+    assert client_module._outbound_ipv4("198.51.100.52") == "198.51.100.85"
+    assert client_module._directed_broadcast("198.51.100.52") == "198.51.100.255"
+    assert connected_to == [("198.51.100.52", 80), ("198.51.100.52", 80)]
 
     assert client_module._matches_ultra(device(type_id=0, pid=PID_ULTRA2.upper()))
     assert not client_module._matches_ultra(device(type_id=0, pid="other"))
@@ -340,3 +394,23 @@ def test_discovery_and_sequence_helpers(monkeypatch: pytest.MonkeyPatch) -> None
     session = UltraSession(device=device(), command_sequence=0xFFFF)
     assert client_module._next_command_sequence(session) == 1
     assert client_module._dedupe_ints([1, 1, 2]) == [1, 2]
+
+
+def test_discovery_bind_prefers_standard_port_and_falls_back() -> None:
+    class FakeSocket:
+        def __init__(self, fail_preferred: bool) -> None:
+            self.fail_preferred = fail_preferred
+            self.binds: list[tuple[str, int]] = []
+
+        def bind(self, address: tuple[str, int]) -> None:
+            self.binds.append(address)
+            if self.fail_preferred and address[1] != 0:
+                raise OSError("in use")
+
+    preferred = FakeSocket(fail_preferred=False)
+    client_module._bind_discovery_socket(preferred, 80)  # type: ignore[arg-type]
+    assert preferred.binds == [("0.0.0.0", 80)]
+
+    fallback = FakeSocket(fail_preferred=True)
+    client_module._bind_discovery_socket(fallback, 80)  # type: ignore[arg-type]
+    assert fallback.binds == [("0.0.0.0", 80), ("0.0.0.0", 0)]

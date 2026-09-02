@@ -9,7 +9,7 @@ import socket
 import struct
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TypeAlias
 
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -28,6 +28,7 @@ MESSAGE_TYPE_AUTH = 0x65
 MESSAGE_TYPE_COMMAND = 0x6A
 
 AUTH_PAIR_INFO_SIZE = 0x64
+LEGACY_AUTH_PAIR_INFO_SIZE = 0x50
 TERMINAL_TYPE_IOT = 2
 
 INITIAL_KEY = bytes([0x09, 0x76, 0x28, 0x34, 0x3F, 0xE9, 0x9E, 0x23, 0x76, 0x5C, 0x15, 0x13, 0xAC, 0xCF, 0x8B, 0x02])
@@ -111,6 +112,9 @@ class DiscoveredDevice:
     device_type: int = 0
     message_type: int = 0
     name: str = ""
+    status_flags: int | None = None
+    is_new: bool | None = None
+    is_locked: bool | None = None
     raw: bytes = b""
 
 
@@ -146,7 +150,8 @@ def payload_checksum(payload: bytes) -> int:
 
 def build_discovery_packet(local_ip: str, local_port: int, now: datetime | None = None) -> bytes:
     """Build a full DNA discovery request."""
-    now = now or datetime.now()
+    now = now or datetime.now(UTC)
+    now = now.replace(tzinfo=UTC) if now.tzinfo is None else now.astimezone(UTC)
     ip = ipaddress.ip_address(local_ip)
     if ip.version != 4:
         raise DNAError(f"local_ip must be IPv4: {local_ip}")
@@ -156,14 +161,16 @@ def build_discovery_packet(local_ip: str, local_port: int, now: datetime | None 
     ip_bytes = ip.packed
     packet = bytearray(DISCOVERY_PACKET_SIZE)
     packet[0:8] = MAGIC
-    struct.pack_into("<I", packet, 0x08, int(now.timestamp()))
+    # The legacy header overlays this region with device_zone_t: a signed
+    # timezone followed by the packed dna_time_t fields in UTC.
+    struct.pack_into("<i", packet, 0x08, 0)
     struct.pack_into("<H", packet, 0x0C, now.year)
-    packet[0x0E] = now.month
-    packet[0x0F] = now.day
+    packet[0x0E] = now.second
+    packet[0x0F] = now.minute
     packet[0x10] = now.hour
-    packet[0x11] = now.minute
-    packet[0x12] = now.second
-    packet[0x13] = now.weekday()
+    packet[0x11] = now.weekday()
+    packet[0x12] = now.day
+    packet[0x13] = now.month
     packet[0x18] = ip_bytes[3]
     packet[0x19] = ip_bytes[2]
     packet[0x1A] = ip_bytes[1]
@@ -346,6 +353,20 @@ def build_auth_payload(
     return bytes(payload) + json.dumps(server_info, separators=(",", ":")).encode() + b"\x00"
 
 
+def build_legacy_auth_payload(mac: bytes, terminal_name: str = "linknlink-ha") -> bytes:
+    """Build the aligned legacy BLC terminal structure without new-protocol auth data."""
+    if len(mac) != 6:
+        raise DNAError(f"invalid mac length: {len(mac)}")
+    payload = bytearray(LEGACY_AUTH_PAIR_INFO_SIZE)
+    for index in range(24):
+        payload[4 + index] = mac[index % len(mac)]
+    struct.pack_into("<H", payload, 28, TERMINAL_TYPE_IOT)
+    struct.pack_into("<H", payload, 30, 0)
+    payload[32:48] = b"1" * 16
+    payload[48:72] = terminal_name.encode()[:24].ljust(24, b"\x00")
+    return bytes(payload)
+
+
 def calculate_authcode(mac: bytes, device_type: int, host: str = "") -> bytes:
     """Calculate authcode used in the pairing payload."""
     del host
@@ -379,6 +400,9 @@ def parse_discovery_device_response(
         raise DNAError(f"discovery response too short: {len(data)}")
     if data[0] not in (0x5A, 0x55):
         raise DNAError("invalid discovery response magic")
+    message_type = struct.unpack_from("<H", data, 0x26)[0]
+    if message_type != MESSAGE_TYPE_DISCOVERY_RESPONSE:
+        raise DNAError(f"unexpected discovery message type: 0x{message_type:04x}")
 
     device = DiscoveredDevice(id=remote_ip, ip=remote_ip, port=remote_port or default_port, raw=bytes(data))
     full_response = _parse_full_discovery_device(data, remote_ip, remote_port, default_port)
@@ -434,10 +458,11 @@ async def send_encrypted(
     timeout: float = 5,
     accept: PacketAcceptor | None = None,
     exchange: PacketExchange | None = None,
+    force_blc: bool = False,
 ) -> bytes:
     """Asynchronously send an encrypted DNA command and decrypt the response."""
     accept = _sequence_acceptor(header.sequence, accept)
-    if key == INITIAL_KEY:
+    if key == INITIAL_KEY and not force_blc:
         return await _send_full_header_encrypted(
             target_ip, target_port, header, payload, key, timeout, accept, exchange
         )
@@ -585,6 +610,9 @@ def _parse_full_discovery_device(
         return None
     mac = bytes(reversed(data[0x3A:0x40]))
     name = _parse_discovery_name(data[0x40:])
+    status_flags = data[0x7E] if len(data) >= 0x80 else None
+    is_new = bool(status_flags & 0x01) if status_flags is not None else None
+    is_locked = bool(data[0x7F]) if len(data) >= 0x80 else None
     formatted = format_mac(mac)
     return DiscoveredDevice(
         id=formatted or remote_ip,
@@ -594,6 +622,9 @@ def _parse_full_discovery_device(
         device_type=device_type,
         message_type=MESSAGE_TYPE_DISCOVERY_RESPONSE,
         name=name,
+        status_flags=status_flags,
+        is_new=is_new,
+        is_locked=is_locked,
         raw=bytes(data),
     )
 

@@ -26,7 +26,7 @@ from aiolinknlink import UltraClient, UltraPositionSubscription
 
 async def main() -> None:
     client = UltraClient()
-    device = await client.discover_host("192.168.1.8")
+    device = await client.discover_host("198.51.100.8")
     session = await client.connect(device)
     subscription = UltraPositionSubscription(
         client,

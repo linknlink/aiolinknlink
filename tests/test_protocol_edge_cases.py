@@ -29,7 +29,7 @@ def test_network_packet_round_trip_and_validation() -> None:
         device_type=0xD7AC,
         message_type=dna.MESSAGE_TYPE_COMMAND,
         sequence=42,
-        mac=bytes.fromhex("e04b410244c7"),
+        mac=bytes.fromhex("020000000010"),
         device_id=b"dev1",
         payload_checksum=123,
     )
@@ -59,7 +59,7 @@ def test_blc_packet_validation() -> None:
             device_type=0xD7AC,
             message_type=dna.MESSAGE_TYPE_COMMAND,
             sequence=7,
-            mac=bytes.fromhex("e04b410244c7"),
+            mac=bytes.fromhex("020000000010"),
         ),
         b"payload",
     )
@@ -77,7 +77,7 @@ def test_blc_packet_validation() -> None:
 
 def test_discovery_packet_variants_and_validation() -> None:
     now = datetime(2026, 7, 15, 1, 2, 3, tzinfo=UTC)
-    short = dna.build_short_discovery_packet("192.168.3.85", 25825, now)
+    short = dna.build_short_discovery_packet("192.0.2.85", 25825, now)
     assert len(short) == dna.SHORT_DISCOVERY_SIZE
     assert dna.verify_checksum_le(short, dna.DISCOVERY_CHECKSUM_OFFSET)
 
@@ -117,26 +117,28 @@ def test_aes_payloads_and_padding_validation() -> None:
 
 
 def test_auth_payload_variants_and_mac_helpers() -> None:
-    mac = bytes.fromhex("e04b410244c7")
+    mac = bytes.fromhex("020000000010")
     payload = dna.build_auth_payload(
         mac,
         0xD7AC,
-        host="192.168.3.159",
+        host="192.0.2.159",
         gateway_server="http://gateway",
         heartbeat_server="tcp://heartbeat",
     )
     server_info = json.loads(payload[dna.AUTH_PAIR_INFO_SIZE :].rstrip(b"\x00"))
     assert server_info == {"http": "http://gateway", "tcp": "tcp://heartbeat"}
-    assert dna.format_mac(mac) == "e0:4b:41:02:44:c7"
+    assert dna.format_mac(mac) == "02:00:00:00:00:10"
     assert dna.format_mac(b"bad") == ""
     assert dna.format_mac(b"\x00" * 6) == ""
-    assert dna.mac_bytes("E0-4B-41-02-44-C7") == mac
+    assert dna.mac_bytes("02-00-00-00-00-10") == mac
     assert dna.mac_bytes("bad") == b""
     assert dna.mac_bytes("zz:zz:zz:zz:zz:zz") == b""
     assert dna.calculate_authcode(b"bad", 0xD7AC) == b"\x00" * 16
 
     with pytest.raises(dna.DNAError, match="mac length"):
         dna.build_auth_payload(b"bad", 0xD7AC)
+    with pytest.raises(dna.DNAError, match="mac length"):
+        dna.build_legacy_auth_payload(b"bad")
     with pytest.raises(ValueError):
         dna.build_auth_payload(mac, 0xD7AC, host="not-an-ip")
     with pytest.raises(dna.DNAError, match="session key"):
@@ -144,28 +146,36 @@ def test_auth_payload_variants_and_mac_helpers() -> None:
 
 
 def test_discovery_response_variants() -> None:
-    full = bytearray(0x48)
+    full = bytearray(0x80)
     full[:8] = dna.MAGIC
     struct.pack_into("<H", full, 0x26, dna.MESSAGE_TYPE_DISCOVERY_RESPONSE)
     struct.pack_into(">H", full, 0x34, 0xD7AC)
-    full[0x3A:0x40] = bytes(reversed(bytes.fromhex("e04b410244c7")))
-    full[0x40:] = b"Ultra2\x00"
-    device = dna.parse_discovery_device_response(bytes(full), "192.168.3.159", 0)
-    assert device.id == "e0:4b:41:02:44:c7"
+    full[0x3A:0x40] = bytes(reversed(bytes.fromhex("020000000010")))
+    full[0x40:0x47] = b"Ultra2\x00"
+    full[0x7E] = 2
+    full[0x7F] = 1
+    device = dna.parse_discovery_device_response(bytes(full), "192.0.2.159", 0)
+    assert device.id == "02:00:00:00:00:10"
     assert device.port == dna.DEFAULT_PORT
     assert device.device_type == 0xD7AC
     assert device.name == "Ultra2"
+    assert device.status_flags == 2
+    assert device.is_new is False
+    assert device.is_locked is True
 
     header = dna.NetworkHeader(
         device_type=0xD7AC,
         message_type=dna.MESSAGE_TYPE_DISCOVERY_RESPONSE,
-        mac=bytes.fromhex("e04b410244c7"),
+        mac=bytes.fromhex("020000000010"),
     )
     packet = bytearray(header.marshal())
     packet.extend(b"Name!\x00")
     parsed = dna.parse_discovery_device_response(bytes(packet), "127.0.0.1", 80)
-    assert parsed.mac == "e0:4b:41:02:44:c7"
+    assert parsed.mac == "02:00:00:00:00:10"
     assert parsed.name == "Name!"
+    assert parsed.status_flags is None
+    assert parsed.is_new is None
+    assert parsed.is_locked is None
 
     with pytest.raises(dna.DNAError, match="too short"):
         dna.parse_discovery_device_response(b"short", "127.0.0.1", 80)
@@ -211,6 +221,31 @@ async def test_full_header_encrypted_exchange() -> None:
         timeout=1,
         exchange=exchange,
     )
+    assert response == b"response"
+
+
+async def test_initial_key_can_use_legacy_blc_header() -> None:
+    """Legacy models authenticate through the compact header with the initial key."""
+
+    async def exchange(*args: object) -> bytes:
+        packet = args[2]
+        assert isinstance(packet, bytes)
+        request_header, request_body = dna.parse_blc_packet(packet)
+        _, request = dna.parse_blc_encrypted_payload(request_body, dna.INITIAL_KEY)
+        assert request == b"request"
+        response_body = dna.build_blc_encrypted_payload(b"response", dna.INITIAL_KEY)
+        return dna.build_blc_packet(request_header, response_body)
+
+    response = await dna.send_encrypted(
+        "127.0.0.1",
+        80,
+        dna.NetworkHeader(message_type=dna.MESSAGE_TYPE_AUTH),
+        b"request",
+        dna.INITIAL_KEY,
+        exchange=exchange,
+        force_blc=True,
+    )
+
     assert response == b"response"
 
 
@@ -347,7 +382,7 @@ def test_gateway_json_state_errors(payload: bytes) -> None:
         ({"offline": 1}, False),
         ({"tempsensor": 0, "humsensor": 0}, False),
         ({"tempsensor": 1, "humsensor": 0}, True),
-        ({"online": "online", "dev_ip": "192.168.1.2", "wifi_rssi": -50}, True),
+        ({"online": "online", "dev_ip": "198.51.100.2", "wifi_rssi": -50}, True),
         ({"online": None}, True),
     ],
 )

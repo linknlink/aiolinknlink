@@ -1,11 +1,14 @@
-"""Data models for the eMotion Ultra2 integration."""
+"""Data models for local LinknLink devices."""
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .devices import DeviceCapability, DeviceProfile
 
 
 @dataclass(slots=True)
@@ -21,7 +24,22 @@ class UltraDevice:
     type_id: int = 0
     name: str = "eMotion Ultra2"
     model: str = "eMotion Ultra2"
+    discovery_status: int | None = None
+    is_new: bool | None = None
+    is_locked: bool | None = None
     raw: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def profile(self) -> DeviceProfile | None:
+        """Return immutable model metadata when the device type is known."""
+        from .devices import get_device_profile
+
+        return get_device_profile(self.type_id, self.pid)
+
+    @property
+    def capabilities(self) -> frozenset[DeviceCapability]:
+        """Return model capabilities, or an empty set for an unknown type."""
+        return self.profile.capabilities if self.profile else frozenset()
 
 
 @dataclass(slots=True)
@@ -147,3 +165,7 @@ class UltraPositionSubscriptionState:
     latest_update: UltraPositionUpdate | None = None
     last_subscribed_at: datetime | None = None
     last_error: str | None = None
+
+
+LinknLinkDevice = UltraDevice
+LinknLinkSession = UltraSession

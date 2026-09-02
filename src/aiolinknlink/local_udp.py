@@ -16,6 +16,7 @@ from .client import (
     UltraProtocolError,
     derive_ultra2_protocol_mac,
 )
+from .devices import DeviceModel
 from .models import (
     UltraPositionSubscriptionState,
     UltraPositionUpdate,
@@ -244,7 +245,12 @@ class UltraPositionSubscription:
         self._latest_update: UltraPositionUpdate | None = None
         self._last_subscribed_at: datetime | None = None
         self._last_error: str | None = None
-        self._protocol_mac = derive_ultra2_protocol_mac(session.device.mac)
+        profile = session.device.profile
+        self._protocol_mac = (
+            derive_ultra2_protocol_mac(session.device.mac)
+            if profile is None or profile.model is DeviceModel.EMOTION_ULTRA2
+            else session.auth_mac or session.device.mac
+        )
 
     @property
     def state(self) -> UltraPositionSubscriptionState:

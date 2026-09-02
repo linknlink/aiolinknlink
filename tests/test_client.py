@@ -6,12 +6,13 @@ import json
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 from aiolinknlink import (
     DISPLAY_MODEL_ULTRA2,
+    TYPE_EMOTION_MAX2,
     TYPE_ULTRA2,
     TYPE_ULTRA2_LAN,
     UltraAuthError,
@@ -34,10 +35,10 @@ from aiolinknlink.models import UltraSession
 from aiolinknlink.protocol import dna, emotion
 
 DEVICE = UltraDevice(
-    id="e04b410167bb",
-    ip="192.168.1.8",
+    id="020000000110",
+    ip="198.51.100.8",
     port=80,
-    mac="e0:4b:41:01:67:bb",
+    mac="02:00:00:00:01:10",
     type_id=TYPE_ULTRA2,
 )
 
@@ -150,6 +151,61 @@ async def test_connect_preserves_caller_display_model(
     assert device.name == "eMotion Ultra"
 
 
+async def test_connect_applies_known_non_ultra_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A known wire type must replace compatibility defaults with its profile."""
+    session_key = b"0123456789abcdef"
+    send = AsyncMock(return_value=b"\x00" * 4 + session_key + b"\x00" * 12)
+    monkeypatch.setattr(dna, "send_encrypted", send)
+    device = replace(DEVICE, type_id=TYPE_EMOTION_MAX2)
+
+    session = await UltraClient().connect(device)
+
+    assert session.auth_device_type == TYPE_EMOTION_MAX2
+    assert device.model == "eMotion Max 2"
+    assert device.name == "eMotion Max 2"
+    assert send.await_count == 1
+    assert send.call_args.kwargs["force_blc"] is True
+    assert session.auth_mac == "10:01:00:00:00:02"
+    assert send.call_args.args[2].mac == bytes.fromhex("100100000002")
+    assert len(send.call_args.args[3]) == dna.LEGACY_AUTH_PAIR_INFO_SIZE
+
+
+async def test_locked_legacy_device_requires_local_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    send = AsyncMock()
+    monkeypatch.setattr(dna, "send_encrypted", send)
+    device = replace(DEVICE, type_id=TYPE_EMOTION_MAX2, is_locked=True)
+
+    with pytest.raises(UltraAuthError, match="local control key"):
+        await UltraClient().connect(device)
+
+    send.assert_not_awaited()
+
+
+async def test_locked_legacy_device_accepts_and_reuses_local_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    send = AsyncMock()
+    monkeypatch.setattr(dna, "send_encrypted", send)
+    client = UltraClient()
+    device = replace(DEVICE, type_id=TYPE_EMOTION_MAX2, is_locked=True)
+
+    session = await client.connect(device, local_key="30313233343536373839616263646566")
+    assert session.session_key == b"0123456789abcdef"
+    assert session.auth_status == "provided"
+    assert session.auth_mac == "10:01:00:00:00:02"
+
+    await client.reauthenticate(session)
+    assert session.auth_status == "provided"
+    assert session.session_key == b"0123456789abcdef"
+    send.assert_not_awaited()
+
+
+@pytest.mark.parametrize("local_key", [b"short", "not-hex", "00"])
+async def test_connect_rejects_invalid_local_key(local_key: bytes | str) -> None:
+    with pytest.raises(UltraAuthError, match="16 bytes"):
+        await UltraClient().connect(DEVICE, local_key=local_key)
+
+
 async def test_get_environment_state(monkeypatch: pytest.MonkeyPatch) -> None:
     """Only supported local environmental entities are returned."""
     monkeypatch.setattr("aiolinknlink.client.APIClient", _ESPHomeClient)
@@ -241,14 +297,14 @@ async def test_reauthenticate_preserves_working_command_variant(
     session = UltraSession(
         device=DEVICE,
         session_key=b"old-session-key!",
-        auth_mac="e0:4b:41:02:44:c9",
+        auth_mac="02:00:00:00:00:12",
         command_device_type=TYPE_ULTRA2_LAN,
         command_message_type=0x03E9,
     )
     refreshed = UltraSession(
         device=DEVICE,
         session_key=b"new-session-key!",
-        auth_mac="e0:4b:41:02:44:c9",
+        auth_mac="02:00:00:00:00:12",
         auth_device_type=TYPE_ULTRA2,
         auth_status="ok",
     )
@@ -265,17 +321,17 @@ async def test_reauthenticate_preserves_working_command_variant(
 async def test_connect_requires_mac() -> None:
     client = UltraClient()
     with pytest.raises(UltraAuthError, match="missing mac"):
-        await client.connect(UltraDevice(id="device", ip="192.168.1.8", port=80))
+        await client.connect(UltraDevice(id="device", ip="198.51.100.8", port=80))
 
 
 def test_derive_ultra2_protocol_mac() -> None:
-    assert derive_ultra2_protocol_mac("E0:4B:41:02:44:C7") == "e0:4b:41:02:44:c9"
+    assert derive_ultra2_protocol_mac("02:00:00:00:00:10") == "02:00:00:00:00:12"
     with pytest.raises(ValueError, match="invalid Ultra2 LAN MAC"):
         derive_ultra2_protocol_mac("not-a-mac")
 
 
 def test_derive_ultra2_radar_did() -> None:
-    assert derive_ultra2_radar_did("E0:4B:41:02:44:C7") == "e04b410244c7dbac00000000dbac0001"
+    assert derive_ultra2_radar_did("02:00:00:00:00:10") == "020000000010dbac00000000dbac0001"
     with pytest.raises(ValueError, match="invalid Ultra2 LAN MAC"):
         derive_ultra2_radar_did("not-a-mac")
 
@@ -306,7 +362,7 @@ async def test_get_radar_status_uses_peripheral_did() -> None:
 
     status = await client.get_radar_status(session)
 
-    assert status.did == "e04b410167bbdbac00000000dbac0001"
+    assert status.did == "020000000110dbac00000000dbac0001"
     assert status.sensitivity == 2
     assert status.trigger_speed == 1
     assert status.install_mode == 0
@@ -482,17 +538,17 @@ async def test_discover_filters_other_dna_devices(monkeypatch: pytest.MonkeyPatc
     discovered = [
         dna.DiscoveredDevice(
             id="other",
-            ip="192.168.1.7",
+            ip="198.51.100.7",
             port=80,
-            mac="e0:4b:41:01:67:ba",
+            mac="02:00:00:00:01:0f",
             device_type=0x702B,
             name="IBG",
         ),
         dna.DiscoveredDevice(
             id="emotion-air",
-            ip="192.168.1.6",
+            ip="198.51.100.6",
             port=80,
-            mac="e0:4b:41:01:67:b9",
+            mac="02:00:00:00:01:0e",
             device_type=0x702B,
             name="eMotion Air",
         ),
@@ -518,9 +574,9 @@ async def test_discover_host_returns_matching_device(monkeypatch: pytest.MonkeyP
     devices = [
         UltraDevice(
             id="other",
-            ip="192.168.1.7",
+            ip="198.51.100.7",
             port=80,
-            mac="e0:4b:41:01:67:ba",
+            mac="02:00:00:00:01:0f",
         ),
         DEVICE,
     ]
@@ -551,6 +607,18 @@ async def test_discover_host_retries_discovery(monkeypatch: pytest.MonkeyPatch) 
     assert discover.await_count == 2
 
 
+async def test_discover_host_falls_back_to_target_route_broadcast(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A device that ignores unicast can still be matched by its reported IP."""
+    discover = AsyncMock(side_effect=[[], [], [DEVICE]])
+    monkeypatch.setattr(UltraClient, "discover", discover)
+    directed_broadcast = Mock(return_value="198.51.100.255")
+    monkeypatch.setattr("aiolinknlink.client._directed_broadcast", directed_broadcast)
+
+    assert await UltraClient().discover_host(DEVICE.ip) is DEVICE
+    assert discover.await_count == 3
+    directed_broadcast.assert_called_once_with(DEVICE.ip)
+
+
 @pytest.mark.parametrize(
     ("device_type", "expected"),
     [
@@ -565,10 +633,10 @@ def test_auth_device_type_candidates(device_type: int, expected: list[int]) -> N
 
 def test_command_candidates_prefer_authenticated_type() -> None:
     device = UltraDevice(
-        id="e04b410167bb",
-        ip="192.168.1.8",
+        id="020000000110",
+        ip="198.51.100.8",
         port=80,
-        mac="e0:4b:41:01:67:bb",
+        mac="02:00:00:00:01:10",
         type_id=TYPE_ULTRA2,
     )
     session = UltraSession(device=device, auth_device_type=TYPE_ULTRA2_LAN)

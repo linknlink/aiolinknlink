@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import logging
 import math
@@ -17,6 +18,16 @@ from aioesphomeapi.client import APIClient
 from aioesphomeapi.core import APIConnectionError
 from aioesphomeapi.model import EntityInfo, EntityState
 
+from .devices import (
+    DISPLAY_MODEL_ULTRA2,
+    TYPE_ULTRA2,
+    TYPE_ULTRA2_LAN,
+    DeviceModel,
+    get_device_profile,
+)
+from .devices import (
+    PID_ULTRA2 as PID_ULTRA2,
+)
 from .models import (
     UltraDevice,
     UltraEnvironmentState,
@@ -30,10 +41,6 @@ from .protocol import dna, emotion
 _LOGGER = logging.getLogger(__name__)
 
 PROVIDER = "ultra"
-DISPLAY_MODEL_ULTRA2 = "eMotion Ultra2"
-PID_ULTRA2 = "000000000000000000000000d7ac0000"
-TYPE_ULTRA2 = 0xD7AC
-TYPE_ULTRA2_LAN = 0xE3AC
 TYPE_ULTRA2_RADAR = 0xACDB
 DEFAULT_TIMEOUT = 5.0
 DEFAULT_AUTH_TIMEOUT = 15.0
@@ -93,7 +100,7 @@ class UltraClient:
         seen: set[str] = set()
         for raw in raw_devices:
             device = self._device_from_dna(raw)
-            if not _matches_ultra(device):
+            if not _matches_supported_device(device):
                 continue
             if device.id in seen:
                 continue
@@ -119,7 +126,7 @@ class UltraClient:
             raise UltraConnectionError(f"could not resolve host {host}: {err}") from err
 
         target_addresses = {str(info[4][0]) for info in address_info}
-        client = UltraClient(
+        client = type(self)(
             default_port=self.default_port,
             discovery_timeout=self.discovery_timeout,
             command_timeout=self.command_timeout,
@@ -131,17 +138,59 @@ class UltraClient:
             for device in await client.discover():
                 if device.ip in target_addresses:
                     return device
+        for target_address in target_addresses:
+            client = type(self)(
+                default_port=self.default_port,
+                discovery_timeout=self.discovery_timeout,
+                command_timeout=self.command_timeout,
+                auth_timeout=self.auth_timeout,
+                preferred_command_timeout=self.preferred_command_timeout,
+                broadcast_address=_directed_broadcast(target_address),
+            )
+            for _attempt in range(2):
+                for device in await client.discover():
+                    if device.ip in target_addresses:
+                        return device
         raise UltraConnectionError(f"no supported LinknLink device found at {host}")
+
+    async def rediscover(self, device: UltraDevice) -> UltraDevice:
+        """Find a known device by MAC after its network address changes."""
+        expected_mac = _compact_mac(device.mac)
+        if not expected_mac:
+            raise UltraConnectionError("device MAC is required for rediscovery")
+
+        directed_broadcast = _directed_broadcast(device.ip)
+        targets = (device.ip, directed_broadcast, self.broadcast_address)
+        attempted: set[str] = set()
+        for target in targets:
+            if target in attempted:
+                continue
+            attempted.add(target)
+            attempts = 2 if target == directed_broadcast else 1
+            client = type(self)(
+                default_port=self.default_port,
+                discovery_timeout=self.discovery_timeout,
+                command_timeout=self.command_timeout,
+                auth_timeout=self.auth_timeout,
+                preferred_command_timeout=self.preferred_command_timeout,
+                broadcast_address=target,
+            )
+            for _attempt in range(attempts):
+                for discovered in await client.discover():
+                    if _compact_mac(discovered.mac) == expected_mac:
+                        return discovered
+        raise UltraConnectionError(f"LinknLink device {device.id} was not rediscovered")
 
     async def connect(
         self,
         device: UltraDevice,
         *,
         protocol_mac: str | None = None,
+        local_key: bytes | str | None = None,
         exchange: dna.PacketExchange | None = None,
     ) -> UltraSession:
         """Connect/authenticate to an Ultra2 device."""
-        auth_mac = protocol_mac or device.mac
+        auth_mac = _protocol_mac_for_device(device, protocol_mac)
         session = UltraSession(
             device=device,
             auth_mac=auth_mac,
@@ -153,10 +202,24 @@ class UltraClient:
             session.auth_status = "skipped"
             session.auth_error = "missing mac"
             raise UltraAuthError(session.auth_error)
+        if local_key is not None:
+            session.session_key = _normalize_local_key(local_key)
+            self._mark_authenticated(session, device.type_id, "provided")
+            return session
+        if device.is_locked:
+            session.auth_status = "locked"
+            session.auth_error = "device is locked; the local control key captured during provisioning is required"
+            raise UltraAuthError(session.auth_error)
         last_error: Exception | None = None
         for auth_type in _auth_device_type_candidates(device.type_id):
             try:
-                payload = dna.build_auth_payload(mac, auth_type, host=device.ip)
+                profile = get_device_profile(device.type_id, device.pid)
+                legacy_blc = profile is not None and profile.model is not DeviceModel.EMOTION_ULTRA2
+                payload = (
+                    dna.build_legacy_auth_payload(mac)
+                    if legacy_blc
+                    else dna.build_auth_payload(mac, auth_type, host=device.ip)
+                )
                 response = await dna.send_encrypted(
                     device.ip,
                     device.port or self.default_port,
@@ -169,19 +232,10 @@ class UltraClient:
                     dna.INITIAL_KEY,
                     timeout=self.auth_timeout,
                     exchange=exchange,
+                    force_blc=legacy_blc,
                 )
                 session.session_key = dna.extract_session_key(response)
-                session.auth_device_type = auth_type
-                if device.type_id not in {TYPE_ULTRA2, TYPE_ULTRA2_LAN}:
-                    device.type_id = auth_type
-                if not device.model:
-                    device.model = DISPLAY_MODEL_ULTRA2
-                if not device.name:
-                    device.name = DISPLAY_MODEL_ULTRA2
-                session.auth_status = "ok"
-                session.auth_error = ""
-                session.last_auth_at = datetime.now(UTC)
-                session.last_seen = datetime.now(UTC)
+                self._mark_authenticated(session, auth_type, "ok")
                 return session
             except (OSError, dna.DNAError) as err:
                 last_error = err
@@ -189,8 +243,36 @@ class UltraClient:
         session.auth_error = str(last_error) if last_error else "authentication failed"
         raise UltraConnectionError(session.auth_error) from last_error
 
+    def _mark_authenticated(self, session: UltraSession, auth_type: int, auth_status: str) -> None:
+        """Apply model metadata after obtaining a local control key."""
+        device = session.device
+        session.auth_device_type = auth_type
+        if not device.type_id:
+            device.type_id = auth_type
+        profile = get_device_profile(device.type_id, device.pid)
+        display_name = profile.display_name if profile is not None else DISPLAY_MODEL_ULTRA2
+        if not device.model or (
+            device.model == DISPLAY_MODEL_ULTRA2
+            and profile is not None
+            and profile.model is not DeviceModel.EMOTION_ULTRA2
+        ):
+            device.model = display_name
+        if not device.name or (
+            device.name == DISPLAY_MODEL_ULTRA2
+            and profile is not None
+            and profile.model is not DeviceModel.EMOTION_ULTRA2
+        ):
+            device.name = display_name
+        session.auth_status = auth_status
+        session.auth_error = ""
+        session.last_auth_at = datetime.now(UTC)
+        session.last_seen = datetime.now(UTC)
+
     async def get_environment_state(self, session: UltraSession) -> UltraEnvironmentState:
         """Read environmental, occupancy, and count states from the local API."""
+        profile = session.device.profile
+        if profile is not None and profile.model is not DeviceModel.EMOTION_ULTRA2:
+            raise UltraProtocolError(f"environment state is not implemented for {profile.display_name}")
         client = APIClient(
             session.device.ip,
             ESPHOME_API_PORT,
@@ -567,12 +649,16 @@ class UltraClient:
         session: UltraSession,
         *,
         protocol_mac: str | None = None,
+        local_key: bytes | str | None = None,
         exchange: dna.PacketExchange | None = None,
     ) -> None:
         """Refresh a session key, optionally through a persistent UDP socket."""
+        if local_key is None and session.auth_status == "provided":
+            local_key = session.session_key
         refreshed = await self.connect(
             session.device,
             protocol_mac=protocol_mac or session.auth_mac or session.device.mac,
+            local_key=local_key,
             exchange=exchange,
         )
         session.session_key = refreshed.session_key
@@ -595,7 +681,16 @@ class UltraClient:
             type_id=raw.device_type,
             name=name,
             model=model,
-            raw={"message_type": raw.message_type, "raw_len": len(raw.raw)},
+            discovery_status=raw.status_flags,
+            is_new=raw.is_new,
+            is_locked=raw.is_locked,
+            raw={
+                "message_type": raw.message_type,
+                "raw_len": len(raw.raw),
+                "status_flags": raw.status_flags,
+                "is_new": raw.is_new,
+                "is_locked": raw.is_locked,
+            },
         )
 
 
@@ -610,7 +705,13 @@ async def _discover_dna_devices(
     seen: set[str] = set()
     targets = _discovery_targets(broadcast_address, default_port)
     if not targets:
-        targets = [(broadcast_address, default_port, _outbound_ipv4())]
+        targets = [
+            (
+                broadcast_address,
+                default_port,
+                _outbound_ipv4(broadcast_address),
+            )
+        ]
 
     loop = asyncio.get_running_loop()
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -618,7 +719,7 @@ async def _discover_dna_devices(
     try:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind(("0.0.0.0", 0))
+        _bind_discovery_socket(sock, default_port)
         bound_port = sock.getsockname()[1]
         now = datetime.now(UTC)
         for target_ip, target_port, local_ip in targets:
@@ -655,7 +756,7 @@ async def _discover_dna_devices(
 
 def _discovery_targets(broadcast_address: str, default_port: int) -> list[tuple[str, int, str]]:
     targets: list[tuple[str, int, str]] = []
-    local_ip = _outbound_ipv4()
+    local_ip = _outbound_ipv4(broadcast_address)
     targets.append((broadcast_address, default_port, local_ip))
     # Python stdlib does not expose interface broadcast addresses portably.
     # Add common private LAN directed broadcasts; harmless duplicates are removed below.
@@ -672,21 +773,44 @@ def _discovery_targets(broadcast_address: str, default_port: int) -> list[tuple[
     return out
 
 
-def _outbound_ipv4() -> str:
+def _bind_discovery_socket(sock: socket.socket, preferred_port: int) -> None:
+    """Bind the standard discovery port when available, otherwise an ephemeral port."""
+    if preferred_port > 0:
+        try:
+            sock.bind(("0.0.0.0", preferred_port))
+            return
+        except OSError:
+            pass
+    sock.bind(("0.0.0.0", 0))
+
+
+def _outbound_ipv4(target: str = "192.0.2.1") -> str:
+    """Return the local IPv4 address selected for a target route."""
+    if target in {"0.0.0.0", "255.255.255.255"}:
+        target = "192.0.2.1"
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            # UDP connect selects a route without sending traffic. TEST-NET-1
-            # avoids implying a dependency on any public network service.
-            sock.connect(("192.0.2.1", 80))
+            # UDP connect selects a route without sending traffic.
+            sock.connect((target, 80))
             return str(sock.getsockname()[0])
     except OSError:
         return "127.0.0.1"
 
 
+def _directed_broadcast(target: str) -> str:
+    """Return the /24 broadcast address on the route to a target."""
+    local_ip = _outbound_ipv4(target)
+    return str(ipaddress.ip_network(f"{local_ip}/24", strict=False).broadcast_address)
+
+
+def _matches_supported_device(device: UltraDevice) -> bool:
+    return get_device_profile(device.type_id, device.pid) is not None
+
+
 def _matches_ultra(device: UltraDevice) -> bool:
-    if device.pid.lower() == PID_ULTRA2:
-        return True
-    return device.type_id in {TYPE_ULTRA2, TYPE_ULTRA2_LAN}
+    """Compatibility helper retained for downstream tests and callers."""
+    profile = get_device_profile(device.type_id, device.pid)
+    return profile is not None and profile.model is DeviceModel.EMOTION_ULTRA2
 
 
 def _esphome_entity_mapping(
@@ -848,13 +972,42 @@ def _z_ranges_match(actual: object, expected: object) -> bool:
 
 
 def _model_for_device_type(device_type: int) -> str:
-    del device_type
+    if profile := get_device_profile(device_type):
+        return profile.display_name
     return DISPLAY_MODEL_ULTRA2
+
+
+def _protocol_mac_for_device(device: UltraDevice, override: str | None) -> str:
+    """Return the MAC representation required by the selected LAN protocol."""
+    if override:
+        return override
+    mac = dna.mac_bytes(device.mac)
+    profile = device.profile
+    if mac and profile is not None and profile.model is not DeviceModel.EMOTION_ULTRA2:
+        return dna.format_mac(bytes(reversed(mac)))
+    return device.mac
+
+
+def _normalize_local_key(value: bytes | str) -> bytes:
+    """Normalize a provisioning control key without retaining its text form."""
+    if isinstance(value, bytes):
+        key = value
+    else:
+        compact = value.strip().replace(":", "").replace("-", "")
+        try:
+            key = bytes.fromhex(compact)
+        except ValueError as err:
+            raise UltraAuthError("local control key must be 16 bytes or 32 hexadecimal characters") from err
+    if len(key) != 16:
+        raise UltraAuthError("local control key must be 16 bytes or 32 hexadecimal characters")
+    return key
 
 
 def _auth_device_type_candidates(device_type: int) -> list[int]:
     if device_type in {TYPE_ULTRA2, TYPE_ULTRA2_LAN}:
         values = [device_type, TYPE_ULTRA2, TYPE_ULTRA2_LAN]
+    elif get_device_profile(device_type) is not None:
+        values = [device_type]
     else:
         values = [TYPE_ULTRA2, TYPE_ULTRA2_LAN]
     return _dedupe_ints(values)
@@ -865,9 +1018,10 @@ def _command_device_type_candidates(session: UltraSession) -> list[int]:
         session.command_device_type,
         session.auth_device_type,
         session.device.type_id,
-        TYPE_ULTRA2,
-        TYPE_ULTRA2_LAN,
     ]
+    profile = session.device.profile
+    if profile is None or profile.model is DeviceModel.EMOTION_ULTRA2:
+        values.extend((TYPE_ULTRA2, TYPE_ULTRA2_LAN))
     return _dedupe_ints(value for value in values if value)
 
 
@@ -898,3 +1052,6 @@ def _dedupe_ints(values: Iterable[int]) -> list[int]:
         seen.add(value)
         out.append(value)
     return out
+
+
+LinknLinkClient = UltraClient

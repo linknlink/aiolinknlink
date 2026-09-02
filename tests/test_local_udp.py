@@ -9,7 +9,9 @@ from unittest.mock import AsyncMock
 import pytest
 
 from aiolinknlink import (
+    TYPE_ULTRA1,
     TYPE_ULTRA2,
+    UltraClient,
     UltraDevice,
     UltraError,
     UltraLocalUDPConfig,
@@ -77,12 +79,31 @@ async def test_listener_demultiplexes_command_and_position() -> None:
     assert updates[0].nearest_distance == 1.3
 
 
-async def test_position_subscription_renews_expires_and_stops() -> None:
+async def test_non_ultra2_subscription_uses_device_auth_mac() -> None:
     device = UltraDevice(
-        id="e04b410244c7",
+        id="020000000010",
         ip="127.0.0.1",
         port=80,
-        mac="e0:4b:41:02:44:c7",
+        mac="02:00:00:00:00:10",
+        type_id=TYPE_ULTRA1,
+    )
+    session = UltraSession(
+        device=device,
+        session_key=b"0123456789abcdef",
+        auth_mac=device.mac,
+    )
+
+    subscription = UltraPositionSubscription(UltraClient(), session)
+
+    assert subscription._protocol_mac == device.mac
+
+
+async def test_position_subscription_renews_expires_and_stops() -> None:
+    device = UltraDevice(
+        id="020000000010",
+        ip="127.0.0.1",
+        port=80,
+        mac="02:00:00:00:00:10",
         type_id=TYPE_ULTRA2,
     )
     session = UltraSession(device=device, session_key=b"0123456789abcdef")
@@ -90,7 +111,7 @@ async def test_position_subscription_renews_expires_and_stops() -> None:
 
     async def reauthenticate(_session, *, protocol_mac, exchange):
         assert _session is session
-        assert protocol_mac == "e0:4b:41:02:44:c9"
+        assert protocol_mac == "02:00:00:00:00:12"
         assert exchange is not None
         _session.auth_mac = protocol_mac
         _session.session_key = b"0123456789abcdef"
@@ -158,10 +179,10 @@ async def test_position_subscription_renews_expires_and_stops() -> None:
 async def test_position_subscription_retries_invalid_confirmation() -> None:
     """Port and timeout read-back mismatches retry without killing the task."""
     device = UltraDevice(
-        id="e04b410244c7",
+        id="020000000010",
         ip="127.0.0.1",
         port=80,
-        mac="e0:4b:41:02:44:c7",
+        mac="02:00:00:00:00:10",
         type_id=TYPE_ULTRA2,
     )
     session = UltraSession(device=device, session_key=b"0123456789abcdef")
@@ -207,16 +228,16 @@ async def test_position_subscription_retries_invalid_confirmation() -> None:
 async def test_position_subscription_isolates_callback_errors() -> None:
     """Consumer callback failures must not stop updates or renewals."""
     device = UltraDevice(
-        id="e04b410244c7",
+        id="020000000010",
         ip="127.0.0.1",
         port=80,
-        mac="e0:4b:41:02:44:c7",
+        mac="02:00:00:00:00:10",
         type_id=TYPE_ULTRA2,
     )
     session = UltraSession(
         device=device,
         session_key=b"0123456789abcdef",
-        auth_mac="e0:4b:41:02:44:c9",
+        auth_mac="02:00:00:00:00:12",
     )
     client = AsyncMock()
 
@@ -257,16 +278,16 @@ async def test_position_subscription_isolates_callback_errors() -> None:
 async def test_radar_configuration_reuses_subscription_socket() -> None:
     """Radar reads and writes are serialized through the persistent socket."""
     device = UltraDevice(
-        id="e04b410244c7",
+        id="020000000010",
         ip="127.0.0.1",
         port=80,
-        mac="e0:4b:41:02:44:c7",
+        mac="02:00:00:00:00:10",
         type_id=TYPE_ULTRA2,
     )
     session = UltraSession(
         device=device,
         session_key=b"0123456789abcdef",
-        auth_mac="e0:4b:41:02:44:c9",
+        auth_mac="02:00:00:00:00:12",
     )
     client = AsyncMock()
 
@@ -275,7 +296,7 @@ async def test_radar_configuration_reuses_subscription_socket() -> None:
 
     client.subscribe_local_udp_push.side_effect = subscribe
     radar_status = UltraRadarStatus(
-        did="e04b410244c7dbac00000000dbac0001",
+        did="020000000010dbac00000000dbac0001",
         sensitivity=2,
         received_at=datetime.now(UTC),
     )
@@ -326,16 +347,16 @@ async def test_radar_configuration_reuses_subscription_socket() -> None:
 async def test_radar_operation_reauthenticates_after_session_invalidation() -> None:
     """A radar operation retries once with a renewed DNA session."""
     device = UltraDevice(
-        id="e04b410244c7",
+        id="020000000010",
         ip="127.0.0.1",
         port=80,
-        mac="e0:4b:41:02:44:c7",
+        mac="02:00:00:00:00:10",
         type_id=TYPE_ULTRA2,
     )
     session = UltraSession(
         device=device,
         session_key=b"old-session-key!",
-        auth_mac="e0:4b:41:02:44:c9",
+        auth_mac="02:00:00:00:00:12",
     )
     client = AsyncMock()
 
@@ -346,7 +367,7 @@ async def test_radar_operation_reauthenticates_after_session_invalidation() -> N
         _session.session_key = b"new-session-key!"
 
     radar_status = UltraRadarStatus(
-        did="e04b410244c7dbac00000000dbac0001",
+        did="020000000010dbac00000000dbac0001",
         sensitivity=2,
         received_at=datetime.now(UTC),
     )

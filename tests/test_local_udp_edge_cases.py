@@ -27,14 +27,14 @@ def session() -> UltraSession:
     """Create a connected-looking Ultra2 session."""
     return UltraSession(
         device=UltraDevice(
-            id="e04b410244c7",
+            id="020000000010",
             ip="127.0.0.1",
             port=80,
-            mac="e0:4b:41:02:44:c7",
+            mac="02:00:00:00:00:10",
             type_id=TYPE_ULTRA2,
         ),
         session_key=b"0123456789abcdef",
-        auth_mac="e0:4b:41:02:44:c9",
+        auth_mac="02:00:00:00:00:12",
     )
 
 
