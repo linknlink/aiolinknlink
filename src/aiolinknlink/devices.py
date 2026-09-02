@@ -61,6 +61,7 @@ TYPE_EMOTION_MAX3: Final = 0xDEAC
 TYPE_EHOME_HA: Final = 0x85AC
 TYPE_EREMOTE_HA: Final = 0x90AC
 TYPE_EMOTION_PRO: Final = 0x6FAC
+TYPE_EMOTION_PRO_RADAR: Final = 0xB9AC
 TYPE_LEGACY_RM_MONITOR: Final = 0x1B52
 
 PID_ULTRA1: Final = "0000000000000000000000009cac0000"
@@ -71,6 +72,7 @@ PID_EMOTION_MAX3: Final = "000000000000000000000000deac0000"
 PID_EHOME_HA: Final = "00000000000000000000000085ac0000"
 PID_EREMOTE_HA: Final = "00000000000000000000000090ac0000"
 PID_EMOTION_PRO: Final = "0000000000000000000000006fac0000"
+PID_EMOTION_PRO_RADAR: Final = "000000000000000000000000b9ac0000"
 
 DISPLAY_MODEL_ULTRA2: Final = "eMotion Ultra2"
 DISPLAY_MODEL_ULTRA1: Final = "eMotion Ultra (1st generation)"
@@ -88,6 +90,16 @@ _RADAR_CAPABILITIES = frozenset(
         DeviceCapability.POSITION,
         DeviceCapability.RADAR_CONFIGURATION,
         DeviceCapability.LOCAL_UDP,
+        DeviceCapability.ABSENCE_DELAY,
+    }
+)
+
+_PRO_CAPABILITIES = frozenset(
+    {
+        DeviceCapability.ENVIRONMENT,
+        DeviceCapability.TEMPERATURE,
+        DeviceCapability.HUMIDITY,
+        DeviceCapability.OCCUPANCY,
         DeviceCapability.ABSENCE_DELAY,
     }
 )
@@ -143,15 +155,14 @@ DEVICE_PROFILES: Final[tuple[DeviceProfile, ...]] = (
         "eMotion Pro",
         frozenset({TYPE_EMOTION_PRO}),
         PID_EMOTION_PRO,
-        frozenset(
-            {
-                DeviceCapability.ENVIRONMENT,
-                DeviceCapability.TEMPERATURE,
-                DeviceCapability.HUMIDITY,
-                DeviceCapability.OCCUPANCY,
-                DeviceCapability.ABSENCE_DELAY,
-            }
-        ),
+        _PRO_CAPABILITIES,
+    ),
+    DeviceProfile(
+        DeviceModel.EMOTION_PRO,
+        "eMotion Pro",
+        frozenset({TYPE_EMOTION_PRO_RADAR}),
+        PID_EMOTION_PRO_RADAR,
+        _PRO_CAPABILITIES,
     ),
 )
 

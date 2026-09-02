@@ -20,6 +20,8 @@ from aioesphomeapi.model import EntityInfo, EntityState
 
 from .devices import (
     DISPLAY_MODEL_ULTRA2,
+    TYPE_EMOTION_PRO_RADAR,
+    TYPE_ULTRA1,
     TYPE_ULTRA2,
     TYPE_ULTRA2_LAN,
     DeviceModel,
@@ -36,16 +38,20 @@ from .models import (
     UltraRadarZRange,
     UltraSession,
 )
-from .protocol import dna, emotion
+from .protocol import dna, emotion, keyvalue
 
 _LOGGER = logging.getLogger(__name__)
 
 PROVIDER = "ultra"
 TYPE_ULTRA2_RADAR = 0xACDB
+TYPE_PRO_RADAR_24G = 0xACD9
+TYPE_LEGACY_SHTXX = 0xACDC
 DEFAULT_TIMEOUT = 5.0
 DEFAULT_AUTH_TIMEOUT = 15.0
 DEFAULT_PREFERRED_COMMAND_TIMEOUT = 15.0
+PRO_WRITE_READBACK_RETRY_DELAY = 1.0
 MAX_ABSENCE_DELAY = 18 * 60 * 60
+MAX_PRO_ABSENCE_DELAY = 0xFFFF * 60
 MIN_Z_RANGE = -6.0
 MAX_Z_RANGE = 6.0
 ESPHOME_API_PORT = 6053
@@ -265,12 +271,17 @@ class UltraClient:
             device.name = display_name
         session.auth_status = auth_status
         session.auth_error = ""
+        if device.type_id == TYPE_EMOTION_PRO_RADAR:
+            session.command_device_type = TYPE_ULTRA2_LAN
+            session.command_message_type = dna.MESSAGE_TYPE_COMMAND
         session.last_auth_at = datetime.now(UTC)
         session.last_seen = datetime.now(UTC)
 
     async def get_environment_state(self, session: UltraSession) -> UltraEnvironmentState:
         """Read environmental, occupancy, and count states from the local API."""
         profile = session.device.profile
+        if profile is not None and profile.model is DeviceModel.EMOTION_PRO:
+            return await self._get_pro_environment_state(session)
         if profile is not None and profile.model is not DeviceModel.EMOTION_ULTRA2:
             raise UltraProtocolError(f"environment state is not implemented for {profile.display_name}")
         client = APIClient(
@@ -334,6 +345,205 @@ class UltraClient:
             available_fields=frozenset(attr for attrs in entity_attrs.values() for attr in attrs),
             received_at=datetime.now(UTC),
         )
+
+    async def _get_pro_environment_state(
+        self,
+        session: UltraSession,
+        *,
+        exchange: dna.PacketExchange | None = None,
+    ) -> UltraEnvironmentState:
+        """Read eMotionPro environment and occupancy state."""
+        if session.device.type_id == TYPE_EMOTION_PRO_RADAR:
+            return await self._get_pro_radar_environment_state(session, exchange=exchange)
+        payload = await self._get_keyvalue_state(session, exchange=exchange)
+        values = _pro_environment_values(payload)
+        if not values:
+            raise UltraProtocolError("eMotion Pro response did not contain supported state")
+        session.last_seen = datetime.now(UTC)
+        return UltraEnvironmentState(
+            device_id=session.device.id,
+            values=values,
+            available_fields=frozenset(values),
+            received_at=datetime.now(UTC),
+        )
+
+    async def _get_keyvalue_state(
+        self,
+        session: UltraSession,
+        *,
+        exchange: dna.PacketExchange | None = None,
+    ) -> dict[str, object]:
+        """Read and validate a DNA KeyValue state object."""
+        response = await self.send_command(
+            session,
+            keyvalue.build_get_status_frame(),
+            exchange=exchange,
+        )
+        return _parse_keyvalue_response(response)
+
+    async def _get_pro_radar_environment_state(
+        self,
+        session: UltraSession,
+        *,
+        exchange: dna.PacketExchange | None = None,
+    ) -> UltraEnvironmentState:
+        """Read the restricted public state of a subdevice-based eMotionPro."""
+        peripheral_dids = await self._get_pro_radar_peripheral_dids(session, exchange=exchange)
+        radar_did = peripheral_dids.get(
+            TYPE_PRO_RADAR_24G,
+            derive_peripheral_did(session.device.mac, TYPE_PRO_RADAR_24G),
+        )
+        radar = await self._get_subdevice_state(session, radar_did, required=True, exchange=exchange)
+        assert radar is not None
+        values: dict[str, int | float | bool] = {}
+        if "pir_detected" in radar:
+            values["occupancy"] = bool(_pro_int(radar, "pir_detected", minimum=0, maximum=1))
+        if "delaytime" in radar:
+            values["absence_delay"] = _pro_int(radar, "delaytime", minimum=0, maximum=MAX_ABSENCE_DELAY)
+
+        climate_did = peripheral_dids.get(
+            TYPE_LEGACY_SHTXX,
+            derive_peripheral_did(session.device.mac, TYPE_LEGACY_SHTXX),
+        )
+        climate = await self._get_subdevice_state(session, climate_did, exchange=exchange)
+        if climate is not None:
+            if "envtemp" in climate:
+                temperature = _pro_int(climate, "envtemp", minimum=-4500, maximum=13000)
+                values["temperature"] = round(temperature / 100, 2)
+            if "envhumid" in climate:
+                humidity = _pro_int(climate, "envhumid", minimum=0, maximum=10000)
+                values["humidity"] = round(humidity / 100, 2)
+
+        if not values:
+            raise UltraProtocolError("eMotion Pro response did not contain supported state")
+        session.last_seen = datetime.now(UTC)
+        return UltraEnvironmentState(
+            device_id=session.device.id,
+            values=values,
+            available_fields=frozenset(values),
+            received_at=datetime.now(UTC),
+        )
+
+    async def _get_pro_radar_peripheral_dids(
+        self,
+        session: UltraSession,
+        *,
+        exchange: dna.PacketExchange | None = None,
+    ) -> dict[int, str]:
+        """Read and cache supported eMotionPro virtual-peripheral identities."""
+        if session.peripheral_dids:
+            return dict(session.peripheral_dids)
+        try:
+            response = await self.send_command(
+                session,
+                emotion.build_get_subdevice_list_frame(),
+                exchange=exchange,
+            )
+            frame = emotion.parse_subdevice_frame(response)
+            payload = emotion.parse_subdevice_json_payload(frame)
+        except (UltraError, emotion.EmotionError):
+            return {}
+        status = payload.get("status")
+        items = payload.get("list")
+        if isinstance(status, bool) or status != 0 or not isinstance(items, list):
+            return {}
+        for item in items:
+            if not isinstance(item, dict) or not isinstance(did := item.get("did"), str):
+                continue
+            offline = item.get("offline")
+            if isinstance(offline, bool) or isinstance(offline, int) and offline != 0:
+                continue
+            peripheral_type = _peripheral_type_from_did(did)
+            if peripheral_type in {TYPE_PRO_RADAR_24G, TYPE_LEGACY_SHTXX}:
+                session.peripheral_dids[peripheral_type] = did.lower()
+        return dict(session.peripheral_dids)
+
+    async def _get_subdevice_state(
+        self,
+        session: UltraSession,
+        did: str,
+        *,
+        required: bool = False,
+        exchange: dna.PacketExchange | None = None,
+    ) -> dict[str, object] | None:
+        """Read one validated peripheral while allowing optional hardware."""
+        try:
+            response = await self.send_command(
+                session,
+                emotion.build_get_status_frame(did),
+                exchange=exchange,
+            )
+            frame = emotion.parse_subdevice_frame(response)
+            payload = emotion.parse_subdevice_json_payload(frame)
+        except (UltraError, emotion.EmotionError) as err:
+            if required:
+                raise UltraProtocolError(str(err)) from err
+            return None
+        response_did = str(payload.get("did", ""))
+        status = payload.get("status")
+        if response_did.lower() != did or isinstance(status, bool) or status != 0:
+            if required:
+                raise UltraProtocolError(
+                    f"subdevice status read failed for {did}: "
+                    f"response_did={response_did or 'missing'} status={status!r}"
+                )
+            return None
+        return payload
+
+    async def set_pro_absence_delay(
+        self,
+        session: UltraSession,
+        seconds: int,
+        *,
+        exchange: dna.PacketExchange | None = None,
+    ) -> UltraEnvironmentState:
+        """Set the eMotionPro absence delay in protocol-native units and verify it."""
+        profile = session.device.profile
+        if profile is None or profile.model is not DeviceModel.EMOTION_PRO:
+            raise UltraProtocolError("absence delay is not an eMotion Pro operation for this device")
+        if session.device.type_id == TYPE_EMOTION_PRO_RADAR:
+            _validate_int_range(seconds, 0, MAX_ABSENCE_DELAY, "eMotion Pro absence delay")
+            peripheral_dids = await self._get_pro_radar_peripheral_dids(session, exchange=exchange)
+            radar_did = peripheral_dids.get(
+                TYPE_PRO_RADAR_24G,
+                derive_peripheral_did(session.device.mac, TYPE_PRO_RADAR_24G),
+            )
+            response = await self.send_command(
+                session,
+                emotion.build_set_status_frame(radar_did, {"delaytime": seconds}),
+                exchange=exchange,
+            )
+            _validate_subdevice_response(response, radar_did, "absence delay write")
+            try:
+                state = await self._get_pro_radar_environment_state(session, exchange=exchange)
+            except UltraProtocolError:
+                # This firmware can briefly stop answering after persisting radar
+                # settings. Keep the independent read-back requirement, but allow
+                # that one observed settling interval before failing the command.
+                await asyncio.sleep(PRO_WRITE_READBACK_RETRY_DELAY)
+                state = await self._get_pro_radar_environment_state(session, exchange=exchange)
+            if state.values.get("absence_delay") != seconds:
+                raise UltraProtocolError(
+                    "eMotion Pro absence delay read-back mismatch "
+                    f"({state.values.get('absence_delay')!r}, expected {seconds!r})"
+                )
+            return state
+        _validate_int_range(seconds, 0, MAX_PRO_ABSENCE_DELAY, "eMotion Pro absence delay")
+        if seconds % 60:
+            raise ValueError("eMotion Pro absence delay must be a whole number of minutes")
+        response = await self.send_command(
+            session,
+            keyvalue.build_set_status_frame({"delaytime": seconds // 60}),
+            exchange=exchange,
+        )
+        _parse_keyvalue_response(response)
+        state = await self._get_pro_environment_state(session, exchange=exchange)
+        if state.values.get("absence_delay") != seconds:
+            raise UltraProtocolError(
+                "eMotion Pro absence delay read-back mismatch "
+                f"({state.values.get('absence_delay')!r}, expected {seconds!r})"
+            )
+        return state
 
     async def subscribe_local_udp_push(
         self,
@@ -881,6 +1091,79 @@ def derive_ultra2_radar_did(lan_mac: str) -> str:
     return (mac + radar_type + b"\x00\x00" + radar_type[:3] + b"\x01").hex()
 
 
+def derive_peripheral_did(lan_mac: str, peripheral_type: int) -> str:
+    """Derive a virtual-peripheral DID from the Wi-Fi MAC."""
+    mac = dna.mac_bytes(lan_mac)
+    if not mac:
+        raise ValueError(f"invalid LinknLink LAN MAC: {lan_mac}")
+    if not 0 <= peripheral_type <= 0xFFFFFF:
+        raise ValueError("peripheral type must fit in 24 bits")
+    device_type = peripheral_type.to_bytes(4, "little")
+    return (mac + device_type + b"\x00\x00" + device_type[:3] + b"\x01").hex()
+
+
+def _parse_keyvalue_response(response: bytes) -> dict[str, object]:
+    try:
+        return keyvalue.parse_status_response(response)
+    except keyvalue.KeyValueError as err:
+        raise UltraProtocolError(str(err)) from err
+
+
+def _validate_subdevice_response(response: bytes, did: str, operation: str) -> None:
+    try:
+        frame = emotion.parse_subdevice_frame(response)
+        payload = emotion.parse_subdevice_json_payload(frame)
+    except emotion.EmotionError as err:
+        raise UltraProtocolError(str(err)) from err
+    response_did = str(payload.get("did", ""))
+    status = payload.get("status")
+    if response_did.lower() != did or isinstance(status, bool) or status != 0:
+        raise UltraProtocolError(
+            f"eMotion Pro {operation} failed: response_did={response_did or 'missing'} status={status!r}"
+        )
+
+
+def _peripheral_type_from_did(did: str) -> int | None:
+    try:
+        raw_did = bytes.fromhex(did)
+    except ValueError:
+        return None
+    if len(raw_did) != 16:
+        return None
+    return int.from_bytes(raw_did[6:10], "little")
+
+
+def _pro_environment_values(
+    payload: dict[str, object],
+) -> dict[str, int | float | bool]:
+    values: dict[str, int | float | bool] = {}
+    if "tempsensor" in payload:
+        temperature = _pro_int(payload, "tempsensor", minimum=-450, maximum=1300)
+        values["temperature"] = round(temperature / 10, 1)
+    if "humsensor" in payload:
+        values["humidity"] = _pro_int(payload, "humsensor", minimum=0, maximum=100)
+    if "pir_detected" in payload:
+        occupancy = _pro_int(payload, "pir_detected", minimum=0, maximum=1)
+        values["occupancy"] = bool(occupancy)
+    if "delaytime" in payload:
+        delay_minutes = _pro_int(payload, "delaytime", minimum=0, maximum=0xFFFF)
+        values["absence_delay"] = delay_minutes * 60
+    return values
+
+
+def _pro_int(
+    payload: dict[str, object],
+    key: str,
+    *,
+    minimum: int,
+    maximum: int,
+) -> int:
+    value = payload[key]
+    if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
+        raise UltraProtocolError(f"invalid eMotion Pro {key}: {value!r}")
+    return value
+
+
 def _required_int(
     payload: dict[str, object],
     key: str,
@@ -1004,7 +1287,9 @@ def _normalize_local_key(value: bytes | str) -> bytes:
 
 
 def _auth_device_type_candidates(device_type: int) -> list[int]:
-    if device_type in {TYPE_ULTRA2, TYPE_ULTRA2_LAN}:
+    if device_type == TYPE_EMOTION_PRO_RADAR:
+        values = [TYPE_ULTRA1, TYPE_EMOTION_PRO_RADAR]
+    elif device_type in {TYPE_ULTRA2, TYPE_ULTRA2_LAN}:
         values = [device_type, TYPE_ULTRA2, TYPE_ULTRA2_LAN]
     elif get_device_profile(device_type) is not None:
         values = [device_type]
@@ -1014,6 +1299,8 @@ def _auth_device_type_candidates(device_type: int) -> list[int]:
 
 
 def _command_device_type_candidates(session: UltraSession) -> list[int]:
+    if session.device.type_id == TYPE_EMOTION_PRO_RADAR:
+        return _dedupe_ints([session.command_device_type or TYPE_ULTRA2_LAN, TYPE_ULTRA2_LAN])
     values = [
         session.command_device_type,
         session.auth_device_type,
@@ -1026,6 +1313,8 @@ def _command_device_type_candidates(session: UltraSession) -> list[int]:
 
 
 def _command_message_type_candidates(session: UltraSession) -> list[int]:
+    if session.device.type_id == TYPE_EMOTION_PRO_RADAR:
+        return _dedupe_ints([session.command_message_type or dna.MESSAGE_TYPE_COMMAND, dna.MESSAGE_TYPE_COMMAND])
     return _dedupe_ints([session.command_message_type, dna.MESSAGE_TYPE_COMMAND, 0x03E9])
 
 

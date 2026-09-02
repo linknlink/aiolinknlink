@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.7.0 (unreleased)
+
+- Add conditional local KeyValue support for `0x6FAC` eMotionPro devices.
+- Add `0xB9AC` subdevice-protocol support with its validated `0x9CAC`
+  authentication compatibility and `0xE3AC` command header.
+- Read temperature, humidity, occupancy, and absence delay, with explicit unit
+  normalization.
+- Add whole-minute and whole-second absence-delay writes, selected by protocol,
+  with an independent status read-back.
+- Retry the radar variant's independent read-back once after its observed
+  post-write settling interval, while preserving strict ACK and value checks.
+- Use the wire-order MAC and 80-byte terminal structure required by legacy BLC
+  pairing, and accept a provisioning-time local control key for locked units.
+- Deliberately exclude climate control because the local V2 JSON handler does
+  not implement it.
+- Keep this version unreleased until normal-LAN provisioning, discovery,
+  authentication, restart, and state/control behavior pass real-device tests.
+
 ## 0.3.2
 
 - Refresh ESPHome entity capabilities on every state read so optional
