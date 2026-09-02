@@ -301,6 +301,8 @@ def test_emotion_command_builders() -> None:
     assert emotion.build_gateway_get_state_command(b"params") == struct.pack("<I", 0x24) + b"params"
     upload = emotion.build_local_udp_upload_command(25825, 60, ip=123)
     assert json.loads(upload[4:]) == {"port": 25825, "timeout": 60, "ip": 123}
+    list_frame = emotion.parse_subdevice_frame(emotion.build_get_subdevice_list_frame())
+    assert json.loads(list_frame.payload) == {"count": 64, "index": 0}
 
     for frame in (
         emotion.build_scan_subdevices_frame("pid"),
@@ -309,6 +311,11 @@ def test_emotion_command_builders() -> None:
         emotion.build_set_status_frame("did", {"value": 1}),
     ):
         assert emotion.verify_subdevice_checksum(frame)
+
+    with pytest.raises(ValueError, match="count"):
+        emotion.build_get_subdevice_list_frame(0)
+    with pytest.raises(ValueError, match="index"):
+        emotion.build_get_subdevice_list_frame(index=-1)
 
 
 @pytest.mark.parametrize(

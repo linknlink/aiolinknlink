@@ -37,7 +37,9 @@ def test_profiles_are_immutable_and_model_specific() -> None:
 
     assert ultra1 is not None
     assert ultra1.model is DeviceModel.EMOTION_ULTRA1
-    assert DeviceCapability.DISTANCE in ultra1.capabilities
+    assert DeviceCapability.DISTANCE not in ultra1.capabilities
+    assert DeviceCapability.POSITION not in ultra1.capabilities
+    assert DeviceCapability.LOCAL_UDP not in ultra1.capabilities
     assert DeviceCapability.TARGET_SPEED not in ultra1.capabilities
     assert max1 is not None
     assert DeviceCapability.TARGET_SPEED not in max1.capabilities

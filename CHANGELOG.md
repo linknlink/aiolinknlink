@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.4.0
+
+- Add first-generation eMotion Ultra DNA discovery and authentication.
+- Add direct local reads for 60 GHz radar presence, four zones, target count,
+  illuminance, and optional temperature/humidity peripherals.
+- Reuse device-verified radar configuration APIs without changing the existing
+  Ultra2 API.
+- Add immutable model capability metadata and generic LinknLink API aliases.
+- Add runtime capability filtering for radar and optional peripherals.
+- Parse legacy discovery lock state, use the wire-order MAC and the 80-byte
+  legacy terminal pairing structure.
+- Allow a provisioning-time local control key to open an already locked
+  first-generation device without changing the Ultra2 call path.
+- Document that first-generation local responses do not contain target speed.
+- Do not advertise unverified first-generation position, distance, local UDP,
+  or target-speed capabilities.
+- Add MAC-based rediscovery with directed-broadcast retries for devices whose
+  DHCP address changes.
+
 ## 0.3.2
 
 - Refresh ESPHome entity capabilities on every state read so optional

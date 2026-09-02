@@ -92,6 +92,12 @@ _RADAR_CAPABILITIES = frozenset(
     }
 )
 
+_ULTRA1_RADAR_CAPABILITIES = _RADAR_CAPABILITIES - {
+    DeviceCapability.DISTANCE,
+    DeviceCapability.POSITION,
+    DeviceCapability.LOCAL_UDP,
+}
+
 DEVICE_PROFILES: Final[tuple[DeviceProfile, ...]] = (
     DeviceProfile(
         DeviceModel.EMOTION_ULTRA2,
@@ -105,7 +111,7 @@ DEVICE_PROFILES: Final[tuple[DeviceProfile, ...]] = (
         DISPLAY_MODEL_ULTRA1,
         frozenset({TYPE_ULTRA1}),
         PID_ULTRA1,
-        _RADAR_CAPABILITIES,
+        _ULTRA1_RADAR_CAPABILITIES,
     ),
     DeviceProfile(
         DeviceModel.EMOTION_MAX1,

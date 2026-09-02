@@ -22,6 +22,7 @@ from .devices import (
     DISPLAY_MODEL_ULTRA2,
     TYPE_ULTRA2,
     TYPE_ULTRA2_LAN,
+    DeviceCapability,
     DeviceModel,
     get_device_profile,
 )
@@ -42,6 +43,8 @@ _LOGGER = logging.getLogger(__name__)
 
 PROVIDER = "ultra"
 TYPE_ULTRA2_RADAR = 0xACDB
+TYPE_LEGACY_OPT3004 = 0xACD8
+TYPE_LEGACY_SHTXX = 0xACDC
 DEFAULT_TIMEOUT = 5.0
 DEFAULT_AUTH_TIMEOUT = 15.0
 DEFAULT_PREFERRED_COMMAND_TIMEOUT = 15.0
@@ -244,7 +247,7 @@ class UltraClient:
         raise UltraConnectionError(session.auth_error) from last_error
 
     def _mark_authenticated(self, session: UltraSession, auth_type: int, auth_status: str) -> None:
-        """Apply model metadata after obtaining a local control key."""
+        """Apply model-specific defaults after obtaining a local control key."""
         device = session.device
         session.auth_device_type = auth_type
         if not device.type_id:
@@ -265,12 +268,17 @@ class UltraClient:
             device.name = display_name
         session.auth_status = auth_status
         session.auth_error = ""
+        if profile is not None and profile.model is DeviceModel.EMOTION_ULTRA1:
+            session.command_device_type = TYPE_ULTRA2_LAN
+            session.command_message_type = dna.MESSAGE_TYPE_COMMAND
         session.last_auth_at = datetime.now(UTC)
         session.last_seen = datetime.now(UTC)
 
     async def get_environment_state(self, session: UltraSession) -> UltraEnvironmentState:
         """Read environmental, occupancy, and count states from the local API."""
         profile = session.device.profile
+        if profile is not None and profile.model is DeviceModel.EMOTION_ULTRA1:
+            return await self._get_ultra1_environment_state(session)
         if profile is not None and profile.model is not DeviceModel.EMOTION_ULTRA2:
             raise UltraProtocolError(f"environment state is not implemented for {profile.display_name}")
         client = APIClient(
@@ -335,6 +343,185 @@ class UltraClient:
             received_at=datetime.now(UTC),
         )
 
+    async def get_runtime_capabilities(
+        self,
+        session: UltraSession,
+    ) -> frozenset[DeviceCapability]:
+        """Return capabilities narrowed by the device's listed peripherals."""
+        profile = session.device.profile
+        if profile is None:
+            return frozenset()
+        if profile.model is not DeviceModel.EMOTION_ULTRA1:
+            return profile.capabilities
+
+        peripheral_dids = await self._get_ultra1_peripheral_dids(session)
+        capabilities: set[DeviceCapability] = set()
+        if peripheral_dids:
+            capabilities.add(DeviceCapability.ENVIRONMENT)
+        if TYPE_LEGACY_OPT3004 in peripheral_dids:
+            capabilities.add(DeviceCapability.ILLUMINANCE)
+        if TYPE_LEGACY_SHTXX in peripheral_dids:
+            capabilities.update({DeviceCapability.TEMPERATURE, DeviceCapability.HUMIDITY})
+        if TYPE_ULTRA2_RADAR in peripheral_dids:
+            capabilities.update(
+                {
+                    DeviceCapability.OCCUPANCY,
+                    DeviceCapability.TARGET_COUNT,
+                    DeviceCapability.ZONES,
+                    DeviceCapability.RADAR_CONFIGURATION,
+                    DeviceCapability.ABSENCE_DELAY,
+                }
+            )
+        return frozenset(capabilities)
+
+    async def _get_ultra1_environment_state(
+        self,
+        session: UltraSession,
+    ) -> UltraEnvironmentState:
+        """Read Ultra1 radar and optional environmental peripherals."""
+        peripheral_dids = await self._get_ultra1_peripheral_dids(session)
+        radar_did = await self._get_radar_did(session)
+        radar = await self._get_subdevice_state(session, radar_did)
+        values: dict[str, int | float | bool] = {}
+        if radar is not None:
+            occupancy = _optional_bool_int(radar, "pir_detected")
+            if occupancy is not None:
+                values["occupancy"] = occupancy
+            target_count = _optional_number(radar, "sf_opcount")
+            if target_count is not None:
+                values["target_count"] = round(target_count)
+            for zone in range(1, 5):
+                present = _optional_bool_int(radar, f"area{zone}")
+                if present is not None:
+                    values[f"zone_{zone}_presence"] = present
+
+        illuminance = await self._get_subdevice_state(
+            session,
+            peripheral_dids.get(
+                TYPE_LEGACY_OPT3004,
+                derive_peripheral_did(session.device.mac, TYPE_LEGACY_OPT3004),
+            ),
+        )
+        if illuminance is not None and (lux := _optional_number(illuminance, "envlux")) is not None:
+            values["illuminance"] = lux
+
+        climate = await self._get_subdevice_state(
+            session,
+            peripheral_dids.get(
+                TYPE_LEGACY_SHTXX,
+                derive_peripheral_did(session.device.mac, TYPE_LEGACY_SHTXX),
+            ),
+        )
+        if climate is not None:
+            if (temperature := _optional_number(climate, "envtemp")) is not None:
+                temperature /= 100
+                if climate.get("tempunit") == 2:
+                    temperature = (temperature - 32) * 5 / 9
+                values["temperature"] = round(temperature, 2)
+            if (humidity := _optional_number(climate, "envhumid")) is not None:
+                values["humidity"] = round(humidity / 100, 2)
+
+        if not values:
+            raise UltraProtocolError("Ultra1 did not return any supported environment state")
+
+        session.last_seen = datetime.now(UTC)
+        return UltraEnvironmentState(
+            device_id=session.device.id,
+            values=values,
+            available_fields=frozenset(values),
+            received_at=datetime.now(UTC),
+        )
+
+    async def _get_ultra1_peripheral_dids(
+        self,
+        session: UltraSession,
+        *,
+        exchange: dna.PacketExchange | None = None,
+    ) -> dict[int, str]:
+        """Read and cache persisted Ultra1 virtual-peripheral identities."""
+        if session.peripheral_dids:
+            return dict(session.peripheral_dids)
+        try:
+            response = await self.send_command(
+                session,
+                emotion.build_get_subdevice_list_frame(),
+                exchange=exchange,
+            )
+            frame = emotion.parse_subdevice_frame(response)
+            payload = emotion.parse_subdevice_json_payload(frame)
+        except (UltraError, emotion.EmotionError):
+            return {}
+        status = payload.get("status")
+        items = payload.get("list")
+        if isinstance(status, bool) or status != 0 or not isinstance(items, list):
+            return {}
+        for item in items:
+            if not isinstance(item, dict) or not isinstance(did := item.get("did"), str):
+                continue
+            offline = item.get("offline")
+            if isinstance(offline, bool) or isinstance(offline, int) and offline != 0:
+                continue
+            peripheral_type = _peripheral_type_from_did(did)
+            if peripheral_type is None:
+                continue
+            if peripheral_type in {
+                TYPE_ULTRA2_RADAR,
+                TYPE_LEGACY_OPT3004,
+                TYPE_LEGACY_SHTXX,
+            }:
+                session.peripheral_dids[peripheral_type] = did.lower()
+        return dict(session.peripheral_dids)
+
+    async def _get_radar_did(
+        self,
+        session: UltraSession,
+        *,
+        exchange: dna.PacketExchange | None = None,
+    ) -> str:
+        """Resolve the listed Ultra1 radar DID or derive its standard DID."""
+        profile = session.device.profile
+        if profile is not None and profile.model is DeviceModel.EMOTION_ULTRA1:
+            peripheral_dids = await self._get_ultra1_peripheral_dids(session, exchange=exchange)
+            if radar_did := peripheral_dids.get(TYPE_ULTRA2_RADAR):
+                return radar_did
+        return derive_radar_did(session.device.mac)
+
+    async def _get_subdevice_state(
+        self,
+        session: UltraSession,
+        did: str,
+        *,
+        required: bool = False,
+        exchange: dna.PacketExchange | None = None,
+    ) -> dict[str, object] | None:
+        """Read one peripheral while allowing optional hardware to be absent."""
+        try:
+            response = await self.send_command(
+                session,
+                emotion.build_get_status_frame(did),
+                exchange=exchange,
+            )
+            frame = emotion.parse_subdevice_frame(response)
+            payload = emotion.parse_subdevice_json_payload(frame)
+        except emotion.EmotionError as err:
+            if required:
+                raise UltraProtocolError(str(err)) from err
+            return None
+        except UltraError:
+            if required:
+                raise
+            return None
+        response_did = str(payload.get("did", ""))
+        status = payload.get("status")
+        if response_did.lower() != did or isinstance(status, bool) or status != 0:
+            if required:
+                raise UltraProtocolError(
+                    f"subdevice status read failed for {did}: response_did={response_did or 'missing'} "
+                    f"status={status!r}"
+                )
+            return None
+        return payload
+
     async def subscribe_local_udp_push(
         self,
         session: UltraSession,
@@ -365,7 +552,7 @@ class UltraClient:
         exchange: dna.PacketExchange | None = None,
     ) -> UltraRadarStatus:
         """Read the validated Ultra2 radar configuration fields."""
-        radar_did = derive_ultra2_radar_did(session.device.mac)
+        radar_did = await self._get_radar_did(session, exchange=exchange)
         try:
             payload = await self.send_command(
                 session,
@@ -586,7 +773,7 @@ class UltraClient:
         values_match: Callable[[object, object], bool] | None = None,
     ) -> UltraRadarStatus:
         """Write one radar field and require a matching independent read-back."""
-        radar_did = derive_ultra2_radar_did(session.device.mac)
+        radar_did = await self._get_radar_did(session, exchange=exchange)
         await self.send_command(
             session,
             emotion.build_set_status_frame(radar_did, {field: value}),
@@ -664,6 +851,10 @@ class UltraClient:
         session.session_key = refreshed.session_key
         session.auth_mac = refreshed.auth_mac
         session.auth_device_type = refreshed.auth_device_type
+        if refreshed.command_device_type:
+            session.command_device_type = refreshed.command_device_type
+        if refreshed.command_message_type:
+            session.command_message_type = refreshed.command_message_type
         session.auth_status = refreshed.auth_status
         session.auth_error = refreshed.auth_error
         session.last_auth_at = refreshed.last_auth_at
@@ -874,11 +1065,42 @@ def derive_ultra2_protocol_mac(lan_mac: str) -> str:
 
 def derive_ultra2_radar_did(lan_mac: str) -> str:
     """Derive the Ultra2 radar peripheral DID from its Wi-Fi station MAC."""
+    if not dna.mac_bytes(lan_mac):
+        raise ValueError(f"invalid Ultra2 LAN MAC: {lan_mac}")
+    return derive_peripheral_did(lan_mac, TYPE_ULTRA2_RADAR)
+
+
+def derive_radar_did(lan_mac: str) -> str:
+    """Derive the shared Ultra/Max radar peripheral DID."""
+    return derive_peripheral_did(lan_mac, TYPE_ULTRA2_RADAR)
+
+
+def derive_peripheral_did(lan_mac: str, peripheral_type: int) -> str:
+    """Derive a legacy virtual-peripheral DID from the Wi-Fi MAC."""
     mac = dna.mac_bytes(lan_mac)
     if not mac:
-        raise ValueError(f"invalid Ultra2 LAN MAC: {lan_mac}")
-    radar_type = TYPE_ULTRA2_RADAR.to_bytes(4, "little")
-    return (mac + radar_type + b"\x00\x00" + radar_type[:3] + b"\x01").hex()
+        raise ValueError(f"invalid LinknLink LAN MAC: {lan_mac}")
+    if not 0 <= peripheral_type <= 0xFFFFFF:
+        raise ValueError("peripheral type must fit in 24 bits")
+    device_type = peripheral_type.to_bytes(4, "little")
+    return (mac + device_type + b"\x00\x00" + device_type[:3] + b"\x01").hex()
+
+
+def _optional_number(payload: dict[str, object], key: str) -> float | None:
+    value = payload.get(key)
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    numeric = float(value)
+    return numeric if math.isfinite(numeric) else None
+
+
+def _optional_bool_int(payload: dict[str, object], key: str) -> bool | None:
+    value = payload.get(key)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int) and value in {0, 1}:
+        return bool(value)
+    return None
 
 
 def _required_int(
@@ -1014,18 +1236,23 @@ def _auth_device_type_candidates(device_type: int) -> list[int]:
 
 
 def _command_device_type_candidates(session: UltraSession) -> list[int]:
+    profile = session.device.profile
+    if profile is not None and profile.model is DeviceModel.EMOTION_ULTRA1:
+        return _dedupe_ints([session.command_device_type or TYPE_ULTRA2_LAN, TYPE_ULTRA2_LAN])
     values = [
         session.command_device_type,
         session.auth_device_type,
         session.device.type_id,
     ]
-    profile = session.device.profile
     if profile is None or profile.model is DeviceModel.EMOTION_ULTRA2:
         values.extend((TYPE_ULTRA2, TYPE_ULTRA2_LAN))
     return _dedupe_ints(value for value in values if value)
 
 
 def _command_message_type_candidates(session: UltraSession) -> list[int]:
+    profile = session.device.profile
+    if profile is not None and profile.model is DeviceModel.EMOTION_ULTRA1:
+        return _dedupe_ints([session.command_message_type or dna.MESSAGE_TYPE_COMMAND, dna.MESSAGE_TYPE_COMMAND])
     return _dedupe_ints([session.command_message_type, dna.MESSAGE_TYPE_COMMAND, 0x03E9])
 
 
@@ -1041,6 +1268,16 @@ def _next_command_sequence(session: UltraSession) -> int:
 def _entity_id_device_segment(value: str) -> str:
     compact = value.lower().replace(":", "").replace("-", "").replace("_", "").replace(" ", "")
     return compact or value
+
+
+def _peripheral_type_from_did(did: str) -> int | None:
+    try:
+        raw_did = bytes.fromhex(did)
+    except ValueError:
+        return None
+    if len(raw_did) != 16:
+        return None
+    return int.from_bytes(raw_did[6:10], "little")
 
 
 def _dedupe_ints(values: Iterable[int]) -> list[int]:

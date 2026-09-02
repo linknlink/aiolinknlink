@@ -57,6 +57,7 @@ class UltraSession:
     auth_error: str = ""
     last_auth_at: datetime | None = None
     last_seen: datetime | None = None
+    peripheral_dids: dict[int, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)

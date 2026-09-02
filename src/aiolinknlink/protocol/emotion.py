@@ -171,9 +171,13 @@ def build_get_waiting_list_frame() -> bytes:
     return build_subdevice_frame(CMD_GET_WAITING_LIST, None)
 
 
-def build_get_subdevice_list_frame() -> bytes:
+def build_get_subdevice_list_frame(count: int = 64, index: int = 0) -> bytes:
     """Build get subdevice list frame."""
-    return build_subdevice_frame(CMD_GET_SUBDEVICE_LIST, None)
+    if isinstance(count, bool) or count <= 0:
+        raise ValueError("subdevice list count must be greater than zero")
+    if isinstance(index, bool) or index < 0:
+        raise ValueError("subdevice list index must not be negative")
+    return build_subdevice_frame(CMD_GET_SUBDEVICE_LIST, {"count": count, "index": index})
 
 
 def parse_gateway_state_response(data: bytes) -> GatewayResponse:
