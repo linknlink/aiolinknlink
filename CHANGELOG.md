@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.0 (unreleased)
+
+- Add a serialized single-connection TCP JSON-RPC client for eHomeHA and
+  eRemoteHA.
+- Add infrared learning, learned-code polling, Base64 frame validation, and
+  infrared sending APIs.
+- Validate response framing, JSON-RPC version and request ID, device errors,
+  timeouts, disconnects, and infrared frame headers.
+- Keep this version unreleased until each claimed model passes real-device
+  validation.
+
 ## 0.3.2
 
 - Refresh ESPHome entity capabilities on every state read so optional

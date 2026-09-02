@@ -64,18 +64,26 @@ Target speed remains unsupported unless a real local payload proves otherwise.
 ### Ultra first-generation observations
 
 - The real Ultra first-generation unit reports device type `0x9CAC`, product
-  name `eMotion Ultra`, and responds to specified-host discovery. Broadcast
-  discovery has been intermittent and remains a release blocker.
-- Authentication currently returns a short rejection frame for `0x9CAC`,
-  `0xD7AC`, and `0xE3AC` with both compact BLC and full DNA framing, including
-  when the client binds UDP port 80. No state or control claim is hardware
-  verified until this is resolved.
+  name `eMotion Ultra`, and responds to specified-host and directed-broadcast
+  discovery. Repeated broadcast reliability remains to be measured.
+- Its discovery payload reports status flags `0x02` and local lock state `1`.
+  The correct wire-order MAC reaches the terminal-add handler, which returns
+  message `0x03E9`, status `0xFFFF`, and no key because pairing is locked.
+- Firmware source proves that legacy terminal pairing uses an 80-byte aligned
+  structure. A 100-byte request is treated as the authenticated newer packet
+  form, so the library now uses the 80-byte form and the reversed wire MAC.
+- Firmware source also proves that Wi-Fi provisioning returns the persistent
+  16-byte local control key as `token`. The current unit was provisioned before
+  that token was captured, so the provided-key path is automated but not yet
+  hardware verified.
 - Firmware source identifies Ultra first-generation as the `cm_ha` product with
   a `0xACDB` 60 GHz radar. The earlier `0xACD9` observations came from a
   `0xB9AC` `rm_radar` product whose firmware identifies it as an eMotionPro
   variant; those observations are not Ultra evidence.
 - Optional temperature/humidity, configuration writes, local position,
-  power-cycle recovery and IP-change recovery all remain unverified.
+  power-cycle recovery and IP-change recovery all remain unverified. Hardware
+  validation requires reprovisioning the unit while securely capturing its
+  local token; the token must never be committed as a fixture.
 
 Remote validation must cover learning, polling until a code is available,
 sending the learned code, reconnecting, and command persistence after both the

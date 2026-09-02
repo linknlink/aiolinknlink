@@ -51,6 +51,14 @@ from .models import (
     UltraSession,
     UltraTargetPosition,
 )
+from .remote import (
+    LinknLinkRemoteClient,
+    LinknLinkRemoteCommandError,
+    LinknLinkRemoteConnectionError,
+    LinknLinkRemoteError,
+    LinknLinkRemoteProtocolError,
+    LinknLinkRemoteTimeoutError,
+)
 
 __all__ = [
     "DEVICE_PROFILES",
@@ -79,6 +87,12 @@ __all__ = [
     "DeviceProfile",
     "LinknLinkClient",
     "LinknLinkDevice",
+    "LinknLinkRemoteClient",
+    "LinknLinkRemoteCommandError",
+    "LinknLinkRemoteConnectionError",
+    "LinknLinkRemoteError",
+    "LinknLinkRemoteProtocolError",
+    "LinknLinkRemoteTimeoutError",
     "LinknLinkSession",
     "UltraAuthError",
     "UltraClient",
