@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorEntityDescription, SensorStateClass
 from homeassistant.const import (
     CONCENTRATION_PARTS_PER_MILLION,
     LIGHT_LUX,
     PERCENTAGE,
+    SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
     UnitOfEnergy,
     UnitOfFrequency,
+    UnitOfLength,
     UnitOfPower,
     UnitOfReactivePower,
     UnitOfTemperature,
@@ -38,7 +41,8 @@ from aiolinknlink import (
 )
 
 from . import LinknLinkConfigEntry
-from .entity import IbgCoordinatorEntity
+from .coordinator import UltraDataUpdateCoordinator
+from .entity import IbgCoordinatorEntity, UltraCoordinatorEntity
 
 SR3_SENSORS = (
     SensorEntityDescription(
@@ -72,6 +76,73 @@ SR3_SENSORS = (
         device_class=SensorDeviceClass.BATTERY,
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
+    ),
+)
+
+ULTRA_SENSORS = (
+    SR3_SENSORS[0],
+    SR3_SENSORS[1],
+    SR3_SENSORS[2],
+    SensorEntityDescription(
+        key="wifi_signal",
+        name="Wi-Fi signal",
+        translation_key="wifi_signal",
+        device_class=SensorDeviceClass.SIGNAL_STRENGTH,
+        native_unit_of_measurement=SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    SensorEntityDescription(
+        key="target_count",
+        name="Target count",
+        translation_key="target_count",
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:account-multiple",
+    ),
+    SensorEntityDescription(
+        key="persons_in_fenced_zones",
+        name="Persons in fenced zones",
+        translation_key="persons_in_fenced_zones",
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:account-group",
+    ),
+    *(
+        SensorEntityDescription(
+            key=f"zone_{zone}_target_counts",
+            name=f"Zone {zone} target count",
+            translation_key=f"zone_{zone}_target_count",
+            state_class=SensorStateClass.MEASUREMENT,
+            icon="mdi:account-multiple-outline",
+        )
+        for zone in range(1, 5)
+    ),
+)
+
+ULTRA_POSITION_SENSORS = (
+    SensorEntityDescription(
+        key="position_targets",
+        name="Position targets",
+        translation_key="position_targets",
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:radar",
+    ),
+    SensorEntityDescription(
+        key="nearest_horizontal_distance",
+        name="Nearest horizontal distance",
+        translation_key="nearest_horizontal_distance",
+        device_class=SensorDeviceClass.DISTANCE,
+        native_unit_of_measurement=UnitOfLength.METERS,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:arrow-expand-horizontal",
+    ),
+    SensorEntityDescription(
+        key="nearest_distance",
+        name="Nearest 3D distance",
+        translation_key="nearest_distance",
+        device_class=SensorDeviceClass.DISTANCE,
+        native_unit_of_measurement=UnitOfLength.METERS,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:axis-arrow",
     ),
 )
 ESENSOR_2000_GEN1_SENSORS = (SR3_SENSORS[0], SR3_SENSORS[1], SR3_SENSORS[3])
@@ -454,6 +525,14 @@ async def async_setup_entry(
     """Create sensors for all reviewed iBG subdevice fields."""
     del hass
     coordinator = entry.runtime_data
+    if isinstance(coordinator, UltraDataUpdateCoordinator):
+        async_add_entities(
+            [
+                *(UltraSensor(coordinator, description) for description in ULTRA_SENSORS),
+                *(UltraPositionSensor(coordinator, description) for description in ULTRA_POSITION_SENSORS),
+            ]
+        )
+        return
     entities = [
         IbgSensor(coordinator, device.did, description)
         for device in coordinator.data.subdevices
@@ -482,6 +561,82 @@ class IbgSensor(IbgCoordinatorEntity, SensorEntity):
         """Return the latest safe scalar value."""
         value = self._value()
         return value if isinstance(value, (int, float, str)) and not isinstance(value, bool) else None
+
+
+class UltraSensor(UltraCoordinatorEntity, SensorEntity):
+    """One validated Ultra2 environmental, signal, or count state."""
+
+    entity_description: SensorEntityDescription
+
+    def __init__(self, coordinator: UltraDataUpdateCoordinator, description: SensorEntityDescription) -> None:
+        super().__init__(coordinator, description.key)
+        self.entity_description = description
+
+    @property
+    def native_value(self) -> int | float | None:
+        """Return the latest validated scalar value."""
+        value = self._environment_value()
+        return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+class UltraPositionSensor(UltraCoordinatorEntity, SensorEntity):
+    """One Ultra2 multi-target position value."""
+
+    entity_description: SensorEntityDescription
+
+    def __init__(self, coordinator: UltraDataUpdateCoordinator, description: SensorEntityDescription) -> None:
+        super().__init__(coordinator, description.key)
+        self.entity_description = description
+
+    @property
+    def available(self) -> bool:
+        """Report availability only for a confirmed, fresh position update."""
+        position = self.coordinator.data.position
+        return (
+            self.coordinator.last_update_success
+            and position is not None
+            and position.subscribed
+            and not position.stale
+            and position.latest_update is not None
+        )
+
+    @property
+    def native_value(self) -> int | float | None:
+        """Return target count or nearest validated target distance."""
+        position = self.coordinator.data.position
+        update = position.latest_update if position is not None else None
+        if update is None:
+            return None
+        if self.key == "position_targets":
+            return update.target_count
+        if self.key == "nearest_horizontal_distance":
+            return update.nearest_horizontal_distance
+        if self.key == "nearest_distance":
+            return update.nearest_distance
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Expose all validated target coordinates on the target-count sensor."""
+        if self.key != "position_targets":
+            return None
+        position = self.coordinator.data.position
+        update = position.latest_update if position is not None else None
+        if update is None:
+            return None
+        return {
+            "targets": [
+                {
+                    "x": target.x,
+                    "y": target.y,
+                    "z": target.z,
+                    "horizontal_distance": target.horizontal_distance,
+                    "distance": target.distance,
+                }
+                for target in update.targets
+            ],
+            "received_at": update.received_at.isoformat(),
+        }
 
 
 class IbgDtuAnalogInputSensor(IbgSensor):

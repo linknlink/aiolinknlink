@@ -21,16 +21,31 @@ from homeassistant.core import HomeAssistant  # noqa: E402
 from homeassistant.exceptions import ConfigEntryNotReady  # noqa: E402
 from homeassistant.helpers import device_registry as dr  # noqa: E402
 
-from aiolinknlink import IbgClient, IbgError  # noqa: E402
+from aiolinknlink import IbgClient, IbgError, UltraClient, UltraError  # noqa: E402
 
-from .const import CONF_LOCAL_KEY, PLATFORMS, resolve_local_key_hex  # noqa: E402
-from .coordinator import IbgDataUpdateCoordinator  # noqa: E402
+from .const import (  # noqa: E402
+    CONF_DEVICE_TYPE,
+    CONF_LOCAL_KEY,
+    DEVICE_TYPE_IBG,
+    DEVICE_TYPE_ULTRA2,
+    PLATFORMS,
+    resolve_local_key_hex,
+)
+from .coordinator import IbgDataUpdateCoordinator, UltraDataUpdateCoordinator  # noqa: E402
 
-LinknLinkConfigEntry: TypeAlias = ConfigEntry[IbgDataUpdateCoordinator]
+LinknLinkConfigEntry: TypeAlias = ConfigEntry[IbgDataUpdateCoordinator | UltraDataUpdateCoordinator]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: LinknLinkConfigEntry) -> bool:
     """Set up LinknLink from a config entry."""
+    device_type = entry.data.get(CONF_DEVICE_TYPE, DEVICE_TYPE_IBG)
+    if device_type == DEVICE_TYPE_ULTRA2:
+        return await _async_setup_ultra2_entry(hass, entry)
+    return await _async_setup_ibg_entry(hass, entry)
+
+
+async def _async_setup_ibg_entry(hass: HomeAssistant, entry: LinknLinkConfigEntry) -> bool:
+    """Set up one iBG gateway, including legacy entries without a type marker."""
     client = IbgClient()
     local_key_hex = entry.data.get(CONF_LOCAL_KEY, "")
     local_key = bytes.fromhex(local_key_hex) if local_key_hex else None
@@ -49,6 +64,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: LinknLinkConfigEntry) ->
     coordinator = IbgDataUpdateCoordinator(hass, client, device, session, local_key=local_key)
     await coordinator.async_config_entry_first_refresh()
     await coordinator.async_start_push()
+    entry.runtime_data = coordinator
+    dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={("linknlink", device.id)},
+        name=device.name,
+        manufacturer="LinknLink",
+        model=device.model,
+    )
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    return True
+
+
+async def _async_setup_ultra2_entry(hass: HomeAssistant, entry: LinknLinkConfigEntry) -> bool:
+    """Set up one eMotion Ultra2."""
+    client = UltraClient()
+    try:
+        device = await client.discover_host(entry.data[CONF_HOST])
+        session = await client.connect(device)
+    except UltraError as err:
+        raise ConfigEntryNotReady(f"Could not connect to Ultra2: {err}") from err
+    coordinator = UltraDataUpdateCoordinator(hass, client, device, session)
+    await coordinator.async_config_entry_first_refresh()
+    await coordinator.async_start_position()
     entry.runtime_data = coordinator
     dr.async_get(hass).async_get_or_create(
         config_entry_id=entry.entry_id,
