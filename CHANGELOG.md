@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add legacy eMotion Ultra (`PID 0000000000000000000000009cac0000`, DNA type
+  `0x9CAC`) detection and gateway-state environment entities. Legacy Ultra
+  entries use a separate capability path and do not expose Ultra2-only
+  ESPHome/radar/position controls; pre-paired 16-byte session keys are accepted
+  when the device refuses a new local pairing.
 - Add eMotion Ultra2 auto-detection to the Home Assistant config flow while
   preserving existing iBG entries and their local-key handling.
 - Add Ultra2 temperature, humidity, illuminance, Wi-Fi signal, occupancy,

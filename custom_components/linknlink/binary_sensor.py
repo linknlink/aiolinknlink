@@ -18,6 +18,7 @@ from aiolinknlink import (
     PID_ESENSOR_2000_GEN2,
     PID_MODBUS_ELECTRICITY_METER,
     PID_SR3_SENSOR,
+    TYPE_ULTRA,
 )
 
 from . import LinknLinkConfigEntry
@@ -101,10 +102,10 @@ async def async_setup_entry(
     del hass
     coordinator = entry.runtime_data
     if isinstance(coordinator, UltraDataUpdateCoordinator):
-        async_add_entities([
-            *(UltraBinarySensor(coordinator, description) for description in ULTRA_BINARY_SENSORS),
-            UltraPositionSubscriptionBinarySensor(coordinator),
-        ])
+        entities = [UltraBinarySensor(coordinator, description) for description in ULTRA_BINARY_SENSORS]
+        if coordinator.device.type_id != TYPE_ULTRA:
+            entities.append(UltraPositionSubscriptionBinarySensor(coordinator))
+        async_add_entities(entities)
         return
     async_add_entities(
         IbgBinarySensor(coordinator, device.did, description)

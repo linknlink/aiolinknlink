@@ -1,8 +1,11 @@
 """Asynchronous local clients for LinknLink devices."""
 
 from .client import (
+    DISPLAY_MODEL_ULTRA,
     DISPLAY_MODEL_ULTRA2,
+    PID_ULTRA,
     PID_ULTRA2,
+    TYPE_ULTRA,
     TYPE_ULTRA2,
     TYPE_ULTRA2_LAN,
     UltraAuthError,
@@ -99,6 +102,7 @@ __all__ = [
     "BOX7_POWER_FIELDS",
     "DISPLAY_MODEL_IBG2_SE",
     "DISPLAY_MODEL_ULTRA2",
+    "DISPLAY_MODEL_ULTRA",
     "IbgClient",
     "IbgConnectionError",
     "IbgDevice",
@@ -159,6 +163,8 @@ __all__ = [
     "PID_SR3_SENSOR",
     "PID_WATER_AC_PANEL",
     "PID_ULTRA2",
+    "PID_ULTRA",
+    "TYPE_ULTRA",
     "TYPE_ULTRA2",
     "TYPE_ULTRA2_LAN",
     "UltraAuthError",

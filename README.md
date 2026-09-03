@@ -30,7 +30,7 @@ credentials are never included in public state.
 ## Requirements
 
 - Python 3.11 or newer
-- A supported eMotion Ultra2 or iBG2 SE connected to the local network
+- A supported eMotion Ultra, eMotion Ultra2, or iBG2 SE connected to the local network
 - The client and device on the same local network
 
 ## Example
