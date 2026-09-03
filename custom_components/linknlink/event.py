@@ -16,6 +16,7 @@ from aiolinknlink import (
 )
 
 from . import LinknLinkConfigEntry
+from .coordinator import UltraDataUpdateCoordinator
 from .entity import IbgCoordinatorEntity
 
 EVENT_TYPE_PRESSED = "pressed"
@@ -31,6 +32,8 @@ async def async_setup_entry(
     """Create a physical key event entity for each supported iBG sensor."""
     del hass
     coordinator = entry.runtime_data
+    if isinstance(coordinator, UltraDataUpdateCoordinator):
+        return
     async_add_entities(
         IbgKeyEvent(coordinator, device.did) for device in coordinator.data.subdevices if device.pid == PID_SR3_SENSOR
     )
