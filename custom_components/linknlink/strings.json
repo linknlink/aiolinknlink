@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Connect to a LinknLink device",
-        "description": "Enter the local IP address of a supported iBG gateway or eMotion Ultra2.",
+        "description": "Enter the local IP address of a supported iBG gateway or eMotion Ultra device.",
         "data": {"host": "Host", "local_key": "Local key (optional)"}
       }
     },
@@ -85,6 +85,8 @@
       "position_targets": {"name": "Position targets"},
       "nearest_horizontal_distance": {"name": "Nearest horizontal distance"},
       "nearest_distance": {"name": "Nearest 3D distance"},
+      "distance": {"name": "Distance"},
+      "target_distance": {"name": "Target distance"},
       "ac_panel_device_type": {
         "name": "Device type",
         "state": {"water_cooled": "Water-cooled", "vrv": "VRV"}
