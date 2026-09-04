@@ -1,10 +1,14 @@
 """Asynchronous local clients for LinknLink devices."""
 
 from .client import (
+    DISPLAY_MODEL_EMOTION,
     DISPLAY_MODEL_ULTRA,
     DISPLAY_MODEL_ULTRA2,
+    PID_EMOTION,
     PID_ULTRA,
     PID_ULTRA2,
+    TYPE_EMOTION,
+    TYPE_EMOTION_WIRE,
     TYPE_ULTRA,
     TYPE_ULTRA2,
     TYPE_ULTRA2_LAN,
@@ -83,6 +87,7 @@ from .ibg import (
 from .ibg_push import IbgPushSubscription
 from .local_udp import UltraPositionSubscription
 from .models import (
+    EmotionPresenceState,
     IbgDevice,
     IbgSession,
     IbgSubDevice,
@@ -99,6 +104,7 @@ from .models import (
 )
 
 __all__ = [
+    "DISPLAY_MODEL_EMOTION",
     "BOX7_POWER_FIELDS",
     "DISPLAY_MODEL_IBG2_SE",
     "DISPLAY_MODEL_ULTRA2",
@@ -163,6 +169,9 @@ __all__ = [
     "PID_SR3_SENSOR",
     "PID_WATER_AC_PANEL",
     "PID_ULTRA2",
+    "PID_EMOTION",
+    "TYPE_EMOTION",
+    "TYPE_EMOTION_WIRE",
     "PID_ULTRA",
     "TYPE_ULTRA",
     "TYPE_ULTRA2",
@@ -172,6 +181,7 @@ __all__ = [
     "UltraConnectionError",
     "UltraDevice",
     "UltraEnvironmentState",
+    "EmotionPresenceState",
     "UltraError",
     "UltraLocalUDPConfig",
     "UltraPositionSubscription",

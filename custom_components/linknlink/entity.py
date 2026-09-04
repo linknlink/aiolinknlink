@@ -86,6 +86,8 @@ class UltraCoordinatorEntity(CoordinatorEntity[UltraDataUpdateCoordinator]):
             return False
         if self.key in self.coordinator.data.environment.available_fields:
             return self.key in self.coordinator.data.environment.values
+        if self.coordinator.data.emotion is not None and self._emotion_value() is not None:
+            return True
         return self._radar_value() is not None
 
     @property
@@ -100,6 +102,18 @@ class UltraCoordinatorEntity(CoordinatorEntity[UltraDataUpdateCoordinator]):
 
     def _environment_value(self) -> int | float | bool | None:
         return self.coordinator.data.environment.values.get(self.key)
+
+    def _emotion_value(self) -> int | None:
+        state = self.coordinator.data.emotion
+        if state is None:
+            return None
+        if self.key == "absence_delay":
+            return state.absence_delay
+        if self.key == "sensitivity":
+            return state.sensitivity
+        if self.key == "firmware_version":
+            return state.firmware_version
+        return None
 
     def _radar_value(self) -> int | float | None:
         radar = self.coordinator.data.radar

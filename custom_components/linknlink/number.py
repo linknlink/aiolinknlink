@@ -10,7 +10,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from aiolinknlink import DTU_VOLTAGE_OUTPUT_FIELD, PID_DTU, TYPE_ULTRA
+from aiolinknlink import (
+    DTU_VOLTAGE_OUTPUT_FIELD,
+    PID_DTU,
+    PID_EMOTION,
+    TYPE_EMOTION,
+    TYPE_EMOTION_WIRE,
+    TYPE_ULTRA,
+)
 
 from . import LinknLinkConfigEntry
 from .coordinator import UltraDataUpdateCoordinator
@@ -141,6 +148,33 @@ ULTRA_RADAR_NUMBERS = (
     ),
 )
 
+EMOTION_NUMBERS = (
+    UltraRadarNumberEntityDescription(
+        key="absence_delay",
+        name="Absence delay",
+        translation_key="emotion_absence_delay",
+        native_min_value=1,
+        native_max_value=65535,
+        native_step=1,
+        integer=True,
+        mode=NumberMode.BOX,
+        entity_category=EntityCategory.CONFIG,
+        icon="mdi:timer-outline",
+    ),
+    UltraRadarNumberEntityDescription(
+        key="sensitivity",
+        name="Sensitivity level",
+        translation_key="emotion_sensitivity",
+        native_min_value=0,
+        native_max_value=2,
+        native_step=1,
+        integer=True,
+        mode=NumberMode.BOX,
+        entity_category=EntityCategory.CONFIG,
+        icon="mdi:radar",
+    ),
+)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -151,10 +185,15 @@ async def async_setup_entry(
     del hass
     coordinator = entry.runtime_data
     if isinstance(coordinator, UltraDataUpdateCoordinator):
+        is_emotion = coordinator.device.pid.lower() == PID_EMOTION or coordinator.device.type_id in {
+            TYPE_EMOTION,
+            TYPE_EMOTION_WIRE,
+        }
+        if is_emotion:
+            async_add_entities(UltraRadarNumber(coordinator, description) for description in EMOTION_NUMBERS)
+            return
         if coordinator.device.type_id != TYPE_ULTRA:
-            async_add_entities(
-                UltraRadarNumber(coordinator, description) for description in ULTRA_RADAR_NUMBERS
-            )
+            async_add_entities(UltraRadarNumber(coordinator, description) for description in ULTRA_RADAR_NUMBERS)
         return
     async_add_entities(
         IbgDtuVoltageOutput(coordinator, device.did) for device in coordinator.data.subdevices if device.pid == PID_DTU
@@ -201,7 +240,7 @@ class UltraRadarNumber(UltraCoordinatorEntity, NumberEntity):
     @property
     def native_value(self) -> float | None:
         """Return the device-read radar configuration value."""
-        value = self._radar_value()
+        value = self._emotion_value() if self.coordinator._is_emotion else self._radar_value()
         return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
 
     async def async_set_native_value(self, value: float) -> None:
@@ -210,6 +249,12 @@ class UltraRadarNumber(UltraCoordinatorEntity, NumberEntity):
             if not float(value).is_integer():
                 raise ValueError(f"{self.key} requires a whole number")
             integer = int(value)
+            if self.key == "absence_delay":
+                await self.coordinator.async_set_emotion_absence_delay(integer)
+                return
+            if self.key == "sensitivity" and self.coordinator._is_emotion:
+                await self.coordinator.async_set_emotion_sensitivity(integer)
+                return
             if self.key == "sensitivity":
                 await self.coordinator.async_set_radar_sensitivity(integer)
             elif self.key == "trigger_speed":

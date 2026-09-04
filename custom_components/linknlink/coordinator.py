@@ -11,6 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from aiolinknlink import (
+    PID_EMOTION,
     PID_ESENSOR_2000_GEN1,
     PID_ESENSOR_2000_GEN2,
     PID_SINGLE_CHANNEL_LIGHT_SWITCH,
@@ -20,6 +21,10 @@ from aiolinknlink import (
     SINGLE_CHANNEL_LIGHT_SCENE_FIELDS,
     THREE_CHANNEL_LIGHT_SCENE_FIELDS,
     TWO_CHANNEL_LIGHT_SCENE_FIELDS,
+    TYPE_EMOTION,
+    TYPE_EMOTION_WIRE,
+    TYPE_ULTRA,
+    EmotionPresenceState,
     IbgClient,
     IbgConnectionError,
     IbgDevice,
@@ -39,7 +44,6 @@ from aiolinknlink import (
     UltraProtocolError,
     UltraRadarStatus,
     UltraSession,
-    TYPE_ULTRA,
 )
 
 from .const import DOMAIN, UPDATE_INTERVAL_SECONDS
@@ -245,6 +249,7 @@ class UltraCoordinatorData:
     environment: UltraEnvironmentState
     radar: UltraRadarStatus | None
     position: UltraPositionSubscriptionState | None = None
+    emotion: EmotionPresenceState | None = None
 
 
 class UltraDataUpdateCoordinator(DataUpdateCoordinator[UltraCoordinatorData]):
@@ -286,6 +291,25 @@ class UltraDataUpdateCoordinator(DataUpdateCoordinator[UltraCoordinatorData]):
                 raise UpdateFailed(f"Could not update Ultra2 {self.device.ip}: {err}") from err
 
     async def _read_data(self) -> UltraCoordinatorData:
+        if self._is_emotion:
+            emotion = await self.client.get_emotion_state(self.session)
+            environment = UltraEnvironmentState(
+                device_id=emotion.device_id,
+                values={
+                    "occupancy": emotion.occupied,
+                    "absence_delay": emotion.absence_delay,
+                    "sensitivity": emotion.sensitivity,
+                    "firmware_version": emotion.firmware_version,
+                },
+                available_fields=frozenset({"occupancy", "absence_delay", "sensitivity", "firmware_version"}),
+                received_at=emotion.received_at,
+            )
+            return UltraCoordinatorData(
+                environment=environment,
+                radar=None,
+                position=None,
+                emotion=emotion,
+            )
         environment = await self.client.get_environment_state(self.session)
         if self.device.type_id == TYPE_ULTRA or self.device.pid.lower() == PID_ULTRA:
             return UltraCoordinatorData(environment=environment, radar=None, position=None)
@@ -296,6 +320,45 @@ class UltraDataUpdateCoordinator(DataUpdateCoordinator[UltraCoordinatorData]):
             radar = await self.position_subscription.get_radar_status()
             position = self.position_subscription.state
         return UltraCoordinatorData(environment=environment, radar=radar, position=position)
+
+    @property
+    def _is_emotion(self) -> bool:
+        return self.device.type_id in {TYPE_EMOTION, TYPE_EMOTION_WIRE} or self.device.pid.lower() == PID_EMOTION
+
+    async def async_set_emotion_absence_delay(self, value: int) -> None:
+        """Set eMotion absence delay and publish the confirmed state."""
+        await self._async_emotion_operation(self.client.set_emotion_absence_delay, value)
+
+    async def async_set_emotion_sensitivity(self, value: int) -> None:
+        """Set eMotion sensitivity and publish the confirmed state."""
+        await self._async_emotion_operation(self.client.set_emotion_sensitivity, value)
+
+    async def _async_emotion_operation(
+        self,
+        operation: Callable[..., Awaitable[EmotionPresenceState]],
+        value: int,
+    ) -> None:
+        try:
+            state = await operation(self.session, value)
+        except UltraProtocolError:
+            raise
+        except (UltraConnectionError, UltraError):
+            self.session = await self.client.connect(self.device, session_key=self.local_key)
+            state = await operation(self.session, value)
+        environment = UltraEnvironmentState(
+            device_id=state.device_id,
+            values={
+                "occupancy": state.occupied,
+                "absence_delay": state.absence_delay,
+                "sensitivity": state.sensitivity,
+                "firmware_version": state.firmware_version,
+            },
+            available_fields=frozenset({"occupancy", "absence_delay", "sensitivity", "firmware_version"}),
+            received_at=state.received_at,
+        )
+        self.async_set_updated_data(
+            UltraCoordinatorData(environment=environment, radar=None, position=None, emotion=state)
+        )
 
     async def async_start_position(self) -> None:
         """Start local multi-target position updates after entry setup."""
@@ -322,8 +385,7 @@ class UltraDataUpdateCoordinator(DataUpdateCoordinator[UltraCoordinatorData]):
             environment = replace(
                 environment,
                 values=values,
-                available_fields=environment.available_fields
-                | frozenset({"occupancy", "target_count"}),
+                available_fields=environment.available_fields | frozenset({"occupancy", "target_count"}),
                 received_at=update.received_at,
             )
             self.async_set_updated_data(

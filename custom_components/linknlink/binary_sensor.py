@@ -14,10 +14,13 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from aiolinknlink import (
     PID_DLT645_ELECTRICITY_METER,
     PID_DTU,
+    PID_EMOTION,
     PID_ESENSOR_2000_GEN1,
     PID_ESENSOR_2000_GEN2,
     PID_MODBUS_ELECTRICITY_METER,
     PID_SR3_SENSOR,
+    TYPE_EMOTION,
+    TYPE_EMOTION_WIRE,
     TYPE_ULTRA,
 )
 
@@ -102,8 +105,13 @@ async def async_setup_entry(
     del hass
     coordinator = entry.runtime_data
     if isinstance(coordinator, UltraDataUpdateCoordinator):
-        entities = [UltraBinarySensor(coordinator, description) for description in ULTRA_BINARY_SENSORS]
-        if coordinator.device.type_id != TYPE_ULTRA:
+        is_emotion = coordinator.device.pid.lower() == PID_EMOTION or coordinator.device.type_id in {
+            TYPE_EMOTION,
+            TYPE_EMOTION_WIRE,
+        }
+        descriptions = ULTRA_BINARY_SENSORS[:1] if is_emotion else ULTRA_BINARY_SENSORS
+        entities = [UltraBinarySensor(coordinator, description) for description in descriptions]
+        if coordinator.device.type_id != TYPE_ULTRA and not is_emotion:
             entities.append(UltraPositionSubscriptionBinarySensor(coordinator))
         async_add_entities(entities)
         return

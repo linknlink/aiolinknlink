@@ -31,6 +31,7 @@ from aiolinknlink import (
     PID_DLT645_ELECTRICITY_METER,
     PID_DTU,
     PID_EAC1_PANEL,
+    PID_EMOTION,
     PID_ESENSOR_2000_GEN1,
     PID_ESENSOR_2000_GEN2,
     PID_MODBUS_AC,
@@ -38,6 +39,8 @@ from aiolinknlink import (
     PID_MODBUS_MULTI_SENSOR,
     PID_MODBUS_WATER_METER,
     PID_SR3_SENSOR,
+    TYPE_EMOTION,
+    TYPE_EMOTION_WIRE,
     TYPE_ULTRA,
 )
 
@@ -160,6 +163,15 @@ ULTRA_POSITION_SENSORS = (
         native_unit_of_measurement=UnitOfLength.METERS,
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:axis-arrow",
+    ),
+)
+EMOTION_SENSORS = (
+    SensorEntityDescription(
+        key="firmware_version",
+        name="Firmware version",
+        translation_key="firmware_version",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        icon="mdi:chip",
     ),
 )
 ESENSOR_2000_GEN1_SENSORS = (SR3_SENSORS[0], SR3_SENSORS[1], SR3_SENSORS[3])
@@ -543,6 +555,12 @@ async def async_setup_entry(
     del hass
     coordinator = entry.runtime_data
     if isinstance(coordinator, UltraDataUpdateCoordinator):
+        if coordinator.device.pid.lower() == PID_EMOTION or coordinator.device.type_id in {
+            TYPE_EMOTION,
+            TYPE_EMOTION_WIRE,
+        }:
+            async_add_entities(UltraSensor(coordinator, description) for description in EMOTION_SENSORS)
+            return
         async_add_entities(
             [
                 *(UltraSensor(coordinator, description) for description in ULTRA_SENSORS),
