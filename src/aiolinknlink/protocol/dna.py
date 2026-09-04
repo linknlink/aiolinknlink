@@ -17,8 +17,10 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 DISCOVERY_PACKET_SIZE = 0x38
 HEADER_SIZE = 0x38
 BLC_NETWORK_HEADER_SIZE = 0x30
+LEGACY_NETWORK_HEADER_SIZE = 0x30
 SHORT_DISCOVERY_SIZE = 0x30
 AES_HEADER_SIZE = 8
+UART_HEADER_SIZE = 12
 CHECKSUM_INIT = 0xBEAF
 DEFAULT_PORT = 80
 
@@ -26,6 +28,13 @@ MESSAGE_TYPE_DISCOVERY_REQUEST = 0x06
 MESSAGE_TYPE_DISCOVERY_RESPONSE = 0x07
 MESSAGE_TYPE_AUTH = 0x65
 MESSAGE_TYPE_COMMAND = 0x6A
+MESSAGE_TYPE_TERMINAL_ADD = 101
+MESSAGE_TYPE_TERMINAL_ADD_RES = 1001
+
+UART_MAGIC = 0x5A5AA5A5
+UART_GET_STATUS = 0x0B01
+UART_SET_STATUS = 0x0B02
+UART_STATUS_RESPONSE = 0x0B03
 
 AUTH_PAIR_INFO_SIZE = 0x64
 TERMINAL_TYPE_IOT = 2
@@ -90,6 +99,25 @@ class NetworkHeader:
         struct.pack_into("<H", buf, 0x34, self.payload_checksum & 0xFFFF)
         return bytes(buf)
 
+    def marshal_legacy(self) -> bytes:
+        """Serialize the 48-byte Broadlink BL2 network header.
+
+        Older Broadlink terminal firmware (including radar_env) does not
+        include the newer device-id/payload-checksum tail present in the
+        0x38-byte DNA header.
+        """
+        buf = bytearray(LEGACY_NETWORK_HEADER_SIZE)
+        buf[0:8] = MAGIC
+        buf[0x08:0x10] = _fixed_bytes(self.other, 8)
+        buf[0x18:0x20] = _fixed_bytes(self.serv, 8)
+        struct.pack_into("<H", buf, 0x20, self.checksum & 0xFFFF)
+        struct.pack_into("<H", buf, 0x22, self.status & 0xFFFF)
+        struct.pack_into("<H", buf, 0x24, self.device_type & 0xFFFF)
+        struct.pack_into("<H", buf, 0x26, self.message_type & 0xFFFF)
+        struct.pack_into("<H", buf, 0x28, self.sequence & 0xFFFF)
+        buf[0x2A:0x30] = _fixed_bytes(self.mac, 6)
+        return bytes(buf)
+
 
 @dataclass(slots=True)
 class AESHeader:
@@ -112,6 +140,15 @@ class DiscoveredDevice:
     message_type: int = 0
     name: str = ""
     raw: bytes = b""
+
+
+@dataclass(slots=True)
+class UARTFrame:
+    """Broadlink inner device-control frame."""
+
+    command: int
+    version: int
+    payload: bytes
 
 
 def checksum(data: bytes | bytearray, checksum_offset: int = -1) -> int:
@@ -142,6 +179,41 @@ def verify_checksum_le(data: bytes | bytearray, checksum_offset: int) -> bool:
 def payload_checksum(payload: bytes) -> int:
     """Checksum used by AES payload header."""
     return checksum(payload, -1)
+
+
+def build_uart_frame(command: int, payload: bytes = b"", version: int = 0) -> bytes:
+    """Build the inner ``dna_uart_head_t`` frame used by legacy devices."""
+    frame = bytearray(UART_HEADER_SIZE + len(payload))
+    struct.pack_into("<I", frame, 0, UART_MAGIC)
+    struct.pack_into("<H", frame, 6, command & 0xFFFF)
+    struct.pack_into("<H", frame, 8, len(payload))
+    struct.pack_into("<H", frame, 10, version & 0xFFFF)
+    frame[UART_HEADER_SIZE:] = payload
+    write_checksum_le(frame, 4)
+    return bytes(frame)
+
+
+def parse_uart_frame(data: bytes, expected_command: int | None = None) -> UARTFrame:
+    """Parse and validate an inner Broadlink device-control frame."""
+    if len(data) < UART_HEADER_SIZE:
+        raise DNAError(f"UART frame too short: {len(data)}")
+    if struct.unpack_from("<I", data, 0)[0] != UART_MAGIC:
+        raise DNAError("invalid UART frame magic")
+    payload_len = struct.unpack_from("<H", data, 8)[0]
+    frame_len = UART_HEADER_SIZE + payload_len
+    if frame_len > len(data):
+        raise DNAError("UART payload exceeds frame length")
+    frame = data[:frame_len]
+    if not verify_checksum_le(frame, 4):
+        raise DNAError("invalid UART frame checksum")
+    command = struct.unpack_from("<H", frame, 6)[0]
+    if expected_command is not None and command != expected_command:
+        raise DNAError(f"unexpected UART response command: 0x{command:04x}")
+    return UARTFrame(
+        command=command,
+        version=struct.unpack_from("<H", frame, 10)[0],
+        payload=bytes(frame[UART_HEADER_SIZE:]),
+    )
 
 
 def build_discovery_packet(local_ip: str, local_port: int, now: datetime | None = None) -> bytes:
@@ -189,7 +261,7 @@ def parse_network_header(data: bytes) -> NetworkHeader:
         raise DNAError("invalid packet magic")
     return NetworkHeader(
         other=bytes(data[0x08:0x10]),
-        serv=bytes(data[0x10:0x18]),
+        serv=bytes(data[0x18:0x20]),
         checksum=struct.unpack_from("<H", data, 0x20)[0],
         status=struct.unpack_from("<H", data, 0x22)[0],
         device_type=struct.unpack_from("<H", data, 0x24)[0],
@@ -206,6 +278,34 @@ def build_packet(header: NetworkHeader, encrypted_payload: bytes) -> bytes:
     packet = bytearray(header.marshal() + encrypted_payload)
     write_checksum_le(packet, PACKET_CHECKSUM_OFFSET)
     return bytes(packet)
+
+
+def build_legacy_packet(header: NetworkHeader, encrypted_payload: bytes) -> bytes:
+    """Build a legacy 48-byte-header DNA packet."""
+    packet = bytearray(header.marshal_legacy() + encrypted_payload)
+    write_checksum_le(packet, PACKET_CHECKSUM_OFFSET)
+    return bytes(packet)
+
+
+def parse_legacy_packet(data: bytes) -> tuple[NetworkHeader, bytes]:
+    """Parse a legacy 48-byte-header DNA packet."""
+    if len(data) < LEGACY_NETWORK_HEADER_SIZE:
+        raise DNAError(f"legacy packet too short for header: {len(data)}")
+    if data[0:8] != MAGIC:
+        raise DNAError("invalid packet magic")
+    if not verify_checksum_le(data, PACKET_CHECKSUM_OFFSET):
+        raise DNAError("invalid packet checksum")
+    header = NetworkHeader(
+        other=bytes(data[0x08:0x10]),
+        serv=bytes(data[0x10:0x18]),
+        checksum=struct.unpack_from("<H", data, 0x20)[0],
+        status=struct.unpack_from("<H", data, 0x22)[0],
+        device_type=struct.unpack_from("<H", data, 0x24)[0],
+        message_type=struct.unpack_from("<H", data, 0x26)[0],
+        sequence=struct.unpack_from("<H", data, 0x28)[0],
+        mac=bytes(data[0x2A:0x30]),
+    )
+    return header, bytes(data[LEGACY_NETWORK_HEADER_SIZE:])
 
 
 def parse_packet(data: bytes) -> tuple[NetworkHeader, bytes]:
@@ -274,6 +374,82 @@ def build_blc_encrypted_payload(payload: bytes, key: bytes) -> bytes:
     """Build encrypted BLC payload."""
     encrypted = encrypt_aes_cbc_zero_padding(payload, key, INITIAL_IV)
     return struct.pack("<IHH", 1, payload_checksum(payload), 0) + encrypted
+
+
+def build_legacy_terminal_add_payload(
+    mac: bytes,
+    *,
+    terminal_name: str = "linknlink-ha",
+) -> bytes:
+    """Build the legacy BL2 terminal-info payload used by radar_env.
+
+    The old Broadlink stack expects a packed ``bl2_terminal_info_t`` (72
+    bytes) rounded up to an 80-byte AES block.  Unlike the newer DNA pairing
+    command, there is no version/auth-code trailer when device security is
+    disabled.
+    """
+    if len(mac) != 6:
+        raise DNAError(f"invalid mac length: {len(mac)}")
+    payload = bytearray(80)
+    struct.pack_into("<I", payload, 0, 0)  # terminal id allocated by device
+    payload[4:10] = mac
+    struct.pack_into("<H", payload, 28, TERMINAL_TYPE_IOT)
+    struct.pack_into("<h", payload, 30, 0)  # push_msg
+    payload[32:48] = b"1" * 16
+    payload[48:72] = terminal_name.encode()[:24].ljust(24, b"\x00")
+    return bytes(payload)
+
+
+def build_legacy_terminal_add_packet(
+    header: NetworkHeader,
+    mac: bytes,
+    *,
+    terminal_name: str = "linknlink-ha",
+    key: bytes = INITIAL_KEY,
+) -> bytes:
+    """Build a legacy BL2_TERMINAL_ADD packet."""
+    plain = build_legacy_terminal_add_payload(mac, terminal_name=terminal_name)
+    aes_header = struct.pack("<IHH", 0, payload_checksum(plain), 0)
+    encrypted = encrypt_aes_cbc_zero_padding(plain, key, INITIAL_IV)
+    return build_legacy_packet(header, aes_header + encrypted)
+
+
+def parse_legacy_terminal_add_response(data: bytes, key: bytes = INITIAL_KEY) -> tuple[int, bytes]:
+    """Decode a legacy terminal-add response and return ``(id, key)``."""
+    header, body = parse_legacy_packet(data)
+    if header.status != 0:
+        raise ShortResponseError(header.status, header.device_type, header.message_type)
+    if len(body) < AES_HEADER_SIZE or len(body[AES_HEADER_SIZE:]) % 16:
+        raise DNAError("legacy terminal-add response has invalid AES body")
+    terminal_id, checksum_value, _reserved = struct.unpack_from("<IHH", body, 0)
+    plain = decrypt_aes_cbc_no_padding(body[AES_HEADER_SIZE:], key, INITIAL_IV)
+    if checksum_value != payload_checksum(plain):
+        raise DNAError("invalid legacy terminal-add checksum")
+    if len(plain) < 20:
+        raise DNAError("legacy terminal-add response is too short")
+    return terminal_id or struct.unpack_from("<I", plain, 0)[0], bytes(plain[4:20])
+
+
+async def send_legacy_terminal_add(
+    target_ip: str,
+    target_port: int,
+    header: NetworkHeader,
+    mac: bytes,
+    *,
+    terminal_name: str = "linknlink-ha",
+    key: bytes = INITIAL_KEY,
+    timeout: float = 5,
+    exchange: PacketExchange | None = None,
+) -> tuple[int, bytes]:
+    """Pair with old Broadlink BL2 terminal firmware."""
+    packet = build_legacy_terminal_add_packet(
+        header,
+        mac,
+        terminal_name=terminal_name,
+        key=key,
+    )
+    response = await _send_packet(target_ip, target_port, packet, timeout, None, exchange)
+    return parse_legacy_terminal_add_response(response, key)
 
 
 def parse_blc_encrypted_payload(data: bytes, key: bytes) -> tuple[AESHeader, bytes]:

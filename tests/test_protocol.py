@@ -154,6 +154,26 @@ def test_blc_encrypted_payload_round_trip() -> None:
     assert payload == b"ping"
 
 
+def test_legacy_terminal_add_round_trip() -> None:
+    """Legacy radar_env terminal pairing uses BL2 terminal-add framing."""
+    mac = bytes.fromhex("e04b41006515")
+    header = dna.NetworkHeader(
+        device_type=0x7BAC,
+        message_type=dna.MESSAGE_TYPE_TERMINAL_ADD,
+        sequence=9,
+        mac=mac,
+    )
+    packet = dna.build_legacy_terminal_add_packet(header, mac)
+    parsed_header, body = dna.parse_legacy_packet(packet)
+    assert len(packet) == dna.LEGACY_NETWORK_HEADER_SIZE + dna.AES_HEADER_SIZE + 80
+    assert parsed_header.message_type == dna.MESSAGE_TYPE_TERMINAL_ADD
+    aes_header, encrypted = dna.parse_legacy_packet(packet)[0], body
+    del aes_header
+    plain = dna.decrypt_aes_cbc_no_padding(encrypted[8:], dna.INITIAL_KEY, dna.INITIAL_IV)
+    assert plain[4:10] == mac
+    assert struct.unpack_from("<H", plain, 28)[0] == dna.TERMINAL_TYPE_IOT
+
+
 def test_parse_gateway_json_state() -> None:
     payload = b'\x26\x00\x00\x00{"URL":"192.168.1.8","rssi":-42,"lb_online1":1}\x00'
     response = emotion.parse_gateway_state_response(payload)

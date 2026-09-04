@@ -153,7 +153,9 @@ async def test_emotion_state_and_setters() -> None:
         b'{"pir_detected":0,"delaytime1":30,"fwVer":217,"level_of_sensitivity":2}',
         b'{"pir_detected":0,"delaytime1":30,"fwVer":217,"level_of_sensitivity":1}',
     ]
-    client.send_command = AsyncMock(side_effect=responses)
+    client.send_command = AsyncMock(
+        side_effect=[dna.build_uart_frame(dna.UART_STATUS_RESPONSE, response) for response in responses]
+    )
 
     state = await client.get_emotion_state(session)
     assert state.occupied is True
@@ -164,6 +166,21 @@ async def test_emotion_state_and_setters() -> None:
     assert (await client.set_emotion_absence_delay(session, 30)).absence_delay == 30
     assert (await client.set_emotion_sensitivity(session, 1)).sensitivity == 1
     assert client.send_command.await_count == 5
+
+
+async def test_connect_emotion_uses_legacy_terminal_add(monkeypatch: pytest.MonkeyPatch) -> None:
+    """radar_env devices pair through the old BL2 terminal-add command."""
+    session_key = b"0123456789abcdef"
+    send = AsyncMock(return_value=(1, session_key))
+    monkeypatch.setattr(dna, "send_legacy_terminal_add", send)
+
+    session = await UltraClient(auth_timeout=0.2).connect(EMOTION_DEVICE)
+
+    assert session.session_key == session_key
+    assert session.auth_device_type == TYPE_EMOTION
+    assert send.await_count == 1
+    assert send.call_args.args[2].message_type == dna.MESSAGE_TYPE_TERMINAL_ADD
+    assert send.call_args.kwargs["timeout"] == 0.2
 
 
 async def test_connect_preserves_caller_display_model(
