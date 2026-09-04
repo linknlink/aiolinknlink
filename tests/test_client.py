@@ -12,6 +12,8 @@ import pytest
 
 from aiolinknlink import (
     DISPLAY_MODEL_ULTRA2,
+    PID_EMOTION,
+    TYPE_EMOTION,
     TYPE_ULTRA2,
     TYPE_ULTRA2_LAN,
     UltraAuthError,
@@ -39,6 +41,15 @@ DEVICE = UltraDevice(
     port=80,
     mac="e0:4b:41:01:67:bb",
     type_id=TYPE_ULTRA2,
+)
+
+EMOTION_DEVICE = UltraDevice(
+    id="e04b410167bb",
+    ip="192.168.3.31",
+    port=80,
+    mac="e0:4b:41:01:67:bb",
+    pid=PID_EMOTION,
+    type_id=TYPE_EMOTION,
 )
 
 RADAR_STATUS = UltraRadarStatus(
@@ -130,6 +141,29 @@ async def test_connect(monkeypatch: pytest.MonkeyPatch) -> None:
     assert session.device.name == DISPLAY_MODEL_ULTRA2
     assert send.await_count == 1
     assert send.call_args.kwargs["timeout"] == 0.2
+
+
+async def test_emotion_state_and_setters() -> None:
+    client = UltraClient()
+    session = UltraSession(device=EMOTION_DEVICE, session_key=b"0123456789abcdef")
+    responses = [
+        b'{"pir_detected":1,"delaytime1":60,"fwVer":217,"level_of_sensitivity":2}',
+        b'{"pir_detected":0,"delaytime1":60,"fwVer":217,"level_of_sensitivity":2}',
+        b'{"pir_detected":0,"delaytime1":30,"fwVer":217,"level_of_sensitivity":2}',
+        b'{"pir_detected":0,"delaytime1":30,"fwVer":217,"level_of_sensitivity":2}',
+        b'{"pir_detected":0,"delaytime1":30,"fwVer":217,"level_of_sensitivity":1}',
+    ]
+    client.send_command = AsyncMock(side_effect=responses)
+
+    state = await client.get_emotion_state(session)
+    assert state.occupied is True
+    assert state.absence_delay == 60
+    assert state.sensitivity == 2
+    assert state.firmware_version == 217
+
+    assert (await client.set_emotion_absence_delay(session, 30)).absence_delay == 30
+    assert (await client.set_emotion_sensitivity(session, 1)).sensitivity == 1
+    assert client.send_command.await_count == 5
 
 
 async def test_connect_preserves_caller_display_model(

@@ -59,6 +59,25 @@ def test_subdevice_frame_round_trip() -> None:
     assert payload["did"] == "did-1"
 
 
+def test_emotion_keyvalue_helpers() -> None:
+    assert emotion.build_keyvalue_request() == b""
+    assert emotion.build_keyvalue_request({"delaytime1": 30}) == b'{"delaytime1":30}'
+    assert emotion.parse_keyvalue_status(b'{"pir_detected":1,"delaytime1":60,"fwVer":217}\x00') == {
+        "pir_detected": 1,
+        "delaytime1": 60,
+        "fwVer": 217,
+    }
+
+
+def test_emotion_keyvalue_status_errors() -> None:
+    import pytest
+
+    with pytest.raises(emotion.EmotionError, match="empty"):
+        emotion.parse_keyvalue_status(b"")
+    with pytest.raises(emotion.EmotionError, match="parse"):
+        emotion.parse_keyvalue_status(b"not-json")
+
+
 def test_local_udp_position_payload_distance() -> None:
     """Local UDP position payload derives distances."""
     payload = emotion.parse_local_udp_position_payload(b'{"detect_position":"[{\\"x\\":0.3,\\"y\\":0.4,\\"z\\":1.2}]"}')

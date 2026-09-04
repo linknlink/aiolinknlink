@@ -1,8 +1,11 @@
-"""Asynchronous local client for LinknLink eMotion Ultra2 devices."""
+"""Asynchronous local client for LinknLink eMotion devices."""
 
 from .client import (
+    DISPLAY_MODEL_EMOTION,
     DISPLAY_MODEL_ULTRA2,
+    PID_EMOTION,
     PID_ULTRA2,
+    TYPE_EMOTION,
     TYPE_ULTRA2,
     TYPE_ULTRA2_LAN,
     UltraAuthError,
@@ -15,6 +18,7 @@ from .client import (
 )
 from .local_udp import UltraPositionSubscription
 from .models import (
+    EmotionPresenceState,
     UltraDevice,
     UltraEnvironmentState,
     UltraLocalUDPConfig,
@@ -27,8 +31,11 @@ from .models import (
 )
 
 __all__ = [
+    "DISPLAY_MODEL_EMOTION",
     "DISPLAY_MODEL_ULTRA2",
+    "PID_EMOTION",
     "PID_ULTRA2",
+    "TYPE_EMOTION",
     "TYPE_ULTRA2",
     "TYPE_ULTRA2_LAN",
     "UltraAuthError",
@@ -36,6 +43,7 @@ __all__ = [
     "UltraConnectionError",
     "UltraDevice",
     "UltraEnvironmentState",
+    "EmotionPresenceState",
     "UltraError",
     "UltraLocalUDPConfig",
     "UltraPositionSubscription",

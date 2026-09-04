@@ -1,4 +1,4 @@
-"""Data models for the eMotion Ultra2 integration."""
+"""Data models for LinknLink eMotion devices."""
 
 from __future__ import annotations
 
@@ -48,6 +48,18 @@ class UltraEnvironmentState:
     device_id: str
     values: dict[str, int | float | bool]
     available_fields: frozenset[str]
+    received_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class EmotionPresenceState:
+    """Locally reported eMotion presence-sensor state."""
+
+    device_id: str
+    occupied: bool
+    absence_delay: int
+    sensitivity: int
+    firmware_version: int
     received_at: datetime
 
 

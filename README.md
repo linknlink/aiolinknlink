@@ -1,8 +1,10 @@
 # aiolinknlink
 
-`aiolinknlink` is an asynchronous Python client for direct local communication with LinknLink eMotion Ultra2 devices.
+`aiolinknlink` is an asynchronous Python client for direct local communication with LinknLink eMotion devices.
 
-The library implements LinknLink DNA discovery, authentication, encrypted UDP transport, local multi-target radar position subscriptions, environmental and occupancy state reads, and device-verified radar configuration. It communicates directly with devices on the local network and does not require a cloud service or MQTT broker.
+The library implements LinknLink DNA discovery, authentication, encrypted UDP transport, eMotion presence-sensor state and configuration, Ultra2 local multi-target radar position subscriptions, environmental and occupancy state reads, and device-verified radar configuration. It communicates directly with devices on the local network and does not require a cloud service or MQTT broker.
+
+The radar_env eMotion variant is identified by PID `0000000000000000000000007bac0000`. It exposes only presence (`pir_detected`), absence delay (`delaytime1`), sensitivity (`level_of_sensitivity`), and firmware version (`fwVer`); Ultra2 environmental and zone-position entities are not created for this model.
 
 An Ultra2 stores one local UDP position destination. Running another position subscriber for the same device redirects updates away from the current subscriber.
 
@@ -45,6 +47,18 @@ async def main() -> None:
 
 
 asyncio.run(main())
+```
+
+For a radar_env eMotion, use the same discovery and authentication flow, then call
+`get_emotion_state()`. Configuration setters perform a separate read-back:
+
+```python
+device = await client.discover_host("192.168.3.31")
+session = await client.connect(device)
+state = await client.get_emotion_state(session)
+print(state.occupied, state.absence_delay, state.sensitivity)
+await client.set_emotion_absence_delay(session, 30)
+await client.set_emotion_sensitivity(session, 1)
 ```
 
 ## Development

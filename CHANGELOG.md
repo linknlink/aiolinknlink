@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add radar_env eMotion support (`0000000000000000000000007bac0000`) with presence state, absence-delay configuration, and sensitivity configuration over the DNA KeyValue channel.
+
 ## 0.3.2
 
 - Refresh ESPHome entity capabilities on every state read so optional
