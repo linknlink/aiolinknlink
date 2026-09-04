@@ -95,6 +95,18 @@ class UltraEnvironmentState:
 
 
 @dataclass(frozen=True, slots=True)
+class EmotionPresenceState:
+    """Locally reported eMotion presence-sensor state."""
+
+    device_id: str
+    occupied: bool
+    absence_delay: int
+    sensitivity: int
+    firmware_version: int
+    received_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
 class UltraTargetPosition:
     """One radar target position in meters."""
 

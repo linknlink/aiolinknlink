@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Connect to a LinknLink device",
-        "description": "Enter the local IP address of a supported iBG gateway or eMotion Ultra device.",
+        "description": "Enter the local IP address of a supported iBG gateway or eMotion device.",
         "data": {"host": "Host", "local_key": "Local key (optional)"}
       }
     },
@@ -90,7 +90,8 @@
       "ac_panel_device_type": {
         "name": "Device type",
         "state": {"water_cooled": "Water-cooled", "vrv": "VRV"}
-      }
+      },
+      "firmware_version": {"name": "Firmware version"}
     },
     "binary_sensor": {
       "occupancy": {"name": "Occupancy"},
@@ -162,6 +163,9 @@
       "radar_zone_2_absence_delay": {"name": "Zone 2 absence delay"},
       "radar_zone_3_absence_delay": {"name": "Zone 3 absence delay"},
       "radar_zone_4_absence_delay": {"name": "Zone 4 absence delay"}
+      ,
+      "emotion_absence_delay": {"name": "Absence delay"},
+      "emotion_sensitivity": {"name": "Sensitivity level"}
     },
     "climate": {
       "air_conditioner": {"name": "Air conditioner"},

@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "连接 LinknLink 设备",
-        "description": "请输入受支持的 iBG 网关或 eMotion Ultra 设备的局域网 IP 地址。",
+        "description": "请输入受支持的 iBG 网关或 eMotion 设备的局域网 IP 地址。",
         "data": {"host": "主机地址", "local_key": "本地密钥（可选）"}
       }
     },
@@ -90,7 +90,8 @@
       "ac_panel_device_type": {
         "name": "设备类型",
         "state": {"water_cooled": "水机", "vrv": "VRV"}
-      }
+      },
+      "firmware_version": {"name": "固件版本"}
     },
     "binary_sensor": {
       "occupancy": {"name": "人体感应"},
@@ -162,6 +163,9 @@
       "radar_zone_2_absence_delay": {"name": "区域2无人延迟"},
       "radar_zone_3_absence_delay": {"name": "区域3无人延迟"},
       "radar_zone_4_absence_delay": {"name": "区域4无人延迟"}
+      ,
+      "emotion_absence_delay": {"name": "无人延迟"},
+      "emotion_sensitivity": {"name": "灵敏度级别"}
     },
     "climate": {
       "air_conditioner": {"name": "空调"},

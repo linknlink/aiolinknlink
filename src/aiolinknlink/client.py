@@ -18,6 +18,7 @@ from aioesphomeapi.core import APIConnectionError
 from aioesphomeapi.model import EntityInfo, EntityState
 
 from .models import (
+    EmotionPresenceState,
     UltraDevice,
     UltraEnvironmentState,
     UltraLocalUDPConfig,
@@ -38,6 +39,10 @@ TYPE_ULTRA = 0x9CAC
 TYPE_ULTRA2 = 0xD7AC
 TYPE_ULTRA2_LAN = 0xE3AC
 TYPE_ULTRA2_RADAR = 0xACDB
+DISPLAY_MODEL_EMOTION = "eMotion"
+PID_EMOTION = "0000000000000000000000007bac0000"
+TYPE_EMOTION = 0xAC7B
+TYPE_EMOTION_WIRE = 0x7BAC
 DEFAULT_TIMEOUT = 5.0
 DEFAULT_AUTH_TIMEOUT = 15.0
 DEFAULT_PREFERRED_COMMAND_TIMEOUT = 15.0
@@ -144,7 +149,7 @@ class UltraClient:
         protocol_mac: str | None = None,
         exchange: dna.PacketExchange | None = None,
     ) -> UltraSession:
-        """Connect/authenticate to an eMotion Ultra device."""
+        """Connect/authenticate to an eMotion device."""
         auth_mac = protocol_mac or device.mac
         session = UltraSession(
             device=device,
@@ -152,45 +157,60 @@ class UltraClient:
             auth_status="discovered",
             last_seen=datetime.now(UTC),
         )
-        if session_key is not None:
-            if len(session_key) != 16:
-                raise UltraAuthError("session key must be exactly 16 bytes")
-            session.session_key = bytes(session_key)
-            session.auth_device_type = device.type_id
-            session.command_device_type = device.type_id
-            session.auth_status = "ok"
-            session.last_auth_at = datetime.now(UTC)
-            return session
         mac = dna.mac_bytes(auth_mac)
         if not mac:
             session.auth_status = "skipped"
             session.auth_error = "missing mac"
             raise UltraAuthError(session.auth_error)
+        if session_key is not None:
+            if len(session_key) != 16:
+                raise UltraAuthError("session key must contain exactly 16 bytes")
+            session.session_key = bytes(session_key)
+            session.auth_device_type = next(iter(_auth_device_type_candidates(device.type_id, device.pid)))
+            session.command_device_type = device.type_id
+            session.auth_status = "ok"
+            session.last_auth_at = datetime.now(UTC)
+            return session
         last_error: Exception | None = None
-        for auth_type in _auth_device_type_candidates(device.type_id):
+        for auth_type in _auth_device_type_candidates(device.type_id, device.pid):
             try:
-                payload = dna.build_auth_payload(mac, auth_type, host=device.ip)
-                response = await dna.send_encrypted(
-                    device.ip,
-                    device.port or self.default_port,
-                    dna.NetworkHeader(
-                        device_type=auth_type,
-                        message_type=dna.MESSAGE_TYPE_AUTH,
-                        mac=mac,
-                    ),
-                    payload,
-                    dna.INITIAL_KEY,
-                    timeout=self.auth_timeout,
-                    exchange=exchange,
-                )
-                session.session_key = dna.extract_session_key(response)
+                if _matches_emotion(device):
+                    _terminal_id, session.session_key = await dna.send_legacy_terminal_add(
+                        device.ip,
+                        device.port or self.default_port,
+                        dna.NetworkHeader(
+                            device_type=auth_type,
+                            message_type=dna.MESSAGE_TYPE_TERMINAL_ADD,
+                            mac=mac,
+                        ),
+                        mac,
+                        timeout=self.auth_timeout,
+                        exchange=exchange,
+                    )
+                else:
+                    payload = dna.build_auth_payload(mac, auth_type, host=device.ip)
+                    response = await dna.send_encrypted(
+                        device.ip,
+                        device.port or self.default_port,
+                        dna.NetworkHeader(
+                            device_type=auth_type,
+                            message_type=dna.MESSAGE_TYPE_AUTH,
+                            mac=mac,
+                        ),
+                        payload,
+                        dna.INITIAL_KEY,
+                        timeout=self.auth_timeout,
+                        exchange=exchange,
+                    )
+                    session.session_key = dna.extract_session_key(response)
                 session.auth_device_type = auth_type
-                if device.type_id not in {TYPE_ULTRA, TYPE_ULTRA2, TYPE_ULTRA2_LAN}:
+                if device.type_id not in {TYPE_ULTRA2, TYPE_ULTRA2_LAN, TYPE_EMOTION, TYPE_EMOTION_WIRE}:
                     device.type_id = auth_type
-                if not device.model:
-                    device.model = _model_for_device_type(device.type_id)
-                if not device.name:
-                    device.name = device.model
+                model = _model_for_device_type(auth_type, device.pid)
+                if not device.model or (model == DISPLAY_MODEL_EMOTION and device.model == DISPLAY_MODEL_ULTRA2):
+                    device.model = model
+                if not device.name or (model == DISPLAY_MODEL_EMOTION and device.name == DISPLAY_MODEL_ULTRA2):
+                    device.name = model
                 session.auth_status = "ok"
                 session.auth_error = ""
                 session.last_auth_at = datetime.now(UTC)
@@ -267,6 +287,73 @@ class UltraClient:
             available_fields=frozenset(attr for attrs in entity_attrs.values() for attr in attrs),
             received_at=datetime.now(UTC),
         )
+
+    async def get_emotion_state(
+        self,
+        session: UltraSession,
+        *,
+        exchange: dna.PacketExchange | None = None,
+    ) -> EmotionPresenceState:
+        """Read the eMotion radar_env KeyValue status."""
+        if not _matches_emotion(session.device):
+            raise UltraProtocolError("session is not an eMotion device")
+        try:
+            command = _emotion_uart_command(dna.UART_GET_STATUS, emotion.build_keyvalue_request())
+            payload = await self.send_command(session, command, exchange=exchange)
+            status = emotion.parse_keyvalue_status(_emotion_uart_response_payload(payload))
+            pir_detected = _required_int(status, "pir_detected", valid_values=range(2))
+            absence_delay = _required_int(status, "delaytime1", minimum=1, maximum=0xFFFF)
+            sensitivity = _required_int(status, "level_of_sensitivity", valid_values=range(3))
+            firmware_version = _required_int(status, "fwVer", minimum=0, maximum=0xFFFF)
+        except (dna.DNAError, emotion.EmotionError) as err:
+            raise UltraProtocolError(str(err)) from err
+        session.last_seen = datetime.now(UTC)
+        return EmotionPresenceState(
+            device_id=session.device.id,
+            occupied=bool(pir_detected),
+            absence_delay=absence_delay,
+            sensitivity=sensitivity,
+            firmware_version=firmware_version,
+            received_at=datetime.now(UTC),
+        )
+
+    async def set_emotion_absence_delay(
+        self, session: UltraSession, seconds: int, *, exchange: dna.PacketExchange | None = None
+    ) -> EmotionPresenceState:
+        """Set eMotion absence delay and verify it through read-back."""
+        _validate_int_range(seconds, 1, 0xFFFF, "eMotion absence delay")
+        await self.send_command(
+            session,
+            _emotion_uart_command(dna.UART_SET_STATUS, emotion.build_keyvalue_request({"delaytime1": seconds})),
+            exchange=exchange,
+        )
+        state = await self.get_emotion_state(session, exchange=exchange)
+        if state.absence_delay != seconds:
+            raise UltraProtocolError(
+                f"eMotion delaytime1 read-back mismatch ({state.absence_delay!r}, expected {seconds!r})"
+            )
+        return state
+
+    async def set_emotion_sensitivity(
+        self, session: UltraSession, sensitivity: int, *, exchange: dna.PacketExchange | None = None
+    ) -> EmotionPresenceState:
+        """Set eMotion sensitivity and verify it through read-back."""
+        if isinstance(sensitivity, bool) or sensitivity not in range(3):
+            raise ValueError("eMotion sensitivity must be 0, 1, or 2")
+        await self.send_command(
+            session,
+            _emotion_uart_command(
+                dna.UART_SET_STATUS,
+                emotion.build_keyvalue_request({"level_of_sensitivity": sensitivity}),
+            ),
+            exchange=exchange,
+        )
+        state = await self.get_emotion_state(session, exchange=exchange)
+        if state.sensitivity != sensitivity:
+            raise UltraProtocolError(
+                f"eMotion sensitivity read-back mismatch ({state.sensitivity!r}, expected {sensitivity!r})"
+            )
+        return state
 
     async def get_legacy_environment_state(self, session: UltraSession) -> UltraEnvironmentState:
         """Read legacy Ultra gateway state through the emotion protocol."""
@@ -656,7 +743,8 @@ class UltraClient:
 
     def _device_from_dna(self, raw: dna.DiscoveredDevice) -> UltraDevice:
         device_id = _entity_id_device_segment(raw.mac or raw.id or raw.ip)
-        model = _model_for_device_type(raw.device_type)
+        pid = _pid_for_device_type(raw.device_type)
+        model = _model_for_device_type(raw.device_type, pid)
         name = raw.name or model
         return UltraDevice(
             id=device_id,
@@ -664,7 +752,7 @@ class UltraClient:
             ip=raw.ip,
             port=raw.port or self.default_port,
             type_id=raw.device_type,
-            pid=PID_ULTRA if raw.device_type == TYPE_ULTRA else PID_ULTRA2,
+            pid=pid or (PID_ULTRA if raw.device_type == TYPE_ULTRA else PID_ULTRA2),
             name=name,
             model=model,
             raw={"message_type": raw.message_type, "raw_len": len(raw.raw)},
@@ -756,9 +844,22 @@ def _outbound_ipv4() -> str:
 
 
 def _matches_ultra(device: UltraDevice) -> bool:
-    if device.pid.lower() in {PID_ULTRA, PID_ULTRA2}:
+    if device.pid.lower() in {PID_ULTRA, PID_ULTRA2, PID_EMOTION}:
         return True
-    return device.type_id in {TYPE_ULTRA, TYPE_ULTRA2, TYPE_ULTRA2_LAN}
+    return device.type_id in {TYPE_ULTRA, TYPE_ULTRA2, TYPE_ULTRA2_LAN, TYPE_EMOTION, TYPE_EMOTION_WIRE}
+
+
+def _matches_emotion(device: UltraDevice) -> bool:
+    """Return whether a device is the radar_env eMotion variant."""
+    return device.pid.lower() == PID_EMOTION or device.type_id in {TYPE_EMOTION, TYPE_EMOTION_WIRE}
+
+
+def _emotion_uart_command(command: int, payload: bytes) -> bytes:
+    return dna.build_uart_frame(command, payload)
+
+
+def _emotion_uart_response_payload(payload: bytes) -> bytes:
+    return dna.parse_uart_frame(payload, dna.UART_STATUS_RESPONSE).payload
 
 
 def _esphome_entity_mapping(
@@ -853,9 +954,17 @@ def _required_int(
     payload: dict[str, object],
     key: str,
     *,
+    minimum: int | None = None,
+    maximum: int | None = None,
     valid_values: Iterable[int] | None = None,
 ) -> int:
-    value = _optional_int(payload, key, valid_values=valid_values)
+    value = _optional_int(
+        payload,
+        key,
+        minimum=minimum,
+        maximum=maximum,
+        valid_values=valid_values,
+    )
     if value is None:
         raise UltraProtocolError(f"missing radar {key}")
     return value
@@ -939,14 +1048,32 @@ def _z_ranges_match(actual: object, expected: object) -> bool:
     )
 
 
-def _model_for_device_type(device_type: int) -> str:
-    return DISPLAY_MODEL_ULTRA if device_type == TYPE_ULTRA else DISPLAY_MODEL_ULTRA2
-
-
-def _auth_device_type_candidates(device_type: int) -> list[int]:
+def _model_for_device_type(device_type: int, pid: str = "") -> str:
+    if pid.lower() == PID_EMOTION or device_type in {TYPE_EMOTION, TYPE_EMOTION_WIRE}:
+        return DISPLAY_MODEL_EMOTION
     if device_type == TYPE_ULTRA:
-        return [TYPE_ULTRA, TYPE_ULTRA2, TYPE_ULTRA2_LAN]
+        return DISPLAY_MODEL_ULTRA
+    return DISPLAY_MODEL_ULTRA2
+
+
+def _pid_for_device_type(device_type: int) -> str:
+    if device_type in {TYPE_EMOTION, TYPE_EMOTION_WIRE}:
+        return PID_EMOTION
     if device_type in {TYPE_ULTRA2, TYPE_ULTRA2_LAN}:
+        return PID_ULTRA2
+    if device_type == TYPE_ULTRA:
+        return PID_ULTRA
+    return ""
+
+
+def _auth_device_type_candidates(device_type: int, pid: str = "") -> list[int]:
+    if device_type in {TYPE_EMOTION, TYPE_EMOTION_WIRE} or pid.lower() == PID_EMOTION:
+        values = [device_type, TYPE_EMOTION, TYPE_EMOTION_WIRE]
+        if device_type == 0:
+            values = [TYPE_EMOTION, TYPE_EMOTION_WIRE]
+    elif device_type == TYPE_ULTRA:
+        values = [TYPE_ULTRA, TYPE_ULTRA2, TYPE_ULTRA2_LAN]
+    elif device_type in {TYPE_ULTRA2, TYPE_ULTRA2_LAN}:
         values = [device_type, TYPE_ULTRA2, TYPE_ULTRA2_LAN]
     else:
         values = [TYPE_ULTRA2, TYPE_ULTRA2_LAN]
@@ -954,7 +1081,9 @@ def _auth_device_type_candidates(device_type: int) -> list[int]:
 
 
 def _command_device_type_candidates(session: UltraSession) -> list[int]:
-    if session.device.type_id == TYPE_ULTRA or session.device.pid.lower() == PID_ULTRA:
+    if _matches_emotion(session.device):
+        defaults = [TYPE_EMOTION, TYPE_EMOTION_WIRE]
+    elif session.device.type_id == TYPE_ULTRA or session.device.pid.lower() == PID_ULTRA:
         defaults = [TYPE_ULTRA, TYPE_ULTRA2, TYPE_ULTRA2_LAN]
     else:
         defaults = [TYPE_ULTRA2, TYPE_ULTRA2_LAN]
