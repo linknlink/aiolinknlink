@@ -183,6 +183,25 @@ async def test_connect_emotion_uses_legacy_terminal_add(monkeypatch: pytest.Monk
     assert send.call_args.kwargs["timeout"] == 0.2
 
 
+async def test_connect_emotion_accepts_stored_session_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """HA restarts can reuse the device private key without pairing again."""
+    session_key = b"0123456789abcdef"
+    send = AsyncMock()
+    monkeypatch.setattr(dna, "send_legacy_terminal_add", send)
+
+    session = await UltraClient().connect(EMOTION_DEVICE, session_key=session_key)
+
+    assert session.session_key == session_key
+    assert session.auth_device_type == TYPE_EMOTION
+    assert session.auth_status == "ok"
+    send.assert_not_awaited()
+
+
+async def test_connect_rejects_invalid_stored_session_key() -> None:
+    with pytest.raises(UltraAuthError, match="16 bytes"):
+        await UltraClient().connect(EMOTION_DEVICE, session_key=b"short")
+
+
 async def test_connect_preserves_caller_display_model(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

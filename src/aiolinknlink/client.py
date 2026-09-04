@@ -143,6 +143,7 @@ class UltraClient:
         device: UltraDevice,
         *,
         protocol_mac: str | None = None,
+        session_key: bytes | None = None,
         exchange: dna.PacketExchange | None = None,
     ) -> UltraSession:
         """Connect/authenticate to an Ultra2 device."""
@@ -158,6 +159,15 @@ class UltraClient:
             session.auth_status = "skipped"
             session.auth_error = "missing mac"
             raise UltraAuthError(session.auth_error)
+        if session_key is not None:
+            if len(session_key) != 16:
+                raise UltraAuthError("session key must contain exactly 16 bytes")
+            session.session_key = bytes(session_key)
+            session.auth_device_type = next(iter(_auth_device_type_candidates(device.type_id, device.pid)))
+            session.auth_status = "ok"
+            session.auth_error = ""
+            session.last_auth_at = datetime.now(UTC)
+            return session
         last_error: Exception | None = None
         for auth_type in _auth_device_type_candidates(device.type_id, device.pid):
             try:
