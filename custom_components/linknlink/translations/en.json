@@ -165,7 +165,8 @@
       "radar_zone_4_absence_delay": {"name": "Zone 4 absence delay"}
       ,
       "emotion_absence_delay": {"name": "Absence delay"},
-      "emotion_sensitivity": {"name": "Sensitivity level"}
+      "emotion_sensitivity": {"name": "Sensitivity level"},
+      "absence_delay": {"name": "Absence delay"}
     },
     "climate": {
       "air_conditioner": {"name": "Air conditioner"},

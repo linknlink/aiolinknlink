@@ -165,7 +165,8 @@
       "radar_zone_4_absence_delay": {"name": "区域4无人延迟"}
       ,
       "emotion_absence_delay": {"name": "无人延迟"},
-      "emotion_sensitivity": {"name": "灵敏度级别"}
+      "emotion_sensitivity": {"name": "灵敏度级别"},
+      "absence_delay": {"name": "无人延迟"}
     },
     "climate": {
       "air_conditioner": {"name": "空调"},
