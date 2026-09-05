@@ -10,6 +10,7 @@ DEVICE_TYPE_IBG = "ibg"
 DEVICE_TYPE_EMOTION = "emotion"
 DEVICE_TYPE_ULTRA = "ultra"
 DEVICE_TYPE_ULTRA2 = "ultra2"
+DEVICE_TYPE_EHOME = "ehome"
 PLATFORMS = (
     Platform.SENSOR,
     Platform.BINARY_SENSOR,

@@ -20,6 +20,17 @@ from .client import (
     derive_ultra2_protocol_mac,
     derive_ultra2_radar_did,
 )
+from .ehome import (
+    DISPLAY_MODEL_EHOME,
+    PID_EHOME,
+    EHomeClient,
+    EHomeConnectionError,
+    EHomeDevice,
+    EHomeError,
+    EHomeProtocolError,
+    EHomeSession,
+    EHomeState,
+)
 from .ibg import (
     BOX7_POWER_FIELDS,
     DISPLAY_MODEL_IBG2_SE,
@@ -118,6 +129,15 @@ __all__ = [
     "IbgSession",
     "IbgSubDevice",
     "IbgSubDeviceState",
+    "DISPLAY_MODEL_EHOME",
+    "PID_EHOME",
+    "EHomeClient",
+    "EHomeConnectionError",
+    "EHomeDevice",
+    "EHomeError",
+    "EHomeProtocolError",
+    "EHomeSession",
+    "EHomeState",
     "DTU_POWER_FIELDS",
     "DTU_VOLTAGE_OUTPUT_FIELD",
     "EAC1_CURRENT_TEMPERATURE_FIELD",

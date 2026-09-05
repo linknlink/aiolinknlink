@@ -27,6 +27,8 @@ from aiolinknlink import (  # noqa: E402  # noqa: E402
     TYPE_EMOTION,
     TYPE_EMOTION_WIRE,
     TYPE_ULTRA,
+    EHomeClient,
+    EHomeError,
     IbgClient,
     IbgError,
     UltraClient,
@@ -36,6 +38,7 @@ from aiolinknlink import (  # noqa: E402  # noqa: E402
 from .const import (  # noqa: E402
     CONF_DEVICE_TYPE,
     CONF_LOCAL_KEY,
+    DEVICE_TYPE_EHOME,
     DEVICE_TYPE_EMOTION,
     DEVICE_TYPE_IBG,
     DEVICE_TYPE_ULTRA,
@@ -43,9 +46,11 @@ from .const import (  # noqa: E402
     PLATFORMS,
     resolve_local_key_hex,
 )
-from .coordinator import IbgDataUpdateCoordinator, UltraDataUpdateCoordinator  # noqa: E402
+from .coordinator import EHomeDataUpdateCoordinator, IbgDataUpdateCoordinator, UltraDataUpdateCoordinator  # noqa: E402
 
-LinknLinkConfigEntry: TypeAlias = ConfigEntry[IbgDataUpdateCoordinator | UltraDataUpdateCoordinator]
+LinknLinkConfigEntry: TypeAlias = ConfigEntry[
+    IbgDataUpdateCoordinator | UltraDataUpdateCoordinator | EHomeDataUpdateCoordinator
+]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: LinknLinkConfigEntry) -> bool:
@@ -53,7 +58,31 @@ async def async_setup_entry(hass: HomeAssistant, entry: LinknLinkConfigEntry) ->
     device_type = entry.data.get(CONF_DEVICE_TYPE, DEVICE_TYPE_IBG)
     if device_type in {DEVICE_TYPE_EMOTION, DEVICE_TYPE_ULTRA, DEVICE_TYPE_ULTRA2}:
         return await _async_setup_ultra_entry(hass, entry)
+    if device_type == DEVICE_TYPE_EHOME:
+        return await _async_setup_ehome_entry(hass, entry)
     return await _async_setup_ibg_entry(hass, entry)
+
+
+async def _async_setup_ehome_entry(hass: HomeAssistant, entry: LinknLinkConfigEntry) -> bool:
+    """Set up one eHome/EHUB Modbus TCP device."""
+    client = EHomeClient()
+    try:
+        device = await client.discover_host(entry.data[CONF_HOST])
+        session = await client.connect(device)
+    except EHomeError as err:
+        raise ConfigEntryNotReady(f"Could not connect to eHome: {err}") from err
+    coordinator = EHomeDataUpdateCoordinator(hass, client, device, session)
+    await coordinator.async_config_entry_first_refresh()
+    entry.runtime_data = coordinator
+    dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={("linknlink", device.id)},
+        name=device.name,
+        manufacturer="LinknLink",
+        model=device.model,
+    )
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    return True
 
 
 async def _async_setup_ibg_entry(hass: HomeAssistant, entry: LinknLinkConfigEntry) -> bool:

@@ -45,8 +45,8 @@ from aiolinknlink import (
 )
 
 from . import LinknLinkConfigEntry
-from .coordinator import UltraDataUpdateCoordinator
-from .entity import IbgCoordinatorEntity, UltraCoordinatorEntity
+from .coordinator import EHomeDataUpdateCoordinator, UltraDataUpdateCoordinator
+from .entity import EHomeCoordinatorEntity, IbgCoordinatorEntity, UltraCoordinatorEntity
 
 SR3_SENSORS = (
     SensorEntityDescription(
@@ -290,6 +290,24 @@ EAC1_SENSORS = (
         options=["water_cooled", "vrv"],
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
+    ),
+)
+EHOME_SENSORS = (
+    SensorEntityDescription(
+        key="temperature",
+        name="Temperature",
+        translation_key="temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    SensorEntityDescription(
+        key="humidity",
+        name="Humidity",
+        translation_key="humidity",
+        device_class=SensorDeviceClass.HUMIDITY,
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
     ),
 )
 
@@ -554,6 +572,9 @@ async def async_setup_entry(
     """Create sensors for all reviewed iBG subdevice fields."""
     del hass
     coordinator = entry.runtime_data
+    if isinstance(coordinator, EHomeDataUpdateCoordinator):
+        async_add_entities(EHomeSensor(coordinator, description) for description in EHOME_SENSORS)
+        return
     if isinstance(coordinator, UltraDataUpdateCoordinator):
         if coordinator.device.pid.lower() == PID_EMOTION or coordinator.device.type_id in {
             TYPE_EMOTION,
@@ -600,6 +621,22 @@ class IbgSensor(IbgCoordinatorEntity, SensorEntity):
         """Return the latest safe scalar value."""
         value = self._value()
         return value if isinstance(value, (int, float, str)) and not isinstance(value, bool) else None
+
+
+class EHomeSensor(EHomeCoordinatorEntity, SensorEntity):
+    """One eHome environmental sensor."""
+
+    entity_description: SensorEntityDescription
+
+    def __init__(self, coordinator: EHomeDataUpdateCoordinator, description: SensorEntityDescription) -> None:
+        super().__init__(coordinator, description.key)
+        self.entity_description = description
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the latest eHome scalar value."""
+        value = getattr(self.coordinator.data, self.key, None)
+        return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
 
 
 class UltraSensor(UltraCoordinatorEntity, SensorEntity):

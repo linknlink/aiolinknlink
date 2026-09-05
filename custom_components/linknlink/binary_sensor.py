@@ -25,8 +25,8 @@ from aiolinknlink import (
 )
 
 from . import LinknLinkConfigEntry
-from .coordinator import UltraDataUpdateCoordinator
-from .entity import IbgCoordinatorEntity, UltraCoordinatorEntity
+from .coordinator import EHomeDataUpdateCoordinator, UltraDataUpdateCoordinator
+from .entity import EHomeCoordinatorEntity, IbgCoordinatorEntity, UltraCoordinatorEntity
 
 SR3_BINARY_SENSORS = (
     BinarySensorEntityDescription(
@@ -104,6 +104,9 @@ async def async_setup_entry(
     """Create reviewed binary sensors for supported iBG subdevices."""
     del hass
     coordinator = entry.runtime_data
+    if isinstance(coordinator, EHomeDataUpdateCoordinator):
+        async_add_entities([EHomePresenceSensor(coordinator)])
+        return
     if isinstance(coordinator, UltraDataUpdateCoordinator):
         is_emotion = coordinator.device.pid.lower() == PID_EMOTION or coordinator.device.type_id in {
             TYPE_EMOTION,
@@ -136,6 +139,22 @@ class IbgBinarySensor(IbgCoordinatorEntity, BinarySensorEntity):
         """Return the confirmed binary state."""
         value = self._value()
         return value if isinstance(value, bool) else None
+
+
+class EHomePresenceSensor(EHomeCoordinatorEntity, BinarySensorEntity):
+    """eHome PIR occupancy state."""
+
+    _attr_name = "Occupancy"
+    _attr_translation_key = "occupancy"
+    _attr_device_class = BinarySensorDeviceClass.OCCUPANCY
+
+    def __init__(self, coordinator: EHomeDataUpdateCoordinator) -> None:
+        super().__init__(coordinator, "occupied")
+
+    @property
+    def is_on(self) -> bool:
+        """Return whether eHome reports a person."""
+        return self.coordinator.data.occupied
 
 
 class UltraBinarySensor(UltraCoordinatorEntity, BinarySensorEntity):

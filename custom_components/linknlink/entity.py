@@ -6,7 +6,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
-from .coordinator import IbgDataUpdateCoordinator, UltraDataUpdateCoordinator
+from .coordinator import EHomeDataUpdateCoordinator, IbgDataUpdateCoordinator, UltraDataUpdateCoordinator
 
 SUBDEVICE_MODELS = {
     "00000000000000000000000005000100": "RF environment/occupancy sensor",
@@ -140,3 +140,24 @@ class UltraCoordinatorEntity(CoordinatorEntity[UltraDataUpdateCoordinator]):
             if zone_text.isdigit() and 1 <= (zone := int(zone_text)) <= 4:
                 return radar.zone_absence_delays[zone - 1]
         return None
+
+
+class EHomeCoordinatorEntity(CoordinatorEntity[EHomeDataUpdateCoordinator]):
+    """Base entity for one eHome field."""
+
+    _attr_has_entity_name = True
+
+    def __init__(self, coordinator: EHomeDataUpdateCoordinator, key: str) -> None:
+        super().__init__(coordinator)
+        self.key = key
+        self._attr_unique_id = f"{coordinator.device.id}_{key}"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return eHome device registry information."""
+        return DeviceInfo(
+            identifiers={(DOMAIN, self.coordinator.device.id)},
+            name=self.coordinator.device.name,
+            manufacturer="LinknLink",
+            model=self.coordinator.device.model,
+        )
