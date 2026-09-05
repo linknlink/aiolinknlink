@@ -105,11 +105,12 @@ class EHomeClient:
         return device
 
     async def connect(self, device: EHomeDevice) -> EHomeSession:
-        """Create a logical session after checking TCP reachability."""
-        try:
-            await asyncio.to_thread(_probe_tcp, device.ip, device.port, self.timeout)
-        except (OSError, TimeoutError) as err:
-            raise EHomeConnectionError(f"could not connect to {device.ip}:{device.port}") from err
+        """Create a logical session.
+
+        eHome firmware keeps the previous Modbus client slot briefly after a
+        disconnect, so opening a probe socket here would race the real
+        transaction.  The first read is the connectivity check.
+        """
         return EHomeSession(device=device, last_seen=datetime.now(UTC))
 
     async def close(self, session: EHomeSession) -> None:
