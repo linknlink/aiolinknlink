@@ -1,4 +1,4 @@
-"""Local Modbus TCP client for LinknLink eHome/EHUB devices."""
+"""Asynchronous Modbus TCP client for LinknLink eHome (433) gateways."""
 
 from __future__ import annotations
 
@@ -13,10 +13,13 @@ DEFAULT_PORT = 502
 DEFAULT_TIMEOUT = 5.0
 PID_EHOME = "0000000000000000000000005f2b0000"
 DISPLAY_MODEL_EHOME = "eHome"
-REG_TEMPERATURE = 300
-REG_HUMIDITY = 316
-REG_PRESENCE = 802
-REG_ABSENCE_DELAY = 832
+REG_VERSION = 29
+REG_SR3_BASE = 1000
+REG_VIRTUAL_KEY_BASE = 3000
+REG_VIRTUAL_LIGHT_BASE = 4000
+REG_VIRTUAL_HUMAN_BASE = 5000
+REG_VIRTUAL_SENSOR_BASE = 6000
+REG_ABSENCE_DELAY = REG_VIRTUAL_HUMAN_BASE + 1
 
 
 class EHomeError(Exception):
@@ -33,7 +36,7 @@ class EHomeProtocolError(EHomeError):
 
 @dataclass(slots=True)
 class EHomeDevice:
-    """An eHome device reachable over Modbus TCP."""
+    """An eHome 433 gateway reachable over Modbus TCP."""
 
     id: str
     ip: str
@@ -54,17 +57,37 @@ class EHomeSession:
 
 @dataclass(frozen=True, slots=True)
 class EHomeState:
-    """Validated eHome sensor state."""
+    """Latest eHome gateway and generated virtual-device state."""
 
-    temperature: float
-    humidity: float
-    occupied: bool
-    absence_delay: int
+    gateway_version: int | None
+    sr3_temperature: float | None
+    sr3_humidity: float | None
+    sr3_illuminance: int | None
+    sr3_battery: int | None
+    sr3_occupied: bool | None
+    sr3_keypressed: int | None
+    virtual_keypressed: int | None
+    virtual_illuminance: int | None
+    virtual_light_level_1: int | None
+    virtual_light_level_2: int | None
+    virtual_light_level_3: int | None
+    virtual_light_level_4: int | None
+    virtual_light_status: int | None
+    virtual_occupied: bool | None
+    absence_delay: int | None
+    virtual_temperature: float | None
+    virtual_humidity: float | None
+    max_temperature: float | None
+    min_temperature: float | None
+    max_humidity: float | None
+    min_humidity: float | None
+    temperature_alarm: int | None
+    humidity_alarm: int | None
     received_at: datetime
 
 
 class EHomeClient:
-    """Read and configure eHome through its documented Modbus map."""
+    """Read and configure an eHome gateway through its Modbus map."""
 
     def __init__(self, *, timeout: float = DEFAULT_TIMEOUT) -> None:
         if timeout <= 0:
@@ -72,7 +95,7 @@ class EHomeClient:
         self.timeout = timeout
 
     async def discover_host(self, host: str, *, port: int = DEFAULT_PORT) -> EHomeDevice:
-        """Probe a host and return an eHome device when Modbus responds."""
+        """Probe a host and return an eHome gateway when Modbus responds."""
         host = host.strip()
         if not host:
             raise EHomeConnectionError("host is required")
@@ -82,7 +105,7 @@ class EHomeClient:
         return device
 
     async def connect(self, device: EHomeDevice) -> EHomeSession:
-        """Create a logical Modbus session after checking TCP reachability."""
+        """Create a logical session after checking TCP reachability."""
         try:
             await asyncio.to_thread(_probe_tcp, device.ip, device.port, self.timeout)
         except (OSError, TimeoutError) as err:
@@ -90,63 +113,74 @@ class EHomeClient:
         return EHomeSession(device=device, last_seen=datetime.now(UTC))
 
     async def close(self, session: EHomeSession) -> None:
-        """Close is a no-op because requests use short-lived connections."""
+        """Close is a no-op because each transaction owns its socket."""
         del session
 
     async def read_state(self, session: EHomeSession) -> EHomeState:
-        """Read temperature, humidity, occupancy, and absence delay."""
-        transaction_ids = [self._next_transaction(session) for _ in range(4)]
+        """Read gateway, SR3 and generated virtual-device registers."""
+        requests = (
+            (REG_VERSION, 1),
+            (REG_SR3_BASE, 6),
+            (REG_VIRTUAL_KEY_BASE, 1),
+            (REG_VIRTUAL_LIGHT_BASE, 6),
+            (REG_VIRTUAL_HUMAN_BASE, 2),
+            (REG_VIRTUAL_SENSOR_BASE, 8),
+        )
+        transaction_ids = [self._next_transaction(session) for _ in requests]
         values = await asyncio.to_thread(
-            _modbus_read_registers,
+            _modbus_read_blocks,
             session.device.ip,
             session.device.port,
             transaction_ids,
-            (REG_TEMPERATURE, REG_HUMIDITY, REG_PRESENCE, REG_ABSENCE_DELAY),
+            requests,
             self.timeout,
         )
         session.last_seen = datetime.now(UTC)
+        sr3, light, human, sensor = values[1], values[3], values[4], values[5]
         return EHomeState(
-            temperature=values[0] / 100,
-            humidity=values[1] / 100,
-            occupied=bool(values[2]),
-            absence_delay=values[3],
+            gateway_version=values[0][0],
+            sr3_temperature=_signed(sr3[0]) / 10,
+            sr3_humidity=sr3[1] / 10,
+            sr3_illuminance=sr3[2],
+            sr3_battery=sr3[3],
+            sr3_occupied=bool(sr3[4]),
+            sr3_keypressed=sr3[5],
+            virtual_keypressed=values[2][0],
+            virtual_illuminance=light[0],
+            virtual_light_level_1=light[1],
+            virtual_light_level_2=light[2],
+            virtual_light_level_3=light[3],
+            virtual_light_level_4=light[4],
+            virtual_light_status=light[5],
+            virtual_occupied=bool(human[0]),
+            absence_delay=human[1],
+            virtual_temperature=_signed(sensor[0]) / 100,
+            virtual_humidity=sensor[1] / 100,
+            max_temperature=_signed(sensor[2]) / 100,
+            min_temperature=_signed(sensor[3]) / 100,
+            max_humidity=sensor[4] / 100,
+            min_humidity=sensor[5] / 100,
+            temperature_alarm=sensor[6],
+            humidity_alarm=sensor[7],
             received_at=datetime.now(UTC),
         )
 
-    async def read_register(self, session: EHomeSession, address: int) -> int:
-        """Read one register using Modbus function 03."""
-        return await asyncio.to_thread(
-            _modbus_read_register,
+    async def set_absence_delay(self, session: EHomeSession, minutes: int) -> EHomeState:
+        """Write the generated virtual-human delay, measured in minutes."""
+        if isinstance(minutes, bool) or not 0 <= minutes <= 0xFFFF:
+            raise ValueError("absence delay must be between 0 and 65535 minutes")
+        await asyncio.to_thread(
+            _modbus_write_register,
             session.device.ip,
             session.device.port,
             self._next_transaction(session),
-            address,
+            REG_ABSENCE_DELAY,
+            minutes,
             self.timeout,
         )
-
-    async def set_absence_delay(self, session: EHomeSession, seconds: int) -> EHomeState:
-        """Write the absence delay register and return confirmed state."""
-        if isinstance(seconds, bool) or not 0 <= seconds <= 0xFFFF:
-            raise ValueError("absence delay must be between 0 and 65535 seconds")
-        transaction_ids = [self._next_transaction(session) for _ in range(5)]
-        values = await asyncio.to_thread(
-            _modbus_write_and_read_state,
-            session.device.ip,
-            session.device.port,
-            transaction_ids,
-            seconds,
-            self.timeout,
-        )
-        state = EHomeState(
-            temperature=values[0] / 100,
-            humidity=values[1] / 100,
-            occupied=bool(values[2]),
-            absence_delay=values[3],
-            received_at=datetime.now(UTC),
-        )
-        session.last_seen = state.received_at
-        if state.absence_delay != seconds:
-            raise EHomeProtocolError(f"absence delay read-back mismatch ({state.absence_delay}, expected {seconds})")
+        state = await self.read_state(session)
+        if state.absence_delay != minutes:
+            raise EHomeProtocolError(f"absence delay read-back mismatch ({state.absence_delay}, expected {minutes})")
         return state
 
     @staticmethod
@@ -155,9 +189,43 @@ class EHomeClient:
         return session.transaction_id
 
 
+def _signed(value: int) -> int:
+    return value - 0x10000 if value & 0x8000 else value
+
+
 def _probe_tcp(host: str, port: int, timeout: float) -> None:
     with socket.create_connection((host, port), timeout=timeout):
         return
+
+
+def _modbus_read_blocks(
+    host: str,
+    port: int,
+    transaction_ids: list[int],
+    requests: tuple[tuple[int, int], ...],
+    timeout: float,
+) -> list[list[int]]:
+    responses = _exchange(
+        host,
+        port,
+        [
+            (transaction_id, struct.pack(">BHH", 3, address, count))
+            for transaction_id, (address, count) in zip(transaction_ids, requests, strict=True)
+        ],
+        timeout,
+    )
+    values: list[list[int]] = []
+    for response, (_, count) in zip(responses, requests, strict=True):
+        if len(response) != 2 + count * 2 or response[0] != 3 or response[1] != count * 2:
+            raise EHomeProtocolError("invalid Modbus read response")
+        values.append([struct.unpack(">H", response[index : index + 2])[0] for index in range(2, len(response), 2)])
+    return values
+
+
+def _modbus_write_register(host: str, port: int, transaction_id: int, address: int, value: int, timeout: float) -> None:
+    pdu = struct.pack(">BHH", 6, address, value)
+    if _request(host, port, transaction_id, pdu, timeout) != pdu:
+        raise EHomeProtocolError("invalid Modbus write response")
 
 
 def _request(host: str, port: int, transaction_id: int, pdu: bytes, timeout: float) -> bytes:
@@ -198,64 +266,6 @@ def _connect_with_retry(host: str, port: int, deadline: float) -> socket.socket:
             last_error = err
             time.sleep(min(0.4, max(0.0, deadline - time.monotonic())))
     raise EHomeConnectionError(f"could not connect to {host}:{port}") from last_error
-
-
-def _modbus_read_register(host: str, port: int, transaction_id: int, address: int, timeout: float) -> int:
-    if not 0 <= address <= 0xFFFF:
-        raise ValueError("register address is out of range")
-    response = _request(host, port, transaction_id, struct.pack(">BHH", 3, address, 1), timeout)
-    if len(response) != 4 or response[0] != 3 or response[1] != 2:
-        raise EHomeProtocolError("invalid Modbus read response")
-    return struct.unpack(">H", response[2:4])[0]
-
-
-def _modbus_read_registers(
-    host: str,
-    port: int,
-    transaction_ids: list[int],
-    addresses: tuple[int, ...],
-    timeout: float,
-) -> list[int]:
-    responses = _exchange(
-        host,
-        port,
-        [
-            (transaction_id, struct.pack(">BHH", 3, address, 1))
-            for transaction_id, address in zip(transaction_ids, addresses, strict=True)
-        ],
-        timeout,
-    )
-    values: list[int] = []
-    for response in responses:
-        if len(response) != 4 or response[0] != 3 or response[1] != 2:
-            raise EHomeProtocolError("invalid Modbus read response")
-        values.append(struct.unpack(">H", response[2:4])[0])
-    return values
-
-
-def _modbus_write_and_read_state(
-    host: str,
-    port: int,
-    transaction_ids: list[int],
-    value: int,
-    timeout: float,
-) -> list[int]:
-    addresses = (REG_TEMPERATURE, REG_HUMIDITY, REG_PRESENCE, REG_ABSENCE_DELAY)
-    requests = [(transaction_ids[0], struct.pack(">BHH", 6, REG_ABSENCE_DELAY, value))]
-    requests.extend(
-        (transaction_id, struct.pack(">BHH", 3, address, 1))
-        for transaction_id, address in zip(transaction_ids[1:], addresses, strict=True)
-    )
-    responses = _exchange(host, port, requests, timeout)
-    response = responses[0]
-    if len(response) != 5 or response != struct.pack(">BHH", 6, REG_ABSENCE_DELAY, value):
-        raise EHomeProtocolError("invalid Modbus write response")
-    values: list[int] = []
-    for response in responses[1:]:
-        if len(response) != 4 or response[0] != 3 or response[1] != 2:
-            raise EHomeProtocolError("invalid Modbus read response")
-        values.append(struct.unpack(">H", response[2:4])[0])
-    return values
 
 
 def _recv_exact(sock: socket.socket, size: int, timeout: float) -> bytes:

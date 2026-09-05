@@ -11,23 +11,40 @@ import pytest
 
 from aiolinknlink.ehome import (
     REG_ABSENCE_DELAY,
-    REG_HUMIDITY,
-    REG_PRESENCE,
-    REG_TEMPERATURE,
+    REG_SR3_BASE,
     EHomeClient,
     EHomeDevice,
     EHomeSession,
-    EHomeState,
 )
 
 
 class _ModbusServer:
     def __init__(self) -> None:
         self.values = {
-            REG_TEMPERATURE: 2350,
-            REG_HUMIDITY: 5010,
-            REG_PRESENCE: 1,
+            29: 61350,
+            REG_SR3_BASE: 235,
+            REG_SR3_BASE + 1: 501,
+            REG_SR3_BASE + 2: 120,
+            REG_SR3_BASE + 3: 97,
+            REG_SR3_BASE + 4: 1,
+            REG_SR3_BASE + 5: 2,
+            3000: 1,
+            4000: 120,
+            4001: 10,
+            4002: 20,
+            4003: 30,
+            4004: 40,
+            4005: 1,
+            5000: 1,
             REG_ABSENCE_DELAY: 60,
+            6000: 2350,
+            6001: 5010,
+            6002: 3000,
+            6003: 1000,
+            6004: 8000,
+            6005: 2000,
+            6006: 0,
+            6007: 0,
         }
         self.sock = socket()
         self.sock.bind(("127.0.0.1", 0))
@@ -52,23 +69,35 @@ class _ModbusServer:
             except OSError:
                 return
             with conn:
-                header = _recv(conn, 7)
-                transaction, _, length, unit = struct.unpack(">HHHB", header)
-                assert unit == 1
-                pdu = _recv(conn, length - 1)
-                function, address, value = struct.unpack(">BHH", pdu)
-                if function == 3:
-                    response = struct.pack(">BBH", 3, 2, self.values[address])
-                else:
-                    self.values[address] = value
-                    response = pdu
-                conn.sendall(struct.pack(">HHHB", transaction, 0, len(response) + 1, 1) + response)
+                while not self.stop:
+                    try:
+                        header = _recv(conn, 7)
+                    except OSError:
+                        break
+                    transaction, _, length, unit = struct.unpack(">HHHB", header)
+                    assert unit == 1
+                    pdu = _recv(conn, length - 1)
+                    function = pdu[0]
+                    address = struct.unpack(">H", pdu[1:3])[0]
+                    count_or_value = struct.unpack(">H", pdu[3:5])[0]
+                    if function == 3:
+                        values = [self.values.get(address + index, 0) for index in range(count_or_value)]
+                        response = bytes([3, count_or_value * 2]) + b"".join(
+                            struct.pack(">H", value) for value in values
+                        )
+                    else:
+                        self.values[address] = count_or_value
+                        response = pdu
+                    conn.sendall(struct.pack(">HHHB", transaction, 0, len(response) + 1, 1) + response)
 
 
-def _recv(conn: socket, size: int) -> bytes:
+def _recv(conn, size: int) -> bytes:
     value = bytearray()
     while len(value) < size:
-        value.extend(conn.recv(size - len(value)))
+        chunk = conn.recv(size - len(value))
+        if not chunk:
+            raise OSError("closed")
+        value.extend(chunk)
     return bytes(value)
 
 
@@ -80,10 +109,10 @@ async def test_read_state_and_write_confirmation() -> None:
         client = EHomeClient()
         session = EHomeSession(device)
         state = await client.read_state(session)
-        assert isinstance(state, EHomeState)
-        assert state.temperature == 23.5
-        assert state.humidity == 50.1
-        assert state.occupied is True
+        assert state.gateway_version == 61350
+        assert state.sr3_temperature == 23.5
+        assert state.sr3_humidity == 50.1
+        assert state.sr3_occupied is True
         assert state.absence_delay == 60
         updated = await client.set_absence_delay(session, 120)
         assert updated.absence_delay == 120

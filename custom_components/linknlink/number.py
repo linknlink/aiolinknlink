@@ -228,14 +228,14 @@ class IbgDtuVoltageOutput(IbgCoordinatorEntity, NumberEntity):
 
 
 class EHomeAbsenceDelay(EHomeCoordinatorEntity, NumberEntity):
-    """eHome no-person delay in seconds."""
+    """eHome no-person delay in minutes."""
 
     _attr_name = "Absence delay"
     _attr_translation_key = "absence_delay"
     _attr_native_min_value = 0
     _attr_native_max_value = 65535
     _attr_native_step = 1
-    _attr_native_unit_of_measurement = UnitOfTime.SECONDS
+    _attr_native_unit_of_measurement = UnitOfTime.MINUTES
     _attr_mode = NumberMode.BOX
 
     def __init__(self, coordinator: EHomeDataUpdateCoordinator) -> None:
@@ -244,7 +244,7 @@ class EHomeAbsenceDelay(EHomeCoordinatorEntity, NumberEntity):
     @property
     def native_value(self) -> float:
         """Return the configured delay."""
-        return float(self.coordinator.data.absence_delay)
+        return float(self.coordinator.data.absence_delay or 0)
 
     async def async_set_native_value(self, value: float) -> None:
         """Set the delay and require read-back confirmation."""

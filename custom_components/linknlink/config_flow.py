@@ -17,6 +17,7 @@ from aiolinknlink import (
     TYPE_EMOTION_WIRE,
     TYPE_ULTRA,
     EHomeClient,
+    EHomeConnectionError,
     EHomeDevice,
     EHomeError,
     IbgClient,
@@ -99,9 +100,9 @@ class LinknLinkConfigFlow(ConfigFlow, domain=DOMAIN):
                     }
             except ValueError:
                 pass
-            except (IbgConnectionError, UltraConnectionError):
+            except (IbgConnectionError, UltraConnectionError, EHomeConnectionError):
                 errors["base"] = "cannot_connect"
-            except (IbgError, UltraError):
+            except (IbgError, UltraError, EHomeError):
                 errors["base"] = "unknown"
             else:
                 await self.async_set_unique_id(device.id)

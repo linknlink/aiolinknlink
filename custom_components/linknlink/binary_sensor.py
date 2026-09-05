@@ -142,19 +142,20 @@ class IbgBinarySensor(IbgCoordinatorEntity, BinarySensorEntity):
 
 
 class EHomePresenceSensor(EHomeCoordinatorEntity, BinarySensorEntity):
-    """eHome PIR occupancy state."""
+    """SR3 PIR occupancy state."""
 
-    _attr_name = "Occupancy"
+    _attr_name = "SR3 occupancy"
     _attr_translation_key = "occupancy"
     _attr_device_class = BinarySensorDeviceClass.OCCUPANCY
 
     def __init__(self, coordinator: EHomeDataUpdateCoordinator) -> None:
-        super().__init__(coordinator, "occupied")
+        super().__init__(coordinator, "sr3_occupied")
 
     @property
-    def is_on(self) -> bool:
+    def is_on(self) -> bool | None:
         """Return whether eHome reports a person."""
-        return self.coordinator.data.occupied
+        value = self.coordinator.data.sr3_occupied
+        return bool(value) if value is not None else None
 
 
 class UltraBinarySensor(UltraCoordinatorEntity, BinarySensorEntity):
