@@ -10,13 +10,13 @@ from typing import TypeAlias
 # Development deployments keep the library checkout in HA's persistent
 # configuration volume, so container replacement does not remove it.
 _DEVELOPMENT_LIBRARY_SOURCE = Path(__file__).parents[2] / "deps" / "aiolinknlink" / "src"
-_BUNDLED_LIBRARY_SOURCE = Path(__file__).parent / "aiolinknlink"
+_BUNDLED_LIBRARY_ROOT = Path(__file__).parent
 
 # Internal deployments may provide a newer checkout in /config/deps. HACS
 # installs use the bundled client library next to this integration instead.
 # Insert the bundled path first, then the development path so the latter wins
 # when both are present.
-for _library_source in (_BUNDLED_LIBRARY_SOURCE, _DEVELOPMENT_LIBRARY_SOURCE):
+for _library_source in (_BUNDLED_LIBRARY_ROOT, _DEVELOPMENT_LIBRARY_SOURCE):
     if _library_source.is_dir():
         with suppress(ValueError):
             sys.path.remove(str(_library_source))

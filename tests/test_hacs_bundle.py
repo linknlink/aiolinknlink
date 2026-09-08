@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
 
@@ -24,3 +25,12 @@ def test_bundled_client_library_matches_source() -> None:
     assert target_files == source_files
     for relative_path in source_files:
         assert _file_hash(SOURCE / relative_path) == _file_hash(TARGET / relative_path)
+
+
+def test_manifest_and_library_versions_match() -> None:
+    """The HACS manifest and bundled library release must stay aligned."""
+    manifest = json.loads(
+        (ROOT / "custom_components" / "linknlink" / "manifest.json").read_text(encoding="utf-8")
+    )
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert f'version = "{manifest["version"]}"' in pyproject
