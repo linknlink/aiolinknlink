@@ -38,7 +38,6 @@ from aiolinknlink import (
     PID_MODBUS_MULTI_SENSOR,
     PID_MODBUS_WATER_METER,
     PID_SR3_SENSOR,
-    TYPE_ULTRA,
 )
 
 from . import LinknLinkConfigEntry
@@ -106,22 +105,6 @@ ULTRA_SENSORS = (
         translation_key="persons_in_fenced_zones",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:account-group",
-    ),
-    SensorEntityDescription(
-        key="distance",
-        name="Distance",
-        translation_key="distance",
-        native_unit_of_measurement=UnitOfLength.CENTIMETERS,
-        state_class=SensorStateClass.MEASUREMENT,
-        icon="mdi:arrow-expand-horizontal",
-    ),
-    SensorEntityDescription(
-        key="target_distance",
-        name="Target distance",
-        translation_key="target_distance",
-        native_unit_of_measurement=UnitOfLength.CENTIMETERS,
-        state_class=SensorStateClass.MEASUREMENT,
-        icon="mdi:arrow-expand",
     ),
     *(
         SensorEntityDescription(
@@ -546,11 +529,7 @@ async def async_setup_entry(
         async_add_entities(
             [
                 *(UltraSensor(coordinator, description) for description in ULTRA_SENSORS),
-                *(
-                    UltraPositionSensor(coordinator, description)
-                    for description in ULTRA_POSITION_SENSORS
-                    if coordinator.device.type_id != TYPE_ULTRA
-                ),
+                *(UltraPositionSensor(coordinator, description) for description in ULTRA_POSITION_SENSORS),
             ]
         )
         return

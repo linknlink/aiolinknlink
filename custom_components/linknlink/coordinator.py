@@ -16,7 +16,6 @@ from aiolinknlink import (
     PID_SINGLE_CHANNEL_LIGHT_SWITCH,
     PID_THREE_CHANNEL_LIGHT_SWITCH,
     PID_TWO_CHANNEL_LIGHT_SWITCH,
-    PID_ULTRA,
     SINGLE_CHANNEL_LIGHT_SCENE_FIELDS,
     THREE_CHANNEL_LIGHT_SCENE_FIELDS,
     TWO_CHANNEL_LIGHT_SCENE_FIELDS,
@@ -39,7 +38,6 @@ from aiolinknlink import (
     UltraProtocolError,
     UltraRadarStatus,
     UltraSession,
-    TYPE_ULTRA,
 )
 
 from .const import DOMAIN, UPDATE_INTERVAL_SECONDS
@@ -240,15 +238,15 @@ class IbgDataUpdateCoordinator(DataUpdateCoordinator[IbgCoordinatorData]):
 
 @dataclass(frozen=True, slots=True)
 class UltraCoordinatorData:
-    """Latest validated eMotion Ultra state used by Home Assistant entities."""
+    """Latest validated Ultra2 state used by Home Assistant entities."""
 
     environment: UltraEnvironmentState
-    radar: UltraRadarStatus | None
+    radar: UltraRadarStatus
     position: UltraPositionSubscriptionState | None = None
 
 
 class UltraDataUpdateCoordinator(DataUpdateCoordinator[UltraCoordinatorData]):
-    """Poll one local eMotion Ultra or Ultra2."""
+    """Poll one local eMotion Ultra2."""
 
     def __init__(
         self,
@@ -256,8 +254,6 @@ class UltraDataUpdateCoordinator(DataUpdateCoordinator[UltraCoordinatorData]):
         client: UltraClient,
         device: UltraDevice,
         session: UltraSession,
-        *,
-        local_key: bytes | None = None,
     ) -> None:
         super().__init__(
             hass,
@@ -268,7 +264,6 @@ class UltraDataUpdateCoordinator(DataUpdateCoordinator[UltraCoordinatorData]):
         self.client = client
         self.device = device
         self.session = session
-        self.local_key = local_key
         self.position_subscription: UltraPositionSubscription | None = None
 
     async def _async_update_data(self) -> UltraCoordinatorData:
@@ -280,15 +275,13 @@ class UltraDataUpdateCoordinator(DataUpdateCoordinator[UltraCoordinatorData]):
             if self.position_subscription is not None:
                 raise UpdateFailed(f"Could not update Ultra2 {self.device.ip}: {err}") from err
             try:
-                self.session = await self.client.connect(self.device, session_key=self.local_key)
+                self.session = await self.client.connect(self.device)
                 return await self._read_data()
             except UltraError as err:
                 raise UpdateFailed(f"Could not update Ultra2 {self.device.ip}: {err}") from err
 
     async def _read_data(self) -> UltraCoordinatorData:
         environment = await self.client.get_environment_state(self.session)
-        if self.device.type_id == TYPE_ULTRA or self.device.pid.lower() == PID_ULTRA:
-            return UltraCoordinatorData(environment=environment, radar=None, position=None)
         if self.position_subscription is None:
             radar = await self.client.get_radar_status(self.session)
             position = None
@@ -404,7 +397,7 @@ class UltraDataUpdateCoordinator(DataUpdateCoordinator[UltraCoordinatorData]):
             except UltraProtocolError:
                 raise
             except (UltraConnectionError, UltraError):
-                self.session = await self.client.connect(self.device, session_key=self.local_key)
+                self.session = await self.client.connect(self.device)
                 radar = await operation(self.session, *args)
         if self.data is None:
             raise UltraError("Ultra2 coordinator has no device data")

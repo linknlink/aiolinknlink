@@ -10,7 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from aiolinknlink import DTU_VOLTAGE_OUTPUT_FIELD, PID_DTU, TYPE_ULTRA
+from aiolinknlink import DTU_VOLTAGE_OUTPUT_FIELD, PID_DTU
 
 from . import LinknLinkConfigEntry
 from .coordinator import UltraDataUpdateCoordinator
@@ -151,10 +151,9 @@ async def async_setup_entry(
     del hass
     coordinator = entry.runtime_data
     if isinstance(coordinator, UltraDataUpdateCoordinator):
-        if coordinator.device.type_id != TYPE_ULTRA:
-            async_add_entities(
-                UltraRadarNumber(coordinator, description) for description in ULTRA_RADAR_NUMBERS
-            )
+        async_add_entities(
+            UltraRadarNumber(coordinator, description) for description in ULTRA_RADAR_NUMBERS
+        )
         return
     async_add_entities(
         IbgDtuVoltageOutput(coordinator, device.did) for device in coordinator.data.subdevices if device.pid == PID_DTU

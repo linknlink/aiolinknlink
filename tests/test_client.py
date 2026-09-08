@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import struct
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -12,10 +11,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from aiolinknlink import (
-    DISPLAY_MODEL_ULTRA,
     DISPLAY_MODEL_ULTRA2,
-    PID_ULTRA,
-    TYPE_ULTRA,
     TYPE_ULTRA2,
     TYPE_ULTRA2_LAN,
     UltraAuthError,
@@ -136,14 +132,6 @@ async def test_connect(monkeypatch: pytest.MonkeyPatch) -> None:
     assert send.call_args.kwargs["timeout"] == 0.2
 
 
-async def test_connect_accepts_pre_paired_session_key() -> None:
-    device = replace(DEVICE, type_id=TYPE_ULTRA, pid=PID_ULTRA, model=DISPLAY_MODEL_ULTRA, name=DISPLAY_MODEL_ULTRA)
-    session = await UltraClient().connect(device, session_key=b"0123456789abcdef")
-    assert session.auth_status == "ok"
-    assert session.session_key == b"0123456789abcdef"
-    assert session.auth_device_type == TYPE_ULTRA
-
-
 async def test_connect_preserves_caller_display_model(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -243,48 +231,6 @@ def test_canonical_esphome_attrs(object_id: str, expected: tuple[str, ...]) -> N
 )
 def test_normalize_esphome_value(attr: str, value: object, expected: object) -> None:
     assert _normalize_esphome_value(attr, value) == expected
-
-
-def test_legacy_ultra_is_matched_and_uses_legacy_candidates() -> None:
-    from aiolinknlink.client import _auth_device_type_candidates, _matches_ultra
-
-    device = UltraDevice(
-        id="e04b41024150",
-        ip="192.168.3.8",
-        port=80,
-        mac="e0:4b:41:02:41:50",
-        type_id=TYPE_ULTRA,
-        pid=PID_ULTRA,
-        model=DISPLAY_MODEL_ULTRA,
-        name=DISPLAY_MODEL_ULTRA,
-    )
-    assert _matches_ultra(device)
-    assert _auth_device_type_candidates(TYPE_ULTRA) == [TYPE_ULTRA, TYPE_ULTRA2, TYPE_ULTRA2_LAN]
-
-
-async def test_legacy_environment_state_uses_gateway_protocol(monkeypatch: pytest.MonkeyPatch) -> None:
-    device = UltraDevice(
-        id="e04b41024150",
-        ip="192.168.3.8",
-        port=80,
-        mac="e0:4b:41:02:41:50",
-        type_id=TYPE_ULTRA,
-        pid=PID_ULTRA,
-        model=DISPLAY_MODEL_ULTRA,
-        name=DISPLAY_MODEL_ULTRA,
-    )
-    session = UltraSession(device=device, session_key=b"0123456789abcdef")
-    payload = b'{"envtemp":24.5,"envhumid":48.0,"envlux":120,"pir_detected":1,"target_count":2}'
-    client = UltraClient()
-    client.send_command = AsyncMock(return_value=struct.pack("<I", emotion.GATEWAY_CMD_GET_STATE) + payload)
-    state = await client.get_environment_state(session)
-    assert state.values == {
-        "temperature": 24.5,
-        "humidity": 48.0,
-        "illuminance": 120.0,
-        "occupancy": True,
-        "target_count": 2,
-    }
 
 
 async def test_reauthenticate_preserves_working_command_variant(

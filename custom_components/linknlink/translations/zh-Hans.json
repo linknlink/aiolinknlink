@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "连接 LinknLink 设备",
-        "description": "请输入受支持的 iBG 网关或 eMotion Ultra 设备的局域网 IP 地址。",
+        "description": "请输入受支持的 iBG 网关或 eMotion Ultra2 的局域网 IP 地址。",
         "data": {"host": "主机地址", "local_key": "本地密钥（可选）"}
       }
     },
@@ -85,8 +85,6 @@
       "position_targets": {"name": "定位目标"},
       "nearest_horizontal_distance": {"name": "最近目标水平距离"},
       "nearest_distance": {"name": "最近目标三维距离"},
-      "distance": {"name": "距离"},
-      "target_distance": {"name": "目标距离"},
       "ac_panel_device_type": {
         "name": "设备类型",
         "state": {"water_cooled": "水机", "vrv": "VRV"}

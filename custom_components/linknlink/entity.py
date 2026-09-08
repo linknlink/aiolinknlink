@@ -103,8 +103,6 @@ class UltraCoordinatorEntity(CoordinatorEntity[UltraDataUpdateCoordinator]):
 
     def _radar_value(self) -> int | float | None:
         radar = self.coordinator.data.radar
-        if radar is None:
-            return None
         if self.key == "sensitivity":
             return radar.sensitivity
         if self.key == "trigger_speed":

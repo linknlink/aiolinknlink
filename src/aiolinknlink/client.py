@@ -30,11 +30,8 @@ from .protocol import dna, emotion
 _LOGGER = logging.getLogger(__name__)
 
 PROVIDER = "ultra"
-DISPLAY_MODEL_ULTRA = "eMotion Ultra"
 DISPLAY_MODEL_ULTRA2 = "eMotion Ultra2"
-PID_ULTRA = "0000000000000000000000009cac0000"
 PID_ULTRA2 = "000000000000000000000000d7ac0000"
-TYPE_ULTRA = 0x9CAC
 TYPE_ULTRA2 = 0xD7AC
 TYPE_ULTRA2_LAN = 0xE3AC
 TYPE_ULTRA2_RADAR = 0xACDB
@@ -50,7 +47,7 @@ ESPHOME_STATE_TIMEOUT = 8.0
 
 
 class UltraError(Exception):
-    """Base eMotion Ultra client error."""
+    """Base Ultra2 client error."""
 
 
 class UltraAuthError(UltraError):
@@ -58,11 +55,11 @@ class UltraAuthError(UltraError):
 
 
 class UltraConnectionError(UltraError):
-    """eMotion Ultra device could not be reached."""
+    """Ultra2 device could not be reached."""
 
 
 class UltraProtocolError(UltraError):
-    """eMotion Ultra device returned an invalid response."""
+    """Ultra2 device returned an invalid response."""
 
 
 class UltraClient:
@@ -86,7 +83,7 @@ class UltraClient:
         self.broadcast_address = broadcast_address
 
     async def discover(self) -> list[UltraDevice]:
-        """Discover eMotion Ultra devices on the local network."""
+        """Discover Ultra2 devices on the local network."""
         raw_devices = await _discover_dna_devices(
             broadcast_address=self.broadcast_address,
             default_port=self.default_port,
@@ -105,7 +102,7 @@ class UltraClient:
         return devices
 
     async def discover_host(self, host: str) -> UltraDevice:
-        """Discover a specific eMotion Ultra device and return its reported identity."""
+        """Discover a specific Ultra2 device and return its reported identity."""
         host = host.strip()
         if not host:
             raise UltraConnectionError("host is required")
@@ -140,11 +137,10 @@ class UltraClient:
         self,
         device: UltraDevice,
         *,
-        session_key: bytes | None = None,
         protocol_mac: str | None = None,
         exchange: dna.PacketExchange | None = None,
     ) -> UltraSession:
-        """Connect/authenticate to an eMotion Ultra device."""
+        """Connect/authenticate to an Ultra2 device."""
         auth_mac = protocol_mac or device.mac
         session = UltraSession(
             device=device,
@@ -152,15 +148,6 @@ class UltraClient:
             auth_status="discovered",
             last_seen=datetime.now(UTC),
         )
-        if session_key is not None:
-            if len(session_key) != 16:
-                raise UltraAuthError("session key must be exactly 16 bytes")
-            session.session_key = bytes(session_key)
-            session.auth_device_type = device.type_id
-            session.command_device_type = device.type_id
-            session.auth_status = "ok"
-            session.last_auth_at = datetime.now(UTC)
-            return session
         mac = dna.mac_bytes(auth_mac)
         if not mac:
             session.auth_status = "skipped"
@@ -185,12 +172,12 @@ class UltraClient:
                 )
                 session.session_key = dna.extract_session_key(response)
                 session.auth_device_type = auth_type
-                if device.type_id not in {TYPE_ULTRA, TYPE_ULTRA2, TYPE_ULTRA2_LAN}:
+                if device.type_id not in {TYPE_ULTRA2, TYPE_ULTRA2_LAN}:
                     device.type_id = auth_type
                 if not device.model:
-                    device.model = _model_for_device_type(device.type_id)
+                    device.model = DISPLAY_MODEL_ULTRA2
                 if not device.name:
-                    device.name = device.model
+                    device.name = DISPLAY_MODEL_ULTRA2
                 session.auth_status = "ok"
                 session.auth_error = ""
                 session.last_auth_at = datetime.now(UTC)
@@ -204,8 +191,6 @@ class UltraClient:
 
     async def get_environment_state(self, session: UltraSession) -> UltraEnvironmentState:
         """Read environmental, occupancy, and count states from the local API."""
-        if session.device.type_id == TYPE_ULTRA or session.device.pid.lower() == PID_ULTRA:
-            return await self.get_legacy_environment_state(session)
         client = APIClient(
             session.device.ip,
             ESPHOME_API_PORT,
@@ -265,62 +250,6 @@ class UltraClient:
             device_id=session.device.id,
             values=values,
             available_fields=frozenset(attr for attrs in entity_attrs.values() for attr in attrs),
-            received_at=datetime.now(UTC),
-        )
-
-    async def get_legacy_environment_state(self, session: UltraSession) -> UltraEnvironmentState:
-        """Read legacy Ultra gateway state through the emotion protocol."""
-        try:
-            payload = await self.send_command(
-                session,
-                emotion.build_gateway_get_state_command(),
-            )
-            response = emotion.parse_gateway_state_response(payload)
-        except (UltraError, emotion.EmotionError) as err:
-            raise UltraProtocolError(f"legacy Ultra gateway state read failed: {err}") from err
-        if response.gateway_state is not None:
-            raw = response.gateway_state.attributes
-        elif response.subdevice_frame is not None:
-            try:
-                raw = emotion.parse_subdevice_json_payload(response.subdevice_frame)
-            except emotion.EmotionError as err:
-                raise UltraProtocolError(f"legacy Ultra gateway state payload is invalid: {err}") from err
-        else:
-            raise UltraProtocolError("legacy Ultra gateway response did not contain gateway state")
-        values: dict[str, int | float | bool] = {}
-        aliases = {
-            "envtemp": "temperature",
-            "temp": "temperature",
-            "tempsensor": "temperature",
-            "envhumid": "humidity",
-            "hum": "humidity",
-            "humsensor": "humidity",
-            "envlux": "illuminance",
-            "lux": "illuminance",
-            "pir_detected": "occupancy",
-            "presence": "occupancy",
-            "target_count": "target_count",
-            "persons_in_fenced_zones": "persons_in_fenced_zones",
-            "distance": "distance",
-            "target_distance": "target_distance",
-            "wifi_rssi": "wifi_signal",
-            "rssi": "wifi_signal",
-        }
-        for source, target in aliases.items():
-            if source not in raw:
-                continue
-            value = _normalize_legacy_value(target, raw[source])
-            if value is not None:
-                values[target] = value
-        # Keep position JSON available as a diagnostic attribute only when it is
-        # already reported by the gateway; legacy Ultra does not expose the
-        # Ultra2 radar configuration API.
-        session.last_seen = datetime.now(UTC)
-        available = frozenset(values)
-        return UltraEnvironmentState(
-            device_id=session.device.id,
-            values=values,
-            available_fields=available,
             received_at=datetime.now(UTC),
         )
 
@@ -664,7 +593,6 @@ class UltraClient:
             ip=raw.ip,
             port=raw.port or self.default_port,
             type_id=raw.device_type,
-            pid=PID_ULTRA if raw.device_type == TYPE_ULTRA else PID_ULTRA2,
             name=name,
             model=model,
             raw={"message_type": raw.message_type, "raw_len": len(raw.raw)},
@@ -756,9 +684,9 @@ def _outbound_ipv4() -> str:
 
 
 def _matches_ultra(device: UltraDevice) -> bool:
-    if device.pid.lower() in {PID_ULTRA, PID_ULTRA2}:
+    if device.pid.lower() == PID_ULTRA2:
         return True
-    return device.type_id in {TYPE_ULTRA, TYPE_ULTRA2, TYPE_ULTRA2_LAN}
+    return device.type_id in {TYPE_ULTRA2, TYPE_ULTRA2_LAN}
 
 
 def _esphome_entity_mapping(
@@ -802,26 +730,6 @@ def _normalize_esphome_value(attr: str, value: Any) -> int | float | bool | None
     if not math.isfinite(numeric):
         return None
     if attr in {"target_count", "persons_in_fenced_zones", "wifi_signal"} or attr.endswith("_target_counts"):
-        return round(numeric)
-    return numeric
-
-
-def _normalize_legacy_value(attr: str, value: Any) -> int | float | bool | None:
-    """Normalize legacy gateway JSON values to stable public field types."""
-    if attr == "occupancy":
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, (int, float)):
-            return value != 0
-        if isinstance(value, str):
-            return value.strip().lower() in {"1", "true", "on", "detected", "online"}
-        return None
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
-    numeric = float(value)
-    if not math.isfinite(numeric):
-        return None
-    if attr in {"target_count", "persons_in_fenced_zones"}:
         return round(numeric)
     return numeric
 
@@ -940,12 +848,11 @@ def _z_ranges_match(actual: object, expected: object) -> bool:
 
 
 def _model_for_device_type(device_type: int) -> str:
-    return DISPLAY_MODEL_ULTRA if device_type == TYPE_ULTRA else DISPLAY_MODEL_ULTRA2
+    del device_type
+    return DISPLAY_MODEL_ULTRA2
 
 
 def _auth_device_type_candidates(device_type: int) -> list[int]:
-    if device_type == TYPE_ULTRA:
-        return [TYPE_ULTRA, TYPE_ULTRA2, TYPE_ULTRA2_LAN]
     if device_type in {TYPE_ULTRA2, TYPE_ULTRA2_LAN}:
         values = [device_type, TYPE_ULTRA2, TYPE_ULTRA2_LAN]
     else:
@@ -954,11 +861,13 @@ def _auth_device_type_candidates(device_type: int) -> list[int]:
 
 
 def _command_device_type_candidates(session: UltraSession) -> list[int]:
-    if session.device.type_id == TYPE_ULTRA or session.device.pid.lower() == PID_ULTRA:
-        defaults = [TYPE_ULTRA, TYPE_ULTRA2, TYPE_ULTRA2_LAN]
-    else:
-        defaults = [TYPE_ULTRA2, TYPE_ULTRA2_LAN]
-    values = [session.command_device_type, session.auth_device_type, session.device.type_id, *defaults]
+    values = [
+        session.command_device_type,
+        session.auth_device_type,
+        session.device.type_id,
+        TYPE_ULTRA2,
+        TYPE_ULTRA2_LAN,
+    ]
     return _dedupe_ints(value for value in values if value)
 
 
