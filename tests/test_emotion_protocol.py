@@ -112,7 +112,7 @@ def test_emotion_pro_device_matching_and_auth_candidates() -> None:
     assert _matches_emotion_pro(normal)
     assert _matches_emotion_pro(radar)
     assert not _matches_ultra(normal)
-    assert not _matches_ultra(radar)
+    assert _matches_ultra(radar)
     assert _auth_device_type_candidates(TYPE_EMOTION_PRO, PID_EMOTION_PRO) == [TYPE_EMOTION_PRO]
     assert _auth_device_type_candidates(TYPE_EMOTION_PRO_RADAR, PID_EMOTION_PRO_RADAR) == [
         TYPE_ULTRA,

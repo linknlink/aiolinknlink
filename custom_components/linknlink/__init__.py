@@ -30,9 +30,13 @@ from homeassistant.helpers import device_registry as dr  # noqa: E402
 
 from aiolinknlink import (  # noqa: E402  # noqa: E402
     PID_EMOTION,
+    PID_EMOTION_PRO,
+    PID_EMOTION_PRO_RADAR,
     PID_ULTRA,
     TYPE_EMOTION,
     TYPE_EMOTION_WIRE,
+    TYPE_EMOTION_PRO,
+    TYPE_EMOTION_PRO_RADAR,
     TYPE_ULTRA,
     EHomeClient,
     EHomeError,
@@ -151,9 +155,17 @@ async def _async_setup_ultra_entry(hass: HomeAssistant, entry: LinknLinkConfigEn
         )
     coordinator = UltraDataUpdateCoordinator(hass, client, device, session, local_key=local_key)
     await coordinator.async_config_entry_first_refresh()
-    if device.type_id not in {TYPE_ULTRA, TYPE_EMOTION, TYPE_EMOTION_WIRE} and device.pid.lower() not in {
+    if device.type_id not in {
+        TYPE_ULTRA,
+        TYPE_EMOTION,
+        TYPE_EMOTION_WIRE,
+        TYPE_EMOTION_PRO,
+        TYPE_EMOTION_PRO_RADAR,
+    } and device.pid.lower() not in {
         PID_ULTRA,
         PID_EMOTION,
+        PID_EMOTION_PRO,
+        PID_EMOTION_PRO_RADAR,
     }:
         await coordinator.async_start_position()
     entry.runtime_data = coordinator

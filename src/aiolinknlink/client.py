@@ -1003,9 +1003,7 @@ def _outbound_ipv4() -> str:
 
 
 def _matches_ultra(device: UltraDevice) -> bool:
-    # Pro variants are intentionally kept out of the public discovery list
-    # until their state adapter and Home Assistant entities are complete.
-    if device.pid.lower() in {PID_ULTRA, PID_ULTRA2, PID_EMOTION}:
+    if device.pid.lower() in {PID_ULTRA, PID_ULTRA2, PID_EMOTION, PID_EMOTION_PRO, PID_EMOTION_PRO_RADAR}:
         return True
     return device.type_id in {
         TYPE_ULTRA,
@@ -1013,6 +1011,8 @@ def _matches_ultra(device: UltraDevice) -> bool:
         TYPE_ULTRA2_LAN,
         TYPE_EMOTION,
         TYPE_EMOTION_WIRE,
+        TYPE_EMOTION_PRO,
+        TYPE_EMOTION_PRO_RADAR,
     }
 
 
