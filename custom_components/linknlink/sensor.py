@@ -174,6 +174,24 @@ EMOTION_SENSORS = (
         icon="mdi:chip",
     ),
 )
+EMOTION_PRO_SENSORS = (
+    SensorEntityDescription(
+        key="temperature",
+        name="Temperature",
+        translation_key="temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    SensorEntityDescription(
+        key="humidity",
+        name="Humidity",
+        translation_key="humidity",
+        device_class=SensorDeviceClass.HUMIDITY,
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+)
 ESENSOR_2000_GEN1_SENSORS = (SR3_SENSORS[0], SR3_SENSORS[1], SR3_SENSORS[3])
 
 BOX7_SENSORS = (
@@ -608,6 +626,9 @@ async def async_setup_entry(
         async_add_entities(EHomeSensor(coordinator, description) for description in EHOME_SENSORS)
         return
     if isinstance(coordinator, UltraDataUpdateCoordinator):
+        if coordinator._is_emotion_pro:
+            async_add_entities(UltraSensor(coordinator, description) for description in EMOTION_PRO_SENSORS)
+            return
         if coordinator.device.pid.lower() == PID_EMOTION or coordinator.device.type_id in {
             TYPE_EMOTION,
             TYPE_EMOTION_WIRE,

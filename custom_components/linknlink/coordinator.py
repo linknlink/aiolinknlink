@@ -12,6 +12,8 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from aiolinknlink import (
     PID_EMOTION,
+    PID_EMOTION_PRO,
+    PID_EMOTION_PRO_RADAR,
     PID_ESENSOR_2000_GEN1,
     PID_ESENSOR_2000_GEN2,
     PID_SINGLE_CHANNEL_LIGHT_SWITCH,
@@ -23,6 +25,8 @@ from aiolinknlink import (
     TWO_CHANNEL_LIGHT_SCENE_FIELDS,
     TYPE_EMOTION,
     TYPE_EMOTION_WIRE,
+    TYPE_EMOTION_PRO,
+    TYPE_EMOTION_PRO_RADAR,
     TYPE_ULTRA,
     EHomeClient,
     EHomeConnectionError,
@@ -340,6 +344,9 @@ class UltraDataUpdateCoordinator(DataUpdateCoordinator[UltraCoordinatorData]):
                 raise UpdateFailed(f"Could not update Ultra2 {self.device.ip}: {err}") from err
 
     async def _read_data(self) -> UltraCoordinatorData:
+        if self._is_emotion_pro:
+            environment = await self.client.get_environment_state(self.session)
+            return UltraCoordinatorData(environment=environment, radar=None, position=None)
         if self._is_emotion:
             emotion = await self.client.get_emotion_state(self.session)
             environment = UltraEnvironmentState(
@@ -373,6 +380,26 @@ class UltraDataUpdateCoordinator(DataUpdateCoordinator[UltraCoordinatorData]):
     @property
     def _is_emotion(self) -> bool:
         return self.device.type_id in {TYPE_EMOTION, TYPE_EMOTION_WIRE} or self.device.pid.lower() == PID_EMOTION
+
+    @property
+    def _is_emotion_pro(self) -> bool:
+        return self.device.type_id in {TYPE_EMOTION_PRO, TYPE_EMOTION_PRO_RADAR} or self.device.pid.lower() in {
+            PID_EMOTION_PRO,
+            PID_EMOTION_PRO_RADAR,
+        }
+
+    async def async_set_pro_absence_delay(self, value: int) -> None:
+        """Set standard eMotion Pro absence delay and publish confirmation."""
+        try:
+            environment = await self.client.set_pro_absence_delay(self.session, value)
+        except UltraProtocolError:
+            raise
+        except (UltraConnectionError, UltraError):
+            self.session = await self.client.connect(self.device, session_key=self.local_key)
+            environment = await self.client.set_pro_absence_delay(self.session, value)
+        self.async_set_updated_data(
+            UltraCoordinatorData(environment=environment, radar=None, position=None)
+        )
 
     async def async_set_emotion_absence_delay(self, value: int) -> None:
         """Set eMotion absence delay and publish the confirmed state."""

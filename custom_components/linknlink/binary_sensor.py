@@ -108,6 +108,9 @@ async def async_setup_entry(
         async_add_entities([EHomePresenceSensor(coordinator)])
         return
     if isinstance(coordinator, UltraDataUpdateCoordinator):
+        if coordinator._is_emotion_pro:
+            async_add_entities([UltraBinarySensor(coordinator, ULTRA_BINARY_SENSORS[0])])
+            return
         is_emotion = coordinator.device.pid.lower() == PID_EMOTION or coordinator.device.type_id in {
             TYPE_EMOTION,
             TYPE_EMOTION_WIRE,

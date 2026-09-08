@@ -328,6 +328,23 @@ class UltraClient:
             received_at=datetime.now(UTC),
         )
 
+    async def set_pro_absence_delay(self, session: UltraSession, seconds: int) -> UltraEnvironmentState:
+        """Set the standard eMotion Pro absence delay and verify it."""
+        if isinstance(seconds, bool) or not isinstance(seconds, int) or not 0 <= seconds <= 0xFFFF * 60:
+            raise ValueError("eMotion Pro absence delay must be between 0 and 3932100 seconds")
+        if seconds % 60:
+            raise ValueError("eMotion Pro absence delay must use whole minutes")
+        await self.send_command(
+            session,
+            keyvalue.build_set_status_frame({"delaytime": seconds // 60}),
+        )
+        state = await self._get_pro_environment_state(session)
+        if state.values.get("absence_delay") != seconds:
+            raise UltraProtocolError(
+                f"eMotion Pro delaytime read-back mismatch ({state.values.get('absence_delay')!r}, expected {seconds!r})"
+            )
+        return state
+
     async def get_emotion_state(
         self,
         session: UltraSession,

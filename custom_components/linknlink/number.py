@@ -174,6 +174,21 @@ EMOTION_NUMBERS = (
         icon="mdi:radar",
     ),
 )
+EMOTION_PRO_NUMBERS = (
+    UltraRadarNumberEntityDescription(
+        key="absence_delay",
+        name="Absence delay",
+        translation_key="emotion_pro_absence_delay",
+        native_min_value=0,
+        native_max_value=0xFFFF * 60,
+        native_step=60,
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        integer=True,
+        mode=NumberMode.BOX,
+        entity_category=EntityCategory.CONFIG,
+        icon="mdi:timer-outline",
+    ),
+)
 
 
 async def async_setup_entry(
@@ -188,6 +203,9 @@ async def async_setup_entry(
         async_add_entities([EHomeAbsenceDelay(coordinator)])
         return
     if isinstance(coordinator, UltraDataUpdateCoordinator):
+        if coordinator._is_emotion_pro:
+            async_add_entities(UltraRadarNumber(coordinator, description) for description in EMOTION_PRO_NUMBERS)
+            return
         is_emotion = coordinator.device.pid.lower() == PID_EMOTION or coordinator.device.type_id in {
             TYPE_EMOTION,
             TYPE_EMOTION_WIRE,
@@ -269,7 +287,10 @@ class UltraRadarNumber(UltraCoordinatorEntity, NumberEntity):
     @property
     def native_value(self) -> float | None:
         """Return the device-read radar configuration value."""
-        value = self._emotion_value() if self.coordinator._is_emotion else self._radar_value()
+        if self.coordinator._is_emotion_pro:
+            value = self._environment_value()
+        else:
+            value = self._emotion_value() if self.coordinator._is_emotion else self._radar_value()
         return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
 
     async def async_set_native_value(self, value: float) -> None:
@@ -279,7 +300,10 @@ class UltraRadarNumber(UltraCoordinatorEntity, NumberEntity):
                 raise ValueError(f"{self.key} requires a whole number")
             integer = int(value)
             if self.key == "absence_delay":
-                await self.coordinator.async_set_emotion_absence_delay(integer)
+                if self.coordinator._is_emotion_pro:
+                    await self.coordinator.async_set_pro_absence_delay(integer)
+                else:
+                    await self.coordinator.async_set_emotion_absence_delay(integer)
                 return
             if self.key == "sensitivity" and self.coordinator._is_emotion:
                 await self.coordinator.async_set_emotion_sensitivity(integer)
