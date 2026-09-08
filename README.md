@@ -159,10 +159,18 @@ and the normalized read-back must confirm the request:
 state = await client.set_subdevice_state(session, dtu, {"pwr1": True, "voltage": 7.5})
 ```
 
-For development testing, the repository also contains a Home Assistant custom
-integration in `custom_components/linknlink`. Copy that directory into the HA
-configuration's `custom_components` directory and install this checkout of
-`aiolinknlink` in the HA Python environment.
+The repository also contains a self-contained Home Assistant custom
+integration in `custom_components/linknlink`. It is intended to be installed
+through HACS; the client library is bundled inside the integration, so an HA
+host does not need a separate checkout or manual Python path configuration.
+For local development, the same directory can be copied into the HA
+configuration's `custom_components` directory.
+
+When changing `src/aiolinknlink`, refresh the HACS copy with:
+
+```bash
+python3 scripts/sync-bundled-library.py
+```
 
 The reproducible HA Container deployment, upgrade, rollback, verification, and
 recovery procedure is documented in [docs/IBG_INTEGRATION.md](docs/IBG_INTEGRATION.md).

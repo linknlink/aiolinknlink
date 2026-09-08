@@ -9,11 +9,18 @@ from typing import TypeAlias
 
 # Development deployments keep the library checkout in HA's persistent
 # configuration volume, so container replacement does not remove it.
-_LIBRARY_SOURCE = Path(__file__).parents[2] / "deps" / "aiolinknlink" / "src"
-if _LIBRARY_SOURCE.is_dir():
-    with suppress(ValueError):
-        sys.path.remove(str(_LIBRARY_SOURCE))
-    sys.path.insert(0, str(_LIBRARY_SOURCE))
+_DEVELOPMENT_LIBRARY_SOURCE = Path(__file__).parents[2] / "deps" / "aiolinknlink" / "src"
+_BUNDLED_LIBRARY_SOURCE = Path(__file__).parent / "aiolinknlink"
+
+# Internal deployments may provide a newer checkout in /config/deps. HACS
+# installs use the bundled client library next to this integration instead.
+# Insert the bundled path first, then the development path so the latter wins
+# when both are present.
+for _library_source in (_BUNDLED_LIBRARY_SOURCE, _DEVELOPMENT_LIBRARY_SOURCE):
+    if _library_source.is_dir():
+        with suppress(ValueError):
+            sys.path.remove(str(_library_source))
+        sys.path.insert(0, str(_library_source))
 
 from homeassistant.config_entries import ConfigEntry  # noqa: E402
 from homeassistant.const import CONF_HOST  # noqa: E402

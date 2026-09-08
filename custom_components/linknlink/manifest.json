@@ -6,5 +6,9 @@
   "documentation": "https://github.com/linknlink/aiolinknlink",
   "integration_type": "hub",
   "iot_class": "local_push",
+  "requirements": [
+    "aioesphomeapi>=45.6.0,<46.0",
+    "cryptography>=41.0.0"
+  ],
   "version": "0.18.0"
 }
