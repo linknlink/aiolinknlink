@@ -166,6 +166,27 @@ host does not need a separate checkout or manual Python path configuration.
 For local development, the same directory can be copied into the HA
 configuration's `custom_components` directory.
 
+## Home Assistant / HACS installation
+
+After this repository is added to HACS as a custom `Integration` repository:
+
+1. Install **LinknLink** from HACS.
+2. Restart Home Assistant.
+3. Open **Settings → Devices & services → Add integration**.
+4. Select **LinknLink** and enter the local IP address of an iBG, eHome, or
+   eMotion device.
+
+The integration discovers the product family locally and stores any negotiated
+local key in the Home Assistant config entry. Do not copy the development
+`deps/aiolinknlink` directory into a production HACS installation.
+
+For maintainers, validate the package before creating a release:
+
+```bash
+python3 scripts/validate-hacs.py
+python3 -m pytest tests/test_hacs_bundle.py
+```
+
 When changing `src/aiolinknlink`, refresh the HACS copy with:
 
 ```bash
