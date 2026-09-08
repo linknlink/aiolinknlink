@@ -1,4 +1,4 @@
-"""Data models for the eMotion Ultra2 integration."""
+"""Data models for LinknLink local integrations."""
 
 from __future__ import annotations
 
@@ -6,6 +6,49 @@ import math
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
+
+
+@dataclass(slots=True)
+class IbgDevice:
+    """Discovered iBG gateway."""
+
+    id: str
+    ip: str
+    port: int
+    mac: str = ""
+    type_id: int = 0
+    name: str = "iBG"
+    model: str = "iBG2 SE"
+
+
+@dataclass(slots=True)
+class IbgSession:
+    """Authenticated iBG LAN session."""
+
+    device: IbgDevice
+    session_key: bytes | None = field(default=None, repr=False)
+    command_sequence: int = 0
+    last_auth_at: datetime | None = None
+    last_seen: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class IbgSubDevice:
+    """One subdevice reported by an iBG gateway."""
+
+    did: str
+    pid: str
+    name: str
+    online: bool
+
+
+@dataclass(frozen=True, slots=True)
+class IbgSubDeviceState:
+    """Safe, normalized state exposed for one iBG subdevice."""
+
+    device: IbgSubDevice
+    values: dict[str, int | float | bool | str]
+    received_at: datetime
 
 
 @dataclass(slots=True)
@@ -48,6 +91,18 @@ class UltraEnvironmentState:
     device_id: str
     values: dict[str, int | float | bool]
     available_fields: frozenset[str]
+    received_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class EmotionPresenceState:
+    """Locally reported eMotion presence-sensor state."""
+
+    device_id: str
+    occupied: bool
+    absence_delay: int
+    sensitivity: int
+    firmware_version: int
     received_at: datetime
 
 

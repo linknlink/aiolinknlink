@@ -37,6 +37,30 @@ class EmotionError(Exception):
     """Base emotion protocol error."""
 
 
+def build_keyvalue_request(fields: dict[str, Any] | None = None) -> bytes:
+    """Build the radar_env firmware's raw JSON KeyValue request."""
+    if not fields:
+        return b""
+    return json.dumps(fields, separators=(",", ":")).encode()
+
+
+def parse_keyvalue_status(payload: bytes) -> dict[str, Any]:
+    """Parse a radar_env JSON status response."""
+    body = payload.rstrip(b"\x00")
+    if not body:
+        raise EmotionError("empty KeyValue status response")
+    end = body.rfind(b"}")
+    if end >= 0:
+        body = body[: end + 1]
+    try:
+        raw = json.loads(body.decode())
+    except (UnicodeDecodeError, json.JSONDecodeError) as err:
+        raise EmotionError(f"parse KeyValue status: {err}") from err
+    if not isinstance(raw, dict):
+        raise EmotionError("KeyValue status is not an object")
+    return raw
+
+
 @dataclass(slots=True)
 class SubdeviceFrame:
     """Parsed SubdeviceFrame."""

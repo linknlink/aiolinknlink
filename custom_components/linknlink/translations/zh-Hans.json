@@ -1,0 +1,189 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "连接 LinknLink 设备",
+        "description": "请输入受支持的 iBG 网关或 eMotion 设备的局域网 IP 地址。",
+        "data": {"host": "主机地址", "local_key": "本地密钥（可选）"}
+      }
+    },
+    "error": {
+      "cannot_connect": "无法连接受支持的 LinknLink 设备",
+      "unknown": "发生未知错误",
+      "invalid_local_key": "本地密钥必须是32位十六进制字符"
+    },
+    "abort": {"already_configured": "此 LinknLink 设备已经配置"}
+  },
+  "entity": {
+    "sensor": {
+      "temperature": {"name": "温度"},
+      "humidity": {"name": "湿度"},
+      "illuminance": {"name": "照度"},
+      "battery": {"name": "电量"},
+      "power": {"name": "当前功率"},
+      "total_energy": {"name": "累计电量"},
+      "temperature_1": {"name": "温度1"},
+      "temperature_2": {"name": "温度2"},
+      "temperature_3": {"name": "温度3"},
+      "temperature_4": {"name": "温度4"},
+      "phase_a_voltage": {"name": "A相电压"},
+      "phase_b_voltage": {"name": "B相电压"},
+      "phase_c_voltage": {"name": "C相电压"},
+      "phase_a_current": {"name": "A相电流"},
+      "phase_b_current": {"name": "B相电流"},
+      "phase_c_current": {"name": "C相电流"},
+      "analog_input_1": {"name": "模拟量输入1"},
+      "analog_input_2": {"name": "模拟量输入2"},
+      "analog_input_3": {"name": "模拟量输入3"},
+      "fault_code": {"name": "故障码"},
+      "carbon_dioxide": {"name": "二氧化碳浓度"},
+      "total_water": {"name": "累计用水量"},
+      "water_flow_rate": {"name": "瞬时流量"},
+      "combined_active_energy": {"name": "组合有功电能"},
+      "forward_active_energy": {"name": "正向有功电能"},
+      "reverse_active_energy": {"name": "反向有功电能"},
+      "line_ab_voltage": {"name": "AB线电压"},
+      "line_bc_voltage": {"name": "BC线电压"},
+      "line_ac_voltage": {"name": "AC线电压"},
+      "total_active_power": {"name": "合相有功功率"},
+      "phase_a_active_power": {"name": "A相有功功率"},
+      "phase_b_active_power": {"name": "B相有功功率"},
+      "phase_c_active_power": {"name": "C相有功功率"},
+      "combined_power_factor": {"name": "合相功率因数"},
+      "phase_a_power_factor": {"name": "A相功率因数"},
+      "phase_b_power_factor": {"name": "B相功率因数"},
+      "phase_c_power_factor": {"name": "C相功率因数"},
+      "phase_a_harmonic_current": {"name": "A相谐波电流"},
+      "phase_b_harmonic_current": {"name": "B相谐波电流"},
+      "phase_c_harmonic_current": {"name": "C相谐波电流"},
+      "frequency": {"name": "频率"},
+      "phase_a_reactive_power": {"name": "A相无功功率"},
+      "phase_b_reactive_power": {"name": "B相无功功率"},
+      "phase_c_reactive_power": {"name": "C相无功功率"},
+      "total_reactive_power": {"name": "合相无功功率"},
+      "reported_device_name": {"name": "设备上报名称"},
+      "electrical_parameters": {"name": "电参量配置"},
+      "modbus_address": {"name": "Modbus地址"},
+      "dlt645_address": {"name": "DLT645地址"},
+      "transformer_ratio": {"name": "互感器变比"},
+      "modbus_read_result": {
+        "name": "Modbus读取结果",
+        "state": {"success": "成功", "failure": "失败", "partial_success": "部分成功"}
+      },
+      "modbus_write_result": {
+        "name": "Modbus写入结果",
+        "state": {"success": "成功", "failure": "失败", "partial_success": "部分成功"}
+      },
+      "indoor_humidity": {"name": "室内湿度"},
+      "wifi_signal": {"name": "Wi-Fi 信号"},
+      "target_count": {"name": "目标数量"},
+      "persons_in_fenced_zones": {"name": "围栏区域内人数"},
+      "zone_1_target_count": {"name": "区域1目标数量"},
+      "zone_2_target_count": {"name": "区域2目标数量"},
+      "zone_3_target_count": {"name": "区域3目标数量"},
+      "zone_4_target_count": {"name": "区域4目标数量"},
+      "position_targets": {"name": "定位目标"},
+      "nearest_horizontal_distance": {"name": "最近目标水平距离"},
+      "nearest_distance": {"name": "最近目标三维距离"},
+      "distance": {"name": "距离"},
+      "target_distance": {"name": "目标距离"},
+      "ac_panel_device_type": {
+        "name": "设备类型",
+        "state": {"water_cooled": "水机", "vrv": "VRV"}
+      },
+      "firmware_version": {"name": "固件版本"}
+    },
+    "binary_sensor": {
+      "occupancy": {"name": "人体感应"},
+      "signal_input_1": {"name": "信号输入1"},
+      "signal_input_2": {"name": "信号输入2"},
+      "signal_input_3": {"name": "信号输入3"},
+      "phase_a_overload": {"name": "A相过载"},
+      "phase_b_overload": {"name": "B相过载"},
+      "phase_c_overload": {"name": "C相过载"},
+      "position_subscription": {"name": "定位订阅"},
+      "zone_1_presence": {"name": "区域1有人"},
+      "zone_2_presence": {"name": "区域2有人"},
+      "zone_3_presence": {"name": "区域3有人"},
+      "zone_4_presence": {"name": "区域4有人"}
+    },
+    "event": {
+      "key": {"name": "按键"},
+      "esensor_key": {
+        "name": "按键",
+        "event_type": {
+          "pressed": "按下",
+          "double_pressed": "双击",
+          "long_pressed": "长按"
+        }
+      },
+      "esensor_gen1_key": {
+        "name": "按键",
+        "event_type": {
+          "pressed": "按下",
+          "double_pressed": "双击"
+        }
+      },
+      "scene_key_1": {
+        "name": "场景按键1",
+        "event_type": {"pressed": "按下"}
+      },
+      "scene_key_2": {
+        "name": "场景按键2",
+        "event_type": {"pressed": "按下"}
+      },
+      "scene_key_3": {
+        "name": "场景按键3",
+        "event_type": {"pressed": "按下"}
+      },
+      "scene_key_4": {
+        "name": "场景按键4",
+        "event_type": {"pressed": "按下"}
+      },
+      "scene_key_5": {
+        "name": "场景按键5",
+        "event_type": {"pressed": "按下"}
+      },
+      "scene_key_6": {
+        "name": "场景按键6",
+        "event_type": {"pressed": "按下"}
+      }
+    },
+    "number": {
+      "voltage_output": {"name": "电压输出"},
+      "radar_sensitivity": {"name": "灵敏度级别"},
+      "radar_trigger_speed": {"name": "触发速度级别"},
+      "radar_install_mode": {"name": "安装模式"},
+      "radar_height": {"name": "安装高度"},
+      "radar_install_direction": {"name": "安装方向"},
+      "radar_z_range_minimum": {"name": "Z轴最小检测范围"},
+      "radar_z_range_maximum": {"name": "Z轴最大检测范围"},
+      "radar_default_absence_delay": {"name": "默认无人延迟"},
+      "radar_zone_1_absence_delay": {"name": "区域1无人延迟"},
+      "radar_zone_2_absence_delay": {"name": "区域2无人延迟"},
+      "radar_zone_3_absence_delay": {"name": "区域3无人延迟"},
+      "radar_zone_4_absence_delay": {"name": "区域4无人延迟"}
+      ,
+      "emotion_absence_delay": {"name": "无人延迟"},
+      "emotion_sensitivity": {"name": "灵敏度级别"},
+      "absence_delay": {"name": "无人延迟"}
+    },
+    "climate": {
+      "air_conditioner": {"name": "空调"},
+      "water_ac_panel": {"name": "水冷空调"},
+      "eac1_air_conditioner": {"name": "空调"}
+    },
+    "switch": {
+      "switch_1": {"name": "开关1"},
+      "switch_2": {"name": "开关2"},
+      "switch_3": {"name": "开关3"},
+      "switch_4": {"name": "开关4"},
+      "switch_5": {"name": "开关5"},
+      "switch_6": {"name": "开关6"},
+      "switch_7": {"name": "开关7"},
+      "all_switches": {"name": "全部开关"},
+      "key_lock": {"name": "按键锁定"},
+      "panel_backlight": {"name": "面板背光"}
+    }
+  }
+}
