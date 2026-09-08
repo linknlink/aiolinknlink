@@ -25,7 +25,7 @@ from aiolinknlink.client import (
     _matches_emotion_pro,
     _matches_ultra,
 )
-from aiolinknlink.protocol import dna, emotion
+from aiolinknlink.protocol import dna, emotion, keyvalue
 
 
 def test_keyvalue_helpers_round_trip() -> None:
@@ -138,3 +138,47 @@ async def test_emotion_pro_auth_forces_legacy_blc_transport(monkeypatch: pytest.
 
     assert session.session_key == b"0123456789abcdef"
     assert send.call_args.kwargs["force_blc"] is True
+
+
+def test_keyvalue_frame_round_trip() -> None:
+    frame = keyvalue.build_set_status_frame({"delaytime": 60, "enabled": True})
+
+    command, payload = keyvalue.parse_frame(frame)
+
+    assert command == keyvalue.CMD_SET_STATUS
+    assert payload == b'{"delaytime":60,"enabled":true}'
+
+
+def test_keyvalue_status_response_round_trip() -> None:
+    response = keyvalue.build_frame(
+        keyvalue.CMD_STATUS_RESPONSE,
+        b'{"tempsensor":235,"humsensor":48,"pir_detected":1}\x00',
+    )
+
+    assert keyvalue.parse_status_response(response) == {
+        "tempsensor": 235,
+        "humsensor": 48,
+        "pir_detected": 1,
+    }
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda frame: frame[:4] + b"\x00" + frame[5:],
+        lambda frame: frame[:8] + b"\xff\xff" + frame[10:],
+        lambda frame: frame[:-1],
+    ],
+)
+def test_keyvalue_rejects_corrupt_frames(mutate: object) -> None:
+    frame = keyvalue.build_get_status_frame()
+
+    with pytest.raises(keyvalue.KeyValueError):
+        keyvalue.parse_frame(mutate(frame))  # type: ignore[operator]
+
+
+def test_keyvalue_rejects_non_object_status() -> None:
+    response = keyvalue.build_frame(keyvalue.CMD_STATUS_RESPONSE, b"[]")
+
+    with pytest.raises(keyvalue.KeyValueError, match="not an object"):
+        keyvalue.parse_status_response(response)
