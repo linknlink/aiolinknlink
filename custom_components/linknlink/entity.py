@@ -6,7 +6,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
-from .coordinator import IbgDataUpdateCoordinator, UltraDataUpdateCoordinator
+from .coordinator import IbgDataUpdateCoordinator
 
 SUBDEVICE_MODELS = {
     "00000000000000000000000005000100": "RF environment/occupancy sensor",
@@ -67,60 +67,3 @@ class IbgCoordinatorEntity(CoordinatorEntity[IbgDataUpdateCoordinator]):
         if state is None:
             return None
         return state.values.get(self.key)
-
-
-class UltraCoordinatorEntity(CoordinatorEntity[UltraDataUpdateCoordinator]):
-    """Base entity for one Ultra2 environment or radar field."""
-
-    _attr_has_entity_name = True
-
-    def __init__(self, coordinator: UltraDataUpdateCoordinator, key: str) -> None:
-        super().__init__(coordinator)
-        self.key = key
-        self._attr_unique_id = f"{coordinator.device.id}_{key}"
-
-    @property
-    def available(self) -> bool:
-        """Report availability for optional environment and radar fields."""
-        if not super().available or self.coordinator.data is None:
-            return False
-        if self.key in self.coordinator.data.environment.available_fields:
-            return self.key in self.coordinator.data.environment.values
-        return self._radar_value() is not None
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return the Ultra2 device registry information."""
-        return DeviceInfo(
-            identifiers={(DOMAIN, self.coordinator.device.id)},
-            name=self.coordinator.device.name,
-            manufacturer="LinknLink",
-            model=self.coordinator.device.model,
-        )
-
-    def _environment_value(self) -> int | float | bool | None:
-        return self.coordinator.data.environment.values.get(self.key)
-
-    def _radar_value(self) -> int | float | None:
-        radar = self.coordinator.data.radar
-        if self.key == "sensitivity":
-            return radar.sensitivity
-        if self.key == "trigger_speed":
-            return radar.trigger_speed
-        if self.key == "install_mode":
-            return radar.install_mode
-        if self.key == "height":
-            return radar.height
-        if self.key == "install_direction":
-            return radar.install_direction
-        if self.key == "z_range_minimum":
-            return radar.z_range.minimum if radar.z_range is not None else None
-        if self.key == "z_range_maximum":
-            return radar.z_range.maximum if radar.z_range is not None else None
-        if self.key == "default_absence_delay":
-            return radar.default_absence_delay
-        if self.key.startswith("zone_") and self.key.endswith("_absence_delay"):
-            zone_text = self.key.removeprefix("zone_").removesuffix("_absence_delay")
-            if zone_text.isdigit() and 1 <= (zone := int(zone_text)) <= 4:
-                return radar.zone_absence_delays[zone - 1]
-        return None

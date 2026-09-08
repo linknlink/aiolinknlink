@@ -2,16 +2,6 @@
 
 ## Unreleased
 
-- Add eMotion Ultra2 auto-detection to the Home Assistant config flow while
-  preserving existing iBG entries and their local-key handling.
-- Add Ultra2 temperature, humidity, illuminance, Wi-Fi signal, occupancy,
-  total/fenced/Zone 1-4 target counts, and Zone 1-4 presence entities.
-- Add maintained local UDP multi-target position subscriptions with target
-  coordinates, nearest horizontal distance, and nearest three-dimensional
-  distance entities.
-- Add device-confirmed Ultra2 radar controls for sensitivity, trigger speed,
-  installation mode, height, direction, Z-axis limits, default absence delay,
-  and Zone 1-4 absence delays.
 - Add PID `20110100` single-channel light switches with confirmed `pwr1` and
   panel-backlight (`bglight`) switches, plus separate momentary scene-button
   events for `scenarioswitch_1` and `scenarioswitch_2`.

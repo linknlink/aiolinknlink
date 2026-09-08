@@ -2,17 +2,17 @@
   "config": {
     "step": {
       "user": {
-        "title": "Connect to a LinknLink device",
-        "description": "Enter the local IP address of a supported iBG gateway or eMotion Ultra2.",
+        "title": "Connect to LinknLink iBG",
+        "description": "Enter the local IP address of your iBG gateway.",
         "data": {"host": "Host", "local_key": "Local key (optional)"}
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect to a supported LinknLink device",
+      "cannot_connect": "Failed to connect to the iBG gateway",
       "unknown": "Unexpected error",
       "invalid_local_key": "The local key must contain exactly 32 hexadecimal characters"
     },
-    "abort": {"already_configured": "This LinknLink device is already configured"}
+    "abort": {"already_configured": "This iBG gateway is already configured"}
   },
   "entity": {
     "sensor": {
@@ -75,16 +75,6 @@
         "state": {"success": "Success", "failure": "Failure", "partial_success": "Partial success"}
       },
       "indoor_humidity": {"name": "Indoor humidity"},
-      "wifi_signal": {"name": "Wi-Fi signal"},
-      "target_count": {"name": "Target count"},
-      "persons_in_fenced_zones": {"name": "Persons in fenced zones"},
-      "zone_1_target_count": {"name": "Zone 1 target count"},
-      "zone_2_target_count": {"name": "Zone 2 target count"},
-      "zone_3_target_count": {"name": "Zone 3 target count"},
-      "zone_4_target_count": {"name": "Zone 4 target count"},
-      "position_targets": {"name": "Position targets"},
-      "nearest_horizontal_distance": {"name": "Nearest horizontal distance"},
-      "nearest_distance": {"name": "Nearest 3D distance"},
       "ac_panel_device_type": {
         "name": "Device type",
         "state": {"water_cooled": "Water-cooled", "vrv": "VRV"}
@@ -97,12 +87,7 @@
       "signal_input_3": {"name": "Signal input 3"},
       "phase_a_overload": {"name": "Phase A overload"},
       "phase_b_overload": {"name": "Phase B overload"},
-      "phase_c_overload": {"name": "Phase C overload"},
-      "position_subscription": {"name": "Position subscription"},
-      "zone_1_presence": {"name": "Zone 1 presence"},
-      "zone_2_presence": {"name": "Zone 2 presence"},
-      "zone_3_presence": {"name": "Zone 3 presence"},
-      "zone_4_presence": {"name": "Zone 4 presence"}
+      "phase_c_overload": {"name": "Phase C overload"}
     },
     "event": {
       "key": {"name": "Key"},
@@ -146,21 +131,7 @@
         "event_type": {"pressed": "Pressed"}
       }
     },
-    "number": {
-      "voltage_output": {"name": "Voltage output"},
-      "radar_sensitivity": {"name": "Sensitivity level"},
-      "radar_trigger_speed": {"name": "Trigger speed level"},
-      "radar_install_mode": {"name": "Installation mode"},
-      "radar_height": {"name": "Installation height"},
-      "radar_install_direction": {"name": "Installation direction"},
-      "radar_z_range_minimum": {"name": "Minimum Z-axis range"},
-      "radar_z_range_maximum": {"name": "Maximum Z-axis range"},
-      "radar_default_absence_delay": {"name": "Default absence delay"},
-      "radar_zone_1_absence_delay": {"name": "Zone 1 absence delay"},
-      "radar_zone_2_absence_delay": {"name": "Zone 2 absence delay"},
-      "radar_zone_3_absence_delay": {"name": "Zone 3 absence delay"},
-      "radar_zone_4_absence_delay": {"name": "Zone 4 absence delay"}
-    },
+    "number": {"voltage_output": {"name": "Voltage output"}},
     "climate": {
       "air_conditioner": {"name": "Air conditioner"},
       "water_ac_panel": {"name": "Water-cooled air conditioner"},

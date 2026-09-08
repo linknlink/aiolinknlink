@@ -4,14 +4,6 @@
 
 The library implements LinknLink DNA discovery, authentication, encrypted UDP transport, local multi-target radar position subscriptions, environmental and occupancy state reads, and device-verified radar configuration. It communicates directly with devices on the local network and does not require a cloud service or MQTT broker.
 
-The included Home Assistant custom integration automatically distinguishes
-supported iBG gateways from eMotion Ultra2 devices by their local discovery
-identity. Ultra2 entities include temperature, humidity, illuminance, Wi-Fi
-signal, occupancy, target counts, per-zone presence/counts, multi-target
-coordinates and nearest distances, plus device-confirmed radar configuration
-controls. Existing iBG entries without a stored product-family marker remain
-compatible.
-
 An Ultra2 stores one local UDP position destination. Running another position subscriber for the same device redirects updates away from the current subscriber.
 
 Supported radar configuration includes sensitivity, trigger speed, installation mode, installation height, installation direction, Z-axis detection limits, the default absence delay, and Zone 1-4 absence delays. Every write API performs a separate device status read and raises an error when the read-back does not match.

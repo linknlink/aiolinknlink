@@ -5,9 +5,6 @@ from homeassistant.const import Platform
 DOMAIN = "linknlink"
 CONF_HOST = "host"
 CONF_LOCAL_KEY = "local_key"
-CONF_DEVICE_TYPE = "device_type"
-DEVICE_TYPE_IBG = "ibg"
-DEVICE_TYPE_ULTRA2 = "ultra2"
 PLATFORMS = (
     Platform.SENSOR,
     Platform.BINARY_SENSOR,

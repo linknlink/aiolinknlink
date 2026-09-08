@@ -1,8 +1,7 @@
-"""Config flow for local LinknLink devices."""
+"""Config flow for LinknLink iBG gateways."""
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 import voluptuous as vol
@@ -10,29 +9,13 @@ from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_HOST
 from homeassistant.helpers.selector import TextSelector, TextSelectorConfig, TextSelectorType
 
-from aiolinknlink import (
-    IbgClient,
-    IbgConnectionError,
-    IbgDevice,
-    IbgError,
-    UltraClient,
-    UltraConnectionError,
-    UltraDevice,
-    UltraError,
-)
+from aiolinknlink import IbgClient, IbgConnectionError, IbgError
 
-from .const import (
-    CONF_DEVICE_TYPE,
-    CONF_LOCAL_KEY,
-    DEVICE_TYPE_IBG,
-    DEVICE_TYPE_ULTRA2,
-    DOMAIN,
-    resolve_local_key_hex,
-)
+from .const import CONF_LOCAL_KEY, DOMAIN, resolve_local_key_hex
 
 
 class LinknLinkConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Configure a local LinknLink device."""
+    """Configure a local LinknLink gateway."""
 
     VERSION = 1
 
@@ -48,38 +31,28 @@ class LinknLinkConfigFlow(ConfigFlow, domain=DOMAIN):
                 ):
                     errors[CONF_LOCAL_KEY] = "invalid_local_key"
                     raise ValueError
-                device = await _discover_device(host)
-                if isinstance(device, IbgDevice):
-                    client = IbgClient()
-                    session = await client.connect(
-                        device, local_key=bytes.fromhex(local_key_hex) if local_key_hex else None
-                    )
-                    await client.list_subdevices(session)
-                    stored_local_key_hex = resolve_local_key_hex(local_key_hex, session.session_key)
-                    entry_data = {
-                        CONF_HOST: device.ip,
-                        CONF_DEVICE_TYPE: DEVICE_TYPE_IBG,
-                        **({CONF_LOCAL_KEY: stored_local_key_hex} if stored_local_key_hex else {}),
-                    }
-                else:
-                    client = UltraClient()
-                    await client.connect(device)
-                    entry_data = {
-                        CONF_HOST: device.ip,
-                        CONF_DEVICE_TYPE: DEVICE_TYPE_ULTRA2,
-                    }
+                client = IbgClient()
+                device = await client.discover_host(host)
+                session = await client.connect(
+                    device, local_key=bytes.fromhex(local_key_hex) if local_key_hex else None
+                )
+                await client.list_subdevices(session)
             except ValueError:
                 pass
-            except (IbgConnectionError, UltraConnectionError):
+            except IbgConnectionError:
                 errors["base"] = "cannot_connect"
-            except (IbgError, UltraError):
+            except IbgError:
                 errors["base"] = "unknown"
             else:
                 await self.async_set_unique_id(device.id)
                 self._abort_if_unique_id_configured(updates={CONF_HOST: device.ip})
+                stored_local_key_hex = resolve_local_key_hex(local_key_hex, session.session_key)
                 return self.async_create_entry(
                     title=f"{device.model} ({device.ip})",
-                    data=entry_data,
+                    data={
+                        CONF_HOST: device.ip,
+                        **({CONF_LOCAL_KEY: stored_local_key_hex} if stored_local_key_hex else {}),
+                    },
                 )
         return self.async_show_form(
             step_id="user",
@@ -93,22 +66,3 @@ class LinknLinkConfigFlow(ConfigFlow, domain=DOMAIN):
             ),
             errors=errors,
         )
-
-
-async def _discover_device(host: str) -> IbgDevice | UltraDevice:
-    """Detect one supported device without assuming its product family."""
-    ibg_result, ultra_result = await asyncio.gather(
-        IbgClient().discover_host(host),
-        UltraClient().discover_host(host),
-        return_exceptions=True,
-    )
-    if isinstance(ibg_result, IbgDevice):
-        return ibg_result
-    if isinstance(ultra_result, UltraDevice):
-        return ultra_result
-    if isinstance(ibg_result, IbgConnectionError) and isinstance(ultra_result, UltraConnectionError):
-        raise IbgConnectionError(f"no supported LinknLink device found at {host}")
-    for result in (ibg_result, ultra_result):
-        if isinstance(result, (IbgError, UltraError)):
-            raise result
-    raise IbgConnectionError(f"no supported LinknLink device found at {host}")

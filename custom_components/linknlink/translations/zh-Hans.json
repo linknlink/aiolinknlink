@@ -2,17 +2,17 @@
   "config": {
     "step": {
       "user": {
-        "title": "连接 LinknLink 设备",
-        "description": "请输入受支持的 iBG 网关或 eMotion Ultra2 的局域网 IP 地址。",
+        "title": "连接 LinknLink iBG",
+        "description": "请输入 iBG 网关的局域网 IP 地址。",
         "data": {"host": "主机地址", "local_key": "本地密钥（可选）"}
       }
     },
     "error": {
-      "cannot_connect": "无法连接受支持的 LinknLink 设备",
+      "cannot_connect": "无法连接 iBG 网关",
       "unknown": "发生未知错误",
       "invalid_local_key": "本地密钥必须是32位十六进制字符"
     },
-    "abort": {"already_configured": "此 LinknLink 设备已经配置"}
+    "abort": {"already_configured": "此 iBG 网关已经配置"}
   },
   "entity": {
     "sensor": {
@@ -75,16 +75,6 @@
         "state": {"success": "成功", "failure": "失败", "partial_success": "部分成功"}
       },
       "indoor_humidity": {"name": "室内湿度"},
-      "wifi_signal": {"name": "Wi-Fi 信号"},
-      "target_count": {"name": "目标数量"},
-      "persons_in_fenced_zones": {"name": "围栏区域内人数"},
-      "zone_1_target_count": {"name": "区域1目标数量"},
-      "zone_2_target_count": {"name": "区域2目标数量"},
-      "zone_3_target_count": {"name": "区域3目标数量"},
-      "zone_4_target_count": {"name": "区域4目标数量"},
-      "position_targets": {"name": "定位目标"},
-      "nearest_horizontal_distance": {"name": "最近目标水平距离"},
-      "nearest_distance": {"name": "最近目标三维距离"},
       "ac_panel_device_type": {
         "name": "设备类型",
         "state": {"water_cooled": "水机", "vrv": "VRV"}
@@ -97,12 +87,7 @@
       "signal_input_3": {"name": "信号输入3"},
       "phase_a_overload": {"name": "A相过载"},
       "phase_b_overload": {"name": "B相过载"},
-      "phase_c_overload": {"name": "C相过载"},
-      "position_subscription": {"name": "定位订阅"},
-      "zone_1_presence": {"name": "区域1有人"},
-      "zone_2_presence": {"name": "区域2有人"},
-      "zone_3_presence": {"name": "区域3有人"},
-      "zone_4_presence": {"name": "区域4有人"}
+      "phase_c_overload": {"name": "C相过载"}
     },
     "event": {
       "key": {"name": "按键"},
@@ -146,21 +131,7 @@
         "event_type": {"pressed": "按下"}
       }
     },
-    "number": {
-      "voltage_output": {"name": "电压输出"},
-      "radar_sensitivity": {"name": "灵敏度级别"},
-      "radar_trigger_speed": {"name": "触发速度级别"},
-      "radar_install_mode": {"name": "安装模式"},
-      "radar_height": {"name": "安装高度"},
-      "radar_install_direction": {"name": "安装方向"},
-      "radar_z_range_minimum": {"name": "Z轴最小检测范围"},
-      "radar_z_range_maximum": {"name": "Z轴最大检测范围"},
-      "radar_default_absence_delay": {"name": "默认无人延迟"},
-      "radar_zone_1_absence_delay": {"name": "区域1无人延迟"},
-      "radar_zone_2_absence_delay": {"name": "区域2无人延迟"},
-      "radar_zone_3_absence_delay": {"name": "区域3无人延迟"},
-      "radar_zone_4_absence_delay": {"name": "区域4无人延迟"}
-    },
+    "number": {"voltage_output": {"name": "电压输出"}},
     "climate": {
       "air_conditioner": {"name": "空调"},
       "water_ac_panel": {"name": "水冷空调"},
