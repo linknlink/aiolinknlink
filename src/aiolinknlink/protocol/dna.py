@@ -37,6 +37,7 @@ UART_SET_STATUS = 0x0B02
 UART_STATUS_RESPONSE = 0x0B03
 
 AUTH_PAIR_INFO_SIZE = 0x64
+LEGACY_AUTH_PAIR_INFO_SIZE = 0x50
 TERMINAL_TYPE_IOT = 2
 
 INITIAL_KEY = bytes([0x09, 0x76, 0x28, 0x34, 0x3F, 0xE9, 0x9E, 0x23, 0x76, 0x5C, 0x15, 0x13, 0xAC, 0xCF, 0x8B, 0x02])
@@ -511,6 +512,20 @@ def build_auth_payload(
     return bytes(payload) + json.dumps(server_info, separators=(",", ":")).encode() + b"\x00"
 
 
+def build_legacy_auth_payload(mac: bytes, terminal_name: str = "linknlink-ha") -> bytes:
+    """Build the aligned legacy BLC terminal structure used by Pro variants."""
+    if len(mac) != 6:
+        raise DNAError(f"invalid mac length: {len(mac)}")
+    payload = bytearray(LEGACY_AUTH_PAIR_INFO_SIZE)
+    for index in range(24):
+        payload[4 + index] = mac[index % len(mac)]
+    struct.pack_into("<H", payload, 28, TERMINAL_TYPE_IOT)
+    struct.pack_into("<H", payload, 30, 0)
+    payload[32:48] = b"1" * 16
+    payload[48:72] = terminal_name.encode()[:24].ljust(24, b"\x00")
+    return bytes(payload)
+
+
 def calculate_authcode(mac: bytes, device_type: int, host: str = "") -> bytes:
     """Calculate authcode used in the pairing payload."""
     del host
@@ -604,10 +619,11 @@ async def send_encrypted(
     exchange: PacketExchange | None = None,
     *,
     compact: bool = False,
+    force_blc: bool = False,
 ) -> bytes:
     """Asynchronously send an encrypted DNA command and decrypt the response."""
     accept = _sequence_acceptor(header.sequence, accept)
-    if key == INITIAL_KEY and not compact:
+    if key == INITIAL_KEY and not compact and not force_blc:
         return await _send_full_header_encrypted(
             target_ip, target_port, header, payload, key, timeout, accept, exchange
         )

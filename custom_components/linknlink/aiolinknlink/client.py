@@ -43,6 +43,11 @@ DISPLAY_MODEL_EMOTION = "eMotion"
 PID_EMOTION = "0000000000000000000000007bac0000"
 TYPE_EMOTION = 0xAC7B
 TYPE_EMOTION_WIRE = 0x7BAC
+DISPLAY_MODEL_EMOTION_PRO = "eMotion Pro"
+PID_EMOTION_PRO = "0000000000000000000000006fac0000"
+PID_EMOTION_PRO_RADAR = "000000000000000000000000b9ac0000"
+TYPE_EMOTION_PRO = 0x6FAC
+TYPE_EMOTION_PRO_RADAR = 0xB9AC
 DEFAULT_TIMEOUT = 5.0
 DEFAULT_AUTH_TIMEOUT = 15.0
 DEFAULT_PREFERRED_COMMAND_TIMEOUT = 15.0
@@ -174,6 +179,7 @@ class UltraClient:
         last_error: Exception | None = None
         for auth_type in _auth_device_type_candidates(device.type_id, device.pid):
             try:
+                is_legacy_pro = _matches_emotion_pro(device)
                 if _matches_emotion(device):
                     _terminal_id, session.session_key = await dna.send_legacy_terminal_add(
                         device.ip,
@@ -188,7 +194,11 @@ class UltraClient:
                         exchange=exchange,
                     )
                 else:
-                    payload = dna.build_auth_payload(mac, auth_type, host=device.ip)
+                    payload = (
+                        dna.build_legacy_auth_payload(mac)
+                        if is_legacy_pro
+                        else dna.build_auth_payload(mac, auth_type, host=device.ip)
+                    )
                     response = await dna.send_encrypted(
                         device.ip,
                         device.port or self.default_port,
@@ -201,10 +211,18 @@ class UltraClient:
                         dna.INITIAL_KEY,
                         timeout=self.auth_timeout,
                         exchange=exchange,
+                        force_blc=is_legacy_pro,
                     )
                     session.session_key = dna.extract_session_key(response)
                 session.auth_device_type = auth_type
-                if device.type_id not in {TYPE_ULTRA2, TYPE_ULTRA2_LAN, TYPE_EMOTION, TYPE_EMOTION_WIRE}:
+                if device.type_id not in {
+                    TYPE_ULTRA2,
+                    TYPE_ULTRA2_LAN,
+                    TYPE_EMOTION,
+                    TYPE_EMOTION_WIRE,
+                    TYPE_EMOTION_PRO,
+                    TYPE_EMOTION_PRO_RADAR,
+                }:
                     device.type_id = auth_type
                 model = _model_for_device_type(auth_type, device.pid)
                 if not device.model or (model == DISPLAY_MODEL_EMOTION and device.model == DISPLAY_MODEL_ULTRA2):
@@ -844,14 +862,30 @@ def _outbound_ipv4() -> str:
 
 
 def _matches_ultra(device: UltraDevice) -> bool:
+    # Pro variants are intentionally kept out of the public discovery list
+    # until their state adapter and Home Assistant entities are complete.
     if device.pid.lower() in {PID_ULTRA, PID_ULTRA2, PID_EMOTION}:
         return True
-    return device.type_id in {TYPE_ULTRA, TYPE_ULTRA2, TYPE_ULTRA2_LAN, TYPE_EMOTION, TYPE_EMOTION_WIRE}
+    return device.type_id in {
+        TYPE_ULTRA,
+        TYPE_ULTRA2,
+        TYPE_ULTRA2_LAN,
+        TYPE_EMOTION,
+        TYPE_EMOTION_WIRE,
+    }
 
 
 def _matches_emotion(device: UltraDevice) -> bool:
     """Return whether a device is the radar_env eMotion variant."""
     return device.pid.lower() == PID_EMOTION or device.type_id in {TYPE_EMOTION, TYPE_EMOTION_WIRE}
+
+
+def _matches_emotion_pro(device: UltraDevice) -> bool:
+    """Return whether a device is one of the eMotion Pro variants."""
+    return device.pid.lower() in {PID_EMOTION_PRO, PID_EMOTION_PRO_RADAR} or device.type_id in {
+        TYPE_EMOTION_PRO,
+        TYPE_EMOTION_PRO_RADAR,
+    }
 
 
 def _emotion_uart_command(command: int, payload: bytes) -> bytes:
@@ -1053,6 +1087,11 @@ def _model_for_device_type(device_type: int, pid: str = "") -> str:
         return DISPLAY_MODEL_EMOTION
     if device_type == TYPE_ULTRA:
         return DISPLAY_MODEL_ULTRA
+    if pid.lower() in {PID_EMOTION_PRO, PID_EMOTION_PRO_RADAR} or device_type in {
+        TYPE_EMOTION_PRO,
+        TYPE_EMOTION_PRO_RADAR,
+    }:
+        return DISPLAY_MODEL_EMOTION_PRO
     return DISPLAY_MODEL_ULTRA2
 
 
@@ -1063,6 +1102,10 @@ def _pid_for_device_type(device_type: int) -> str:
         return PID_ULTRA2
     if device_type == TYPE_ULTRA:
         return PID_ULTRA
+    if device_type == TYPE_EMOTION_PRO:
+        return PID_EMOTION_PRO
+    if device_type == TYPE_EMOTION_PRO_RADAR:
+        return PID_EMOTION_PRO_RADAR
     return ""
 
 
@@ -1075,6 +1118,10 @@ def _auth_device_type_candidates(device_type: int, pid: str = "") -> list[int]:
         values = [TYPE_ULTRA, TYPE_ULTRA2, TYPE_ULTRA2_LAN]
     elif device_type in {TYPE_ULTRA2, TYPE_ULTRA2_LAN}:
         values = [device_type, TYPE_ULTRA2, TYPE_ULTRA2_LAN]
+    elif device_type == TYPE_EMOTION_PRO_RADAR or pid.lower() == PID_EMOTION_PRO_RADAR:
+        values = [TYPE_ULTRA, TYPE_EMOTION_PRO_RADAR]
+    elif device_type == TYPE_EMOTION_PRO or pid.lower() == PID_EMOTION_PRO:
+        values = [TYPE_EMOTION_PRO]
     else:
         values = [TYPE_ULTRA2, TYPE_ULTRA2_LAN]
     return _dedupe_ints(values)
