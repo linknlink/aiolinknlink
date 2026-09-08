@@ -170,6 +170,7 @@ When changing `src/aiolinknlink`, refresh the HACS copy with:
 
 ```bash
 python3 scripts/sync-bundled-library.py
+python3 scripts/validate-hacs.py
 ```
 
 The reproducible HA Container deployment, upgrade, rollback, verification, and

@@ -35,5 +35,6 @@ jobs:
       - run: python -m ruff check .
       - run: python -m ruff format --check .
       - run: python -m mypy src
+      - run: python scripts/validate-hacs.py
       - run: python -m build
       - run: python -m twine check dist/*
