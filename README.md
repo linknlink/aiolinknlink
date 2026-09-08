@@ -187,6 +187,10 @@ python3 scripts/validate-hacs.py
 python3 -m pytest tests/test_hacs_bundle.py
 ```
 
+The Zigbee **eMotion Air** handoff package is not part of this integration.
+Its ZHA quirk, Blueprint, and Zigbee OTA firmware use a separate installation
+and release path and must not be copied into `custom_components/linknlink`.
+
 When changing `src/aiolinknlink`, refresh the HACS copy with:
 
 ```bash
