@@ -13,6 +13,9 @@ release_id=$(date -u +%Y%m%dT%H%M%SZ)
 archive=$(mktemp "${TMPDIR:-/tmp}/linknlink-ha.XXXXXX")
 remote_archive="/tmp/linknlink-ha-${release_id}.tgz"
 
+python3 "$repo_dir/scripts/sync-bundled-library.py"
+python3 "$repo_dir/scripts/validate-hacs.py"
+
 cleanup() {
   rm -f "$archive"
 }
