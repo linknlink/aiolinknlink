@@ -78,6 +78,7 @@ class UltraSession:
     command_device_type: int = 0
     command_message_type: int = 0
     command_sequence: int = 0
+    peripheral_dids: dict[int, str] = field(default_factory=dict)
     auth_status: str = "new"
     auth_error: str = ""
     last_auth_at: datetime | None = None

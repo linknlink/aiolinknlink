@@ -12,14 +12,19 @@ from aiolinknlink import (
     PID_EMOTION,
     PID_EMOTION_PRO,
     PID_EMOTION_PRO_RADAR,
+    PID_EMOTION_PRO_RADAR,
     TYPE_EMOTION,
     TYPE_EMOTION_PRO,
+    TYPE_EMOTION_PRO_RADAR,
+    TYPE_PRO_RADAR_24G,
+    TYPE_LEGACY_SHTXX,
     TYPE_EMOTION_PRO_RADAR,
     TYPE_EMOTION_WIRE,
     TYPE_ULTRA,
     UltraClient,
     UltraDevice,
     UltraProtocolError,
+    derive_peripheral_did,
 )
 from aiolinknlink.client import (
     _auth_device_type_candidates,
@@ -243,3 +248,42 @@ async def test_emotion_pro_rejects_invalid_environment_state(field: str, value: 
 
     with pytest.raises(UltraProtocolError, match=field):
         await client.get_environment_state(UltraSession(device=device, session_key=b"0123456789abcdef"))
+
+
+async def test_emotion_pro_radar_reads_virtual_peripherals() -> None:
+    device = UltraDevice(
+        id="e04b41006515",
+        ip="192.168.3.31",
+        port=80,
+        mac="e0:4b:41:00:65:15",
+        pid=PID_EMOTION_PRO_RADAR,
+        type_id=TYPE_EMOTION_PRO_RADAR,
+    )
+    radar_did = derive_peripheral_did(device.mac, TYPE_PRO_RADAR_24G)
+    climate_did = derive_peripheral_did(device.mac, TYPE_LEGACY_SHTXX)
+    client = UltraClient()
+    client.send_command = AsyncMock(
+        side_effect=[
+            emotion.build_subdevice_frame(
+                emotion.CMD_SUBDEVICE_LIST_RESPONSE,
+                {"status": 0, "list": [{"did": radar_did, "offline": 0}, {"did": climate_did, "offline": 0}]},
+            ),
+            emotion.build_subdevice_frame(
+                emotion.CMD_STATUS_RESPONSE,
+                {"did": radar_did, "status": 0, "pir_detected": 1, "delaytime": 120},
+            ),
+            emotion.build_subdevice_frame(
+                emotion.CMD_STATUS_RESPONSE,
+                {"did": climate_did, "status": 0, "envtemp": 2350, "envhumid": 4850},
+            ),
+        ]
+    )
+
+    state = await client.get_environment_state(UltraSession(device=device, session_key=b"0123456789abcdef"))
+
+    assert state.values == {
+        "occupancy": True,
+        "absence_delay": 120,
+        "temperature": 23.5,
+        "humidity": 48.5,
+    }
