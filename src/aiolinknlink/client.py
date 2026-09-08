@@ -26,7 +26,7 @@ from .models import (
     UltraRadarZRange,
     UltraSession,
 )
-from .protocol import dna, emotion
+from .protocol import dna, emotion, keyvalue
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -242,6 +242,10 @@ class UltraClient:
 
     async def get_environment_state(self, session: UltraSession) -> UltraEnvironmentState:
         """Read environmental, occupancy, and count states from the local API."""
+        if _matches_emotion_pro(session.device):
+            if session.device.type_id == TYPE_EMOTION_PRO_RADAR:
+                raise UltraProtocolError("eMotion Pro radar state adapter is not enabled yet")
+            return await self._get_pro_environment_state(session)
         if session.device.type_id == TYPE_ULTRA or session.device.pid.lower() == PID_ULTRA:
             return await self.get_legacy_environment_state(session)
         client = APIClient(
@@ -303,6 +307,24 @@ class UltraClient:
             device_id=session.device.id,
             values=values,
             available_fields=frozenset(attr for attrs in entity_attrs.values() for attr in attrs),
+            received_at=datetime.now(UTC),
+        )
+
+    async def _get_pro_environment_state(self, session: UltraSession) -> UltraEnvironmentState:
+        """Read the supported KeyValue state from a standard eMotion Pro."""
+        try:
+            response = await self.send_command(session, keyvalue.build_get_status_frame())
+            payload = keyvalue.parse_status_response(response)
+        except (UltraError, keyvalue.KeyValueError) as err:
+            raise UltraProtocolError(str(err)) from err
+        values = _pro_environment_values(payload)
+        if not values:
+            raise UltraProtocolError("eMotion Pro response did not contain supported state")
+        session.last_seen = datetime.now(UTC)
+        return UltraEnvironmentState(
+            device_id=session.device.id,
+            values=values,
+            available_fields=frozenset(values),
             received_at=datetime.now(UTC),
         )
 
@@ -886,6 +908,33 @@ def _matches_emotion_pro(device: UltraDevice) -> bool:
         TYPE_EMOTION_PRO,
         TYPE_EMOTION_PRO_RADAR,
     }
+
+
+def _pro_int(
+    payload: dict[str, object],
+    key: str,
+    *,
+    minimum: int,
+    maximum: int,
+) -> int:
+    value = payload.get(key)
+    if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
+        raise UltraProtocolError(f"invalid eMotion Pro {key}: {value!r}")
+    return value
+
+
+def _pro_environment_values(payload: dict[str, object]) -> dict[str, int | float | bool]:
+    """Normalize the public state fields reported by the Pro KeyValue app."""
+    values: dict[str, int | float | bool] = {}
+    if "tempsensor" in payload:
+        values["temperature"] = round(_pro_int(payload, "tempsensor", minimum=-450, maximum=1300) / 10, 1)
+    if "humsensor" in payload:
+        values["humidity"] = _pro_int(payload, "humsensor", minimum=0, maximum=100)
+    if "pir_detected" in payload:
+        values["occupancy"] = bool(_pro_int(payload, "pir_detected", minimum=0, maximum=1))
+    if "delaytime" in payload:
+        values["absence_delay"] = _pro_int(payload, "delaytime", minimum=0, maximum=0xFFFF) * 60
+    return values
 
 
 def _emotion_uart_command(command: int, payload: bytes) -> bytes:

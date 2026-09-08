@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import struct
 from unittest.mock import AsyncMock
 
@@ -18,6 +19,7 @@ from aiolinknlink import (
     TYPE_ULTRA,
     UltraClient,
     UltraDevice,
+    UltraProtocolError,
 )
 from aiolinknlink.client import (
     _auth_device_type_candidates,
@@ -25,6 +27,7 @@ from aiolinknlink.client import (
     _matches_emotion_pro,
     _matches_ultra,
 )
+from aiolinknlink.models import UltraSession
 from aiolinknlink.protocol import dna, emotion, keyvalue
 
 
@@ -182,3 +185,61 @@ def test_keyvalue_rejects_non_object_status() -> None:
 
     with pytest.raises(keyvalue.KeyValueError, match="not an object"):
         keyvalue.parse_status_response(response)
+
+
+async def test_emotion_pro_reads_normalized_environment_state() -> None:
+    device = UltraDevice(
+        id="e04b41006515",
+        ip="192.168.3.31",
+        port=80,
+        mac="e0:4b:41:00:65:15",
+        pid=PID_EMOTION_PRO,
+        type_id=TYPE_EMOTION_PRO,
+    )
+    client = UltraClient()
+    client.send_command = AsyncMock(
+        return_value=keyvalue.build_frame(
+            keyvalue.CMD_STATUS_RESPONSE,
+            b'{"tempsensor":235,"humsensor":48,"pir_detected":1,"delaytime":5}',
+        )
+    )
+
+    state = await client.get_environment_state(UltraSession(device=device, session_key=b"0123456789abcdef"))
+
+    assert state.values == {
+        "temperature": 23.5,
+        "humidity": 48,
+        "occupancy": True,
+        "absence_delay": 300,
+    }
+    assert state.available_fields == frozenset(state.values)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("tempsensor", 1301),
+        ("humsensor", 101),
+        ("pir_detected", 2),
+        ("delaytime", 65536),
+    ],
+)
+async def test_emotion_pro_rejects_invalid_environment_state(field: str, value: object) -> None:
+    device = UltraDevice(
+        id="e04b41006515",
+        ip="192.168.3.31",
+        port=80,
+        mac="e0:4b:41:00:65:15",
+        pid=PID_EMOTION_PRO,
+        type_id=TYPE_EMOTION_PRO,
+    )
+    client = UltraClient()
+    client.send_command = AsyncMock(
+        return_value=keyvalue.build_frame(
+            keyvalue.CMD_STATUS_RESPONSE,
+            json.dumps({field: value}).encode(),
+        )
+    )
+
+    with pytest.raises(UltraProtocolError, match=field):
+        await client.get_environment_state(UltraSession(device=device, session_key=b"0123456789abcdef"))
