@@ -28,8 +28,6 @@ firmware revision.
 - eHub RF learning, frequency scan, study/cancel-study, and RF replay have
   protocol constants and raw-send support, but are not exposed as HA services
   until a real learn/send sequence is validated.
-- Full Python 3.11+ test, Ruff, mypy, and Home Assistant integration checks
-  still need to run in a dependency-complete environment.
 - Clean-instance HACS installation and multi-gateway restart/recovery checks
   still need to be recorded.
 
@@ -37,12 +35,15 @@ firmware revision.
 
 - HACS layout validation passed.
 - Python 3.11 bytecode compilation passed.
+- Python 3.11 pytest passed: 300 tests passed, 3 skipped.
+- Ruff check and format validation passed.
+- mypy passed for all 16 source modules.
 - Source and bundled client-library contents are byte-identical.
 - Git worktree is clean after each committed step.
 
-## Checks still requiring the CI environment
+## Checks still requiring a Home Assistant or hardware environment
 
-The development machine currently has Python 3.9 as its default interpreter,
-while the project requires Python 3.11 or newer. Full pytest, Ruff, mypy, and
-Home Assistant platform tests must therefore run in the repository CI matrix
-or another Python 3.11+ environment.
+The automated Python checks run in an isolated Python 3.11 environment.
+The remaining release checks require a clean Home Assistant instance and
+physical devices: HACS installation, restart/recovery, multi-gateway registry
+collision checks, and per-profile field validation.

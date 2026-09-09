@@ -2,13 +2,13 @@
 
 ## Repository and package
 
-- [ ] `hacs.json` exists at the repository root.
-- [ ] `custom_components/linknlink/manifest.json` is valid.
-- [ ] The manifest version matches `pyproject.toml`.
-- [ ] The bundled `custom_components/linknlink/aiolinknlink` library matches
+- [x] `hacs.json` exists at the repository root.
+- [x] `custom_components/linknlink/manifest.json` is valid.
+- [x] The manifest version matches `pyproject.toml`.
+- [x] The bundled `custom_components/linknlink/aiolinknlink` library matches
       `src/aiolinknlink`.
-- [ ] `python3 scripts/validate-hacs.py` passes.
-- [ ] `python3 -m pytest tests/test_hacs_bundle.py` passes on Python 3.11+.
+- [x] `python3 scripts/validate-hacs.py` passes.
+- [x] `python3 -m pytest tests/test_hacs_bundle.py` passes on Python 3.11+.
 
 ## Home Assistant
 
@@ -25,7 +25,7 @@
 
 ## Device support policy
 
-- [ ] Every device included in the release has automated tests.
+- [x] Every device included in the release has automated tests.
 - [ ] Every writable field has an independent read-back check.
 - [ ] Unsupported or unverified device branches are not advertised as
       production-ready.
