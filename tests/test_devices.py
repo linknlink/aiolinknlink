@@ -17,7 +17,7 @@ def test_profiles_match_wire_type_and_pid() -> None:
     max1 = get_device_profile(pid=PID_EMOTION_MAX1)
 
     assert ultra1 is not None
-    assert ultra1.model is DeviceModel.EMOTION_ULTRA1
+    assert ultra1.model is DeviceModel.EMOTION_ULTRA
     assert DeviceCapability.POSITION not in ultra1.capabilities
     assert max1 is not None
     assert max1.model is DeviceModel.EMOTION_MAX1
@@ -34,5 +34,5 @@ def test_ultra_device_exposes_profile_capabilities() -> None:
     )
 
     assert device.profile is not None
-    assert device.profile.model is DeviceModel.EMOTION_ULTRA1
+    assert device.profile.model is DeviceModel.EMOTION_ULTRA
     assert DeviceCapability.OCCUPANCY in device.capabilities

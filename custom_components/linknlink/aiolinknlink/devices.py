@@ -11,6 +11,7 @@ from types import MappingProxyType
 class DeviceModel(StrEnum):
     """Stable model identifiers used by protocol and HA adapters."""
 
+    EMOTION_ULTRA = "emotion_ultra"
     EMOTION_ULTRA1 = "emotion_ultra1"
     EMOTION_ULTRA2 = "emotion_ultra2"
     EMOTION_MAX1 = "emotion_max1"
@@ -95,7 +96,16 @@ _MAX2_CAPABILITIES = _ULTRA2_CAPABILITIES
 _MAX3_CAPABILITIES = _ULTRA2_CAPABILITIES
 
 DEVICE_PROFILES: tuple[DeviceProfile, ...] = (
-    DeviceProfile(DeviceModel.EMOTION_ULTRA1, "eMotion Ultra", frozenset({TYPE_ULTRA1}), PID_ULTRA1, _ULTRA1_CAPABILITIES),
+    # 0x9CAC/PID 9cac is shared by the legacy Ultra and first-generation
+    # Ultra firmware. The runtime adapter probes the virtual peripherals
+    # before selecting the narrower Ultra1 behavior.
+    DeviceProfile(
+        DeviceModel.EMOTION_ULTRA,
+        "eMotion Ultra",
+        frozenset({TYPE_ULTRA1}),
+        PID_ULTRA1,
+        _ULTRA1_CAPABILITIES,
+    ),
     DeviceProfile(
         DeviceModel.EMOTION_ULTRA2,
         "eMotion Ultra2",
