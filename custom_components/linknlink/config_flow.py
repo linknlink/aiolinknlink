@@ -24,6 +24,10 @@ from aiolinknlink import (
     EHomeConnectionError,
     EHomeDevice,
     EHomeError,
+    EHubClient,
+    EHubConnectionError,
+    EHubDevice,
+    EHubError,
     EthsClient,
     EthsConnectionError,
     EthsDevice,
@@ -42,6 +46,7 @@ from .const import (
     CONF_DEVICE_TYPE,
     CONF_LOCAL_KEY,
     DEVICE_TYPE_EHOME,
+    DEVICE_TYPE_EHUB,
     DEVICE_TYPE_REMOTE,
     DEVICE_TYPE_ETHS,
     DEVICE_TYPE_EMOTION,
@@ -93,6 +98,11 @@ class LinknLinkConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_HOST: device.ip,
                         CONF_DEVICE_TYPE: DEVICE_TYPE_EHOME,
                     }
+                elif isinstance(device, EHubDevice):
+                    entry_data = {
+                        CONF_HOST: device.ip,
+                        CONF_DEVICE_TYPE: DEVICE_TYPE_EHUB,
+                    }
                 else:
                     client = UltraClient()
                     session = await client.connect(
@@ -120,9 +130,15 @@ class LinknLinkConfigFlow(ConfigFlow, domain=DOMAIN):
                     }
             except ValueError:
                 pass
-            except (IbgConnectionError, UltraConnectionError, EHomeConnectionError, EthsConnectionError):
+            except (
+                IbgConnectionError,
+                UltraConnectionError,
+                EHomeConnectionError,
+                EthsConnectionError,
+                EHubConnectionError,
+            ):
                 errors["base"] = "cannot_connect"
-            except (IbgError, UltraError, EHomeError, EthsError):
+            except (IbgError, UltraError, EHomeError, EthsError, EHubError):
                 errors["base"] = "unknown"
             else:
                 await self.async_set_unique_id(device.id)
@@ -145,7 +161,7 @@ class LinknLinkConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
 
-async def _discover_device(host: str) -> IbgDevice | UltraDevice | EHomeDevice | EthsDevice:
+async def _discover_device(host: str) -> IbgDevice | UltraDevice | EHomeDevice | EthsDevice | EHubDevice:
     """Detect one supported device without assuming its product family."""
     ibg_result, ultra_result = await asyncio.gather(
         IbgClient().discover_host(host),
@@ -156,10 +172,10 @@ async def _discover_device(host: str) -> IbgDevice | UltraDevice | EHomeDevice |
         return ibg_result
     if isinstance(ultra_result, UltraDevice):
         return ultra_result
-    for discover in (EthsClient().discover_host, EHomeClient().discover_host):
+    for discover in (EthsClient().discover_host, EHubClient().discover_host, EHomeClient().discover_host):
         try:
             return await discover(host)
-        except (EHomeError, EthsError):
+        except (EHomeError, EthsError, EHubError):
             pass
     if isinstance(ibg_result, IbgConnectionError) and isinstance(ultra_result, UltraConnectionError):
         raise IbgConnectionError(f"no supported LinknLink device found at {host}")

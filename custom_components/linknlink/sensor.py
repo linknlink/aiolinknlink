@@ -46,8 +46,8 @@ from aiolinknlink import (
 )
 
 from . import LinknLinkConfigEntry
-from .coordinator import EHomeDataUpdateCoordinator, EthsDataUpdateCoordinator, UltraDataUpdateCoordinator
-from .entity import EHomeCoordinatorEntity, EthsCoordinatorEntity, IbgCoordinatorEntity, UltraCoordinatorEntity
+from .coordinator import EHomeDataUpdateCoordinator, EHubDataUpdateCoordinator, EthsDataUpdateCoordinator, UltraDataUpdateCoordinator
+from .entity import EHomeCoordinatorEntity, EHubCoordinatorEntity, EthsCoordinatorEntity, IbgCoordinatorEntity, UltraCoordinatorEntity
 
 SR3_SENSORS = (
     SensorEntityDescription(
@@ -361,6 +361,31 @@ EHOME_SENSORS = (
         state_class=SensorStateClass.MEASUREMENT,
     ),
 )
+EHUB_SENSORS = (
+    SensorEntityDescription(
+        key="temperature",
+        name="Temperature",
+        translation_key="temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    SensorEntityDescription(
+        key="humidity",
+        name="Humidity",
+        translation_key="humidity",
+        device_class=SensorDeviceClass.HUMIDITY,
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    SensorEntityDescription(
+        key="gateway_version",
+        name="Firmware version",
+        translation_key="firmware_version",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        icon="mdi:chip",
+    ),
+)
 ETHS_SENSORS = (
     SensorEntityDescription(
         key="temperature",
@@ -644,6 +669,9 @@ async def async_setup_entry(
     if isinstance(coordinator, EHomeDataUpdateCoordinator):
         async_add_entities(EHomeSensor(coordinator, description) for description in EHOME_SENSORS)
         return
+    if isinstance(coordinator, EHubDataUpdateCoordinator):
+        async_add_entities(EHubSensor(coordinator, description) for description in EHUB_SENSORS)
+        return
     if isinstance(coordinator, EthsDataUpdateCoordinator):
         async_add_entities(EthsSensor(coordinator, description) for description in ETHS_SENSORS)
         return
@@ -725,6 +753,21 @@ class EHomeSensor(EHomeCoordinatorEntity, SensorEntity):
         """Return the latest eHome scalar value."""
         value = getattr(self.coordinator.data, self.key, None)
         return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+class EHubSensor(EHubCoordinatorEntity, SensorEntity):
+    """One eHub host sensor."""
+
+    entity_description: SensorEntityDescription
+
+    def __init__(self, coordinator: EHubDataUpdateCoordinator, description: SensorEntityDescription) -> None:
+        super().__init__(coordinator, description.key)
+        self.entity_description = description
+
+    @property
+    def native_value(self) -> float | int | None:
+        value = getattr(self.coordinator.data, self.key, None)
+        return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
 
 
 class EthsSensor(EthsCoordinatorEntity, SensorEntity):

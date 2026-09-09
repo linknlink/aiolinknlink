@@ -26,8 +26,8 @@ from aiolinknlink import (
 )
 
 from . import LinknLinkConfigEntry
-from .coordinator import EHomeDataUpdateCoordinator, EthsDataUpdateCoordinator, UltraDataUpdateCoordinator
-from .entity import EHomeCoordinatorEntity, IbgCoordinatorEntity, UltraCoordinatorEntity
+from .coordinator import EHomeDataUpdateCoordinator, EHubDataUpdateCoordinator, EthsDataUpdateCoordinator, UltraDataUpdateCoordinator
+from .entity import EHomeCoordinatorEntity, EHubCoordinatorEntity, IbgCoordinatorEntity, UltraCoordinatorEntity
 
 SR3_BINARY_SENSORS = (
     BinarySensorEntityDescription(
@@ -108,6 +108,9 @@ async def async_setup_entry(
     if isinstance(coordinator, EHomeDataUpdateCoordinator):
         async_add_entities([EHomePresenceSensor(coordinator)])
         return
+    if isinstance(coordinator, EHubDataUpdateCoordinator):
+        async_add_entities([EHubPresenceSensor(coordinator)])
+        return
     if isinstance(coordinator, EthsDataUpdateCoordinator):
         return
     if isinstance(coordinator, UltraDataUpdateCoordinator):
@@ -167,6 +170,22 @@ class EHomePresenceSensor(EHomeCoordinatorEntity, BinarySensorEntity):
     def is_on(self) -> bool | None:
         """Return whether eHome reports a person."""
         value = self.coordinator.data.sr3_occupied
+        return bool(value) if value is not None else None
+
+
+class EHubPresenceSensor(EHubCoordinatorEntity, BinarySensorEntity):
+    """eHub PIR occupancy state."""
+
+    _attr_name = "Occupancy"
+    _attr_translation_key = "occupancy"
+    _attr_device_class = BinarySensorDeviceClass.OCCUPANCY
+
+    def __init__(self, coordinator: EHubDataUpdateCoordinator) -> None:
+        super().__init__(coordinator, "occupied")
+
+    @property
+    def is_on(self) -> bool | None:
+        value = self.coordinator.data.occupied
         return bool(value) if value is not None else None
 
 

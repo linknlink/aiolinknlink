@@ -33,6 +33,8 @@ from aiolinknlink import (  # noqa: E402  # noqa: E402
     PID_EMOTION_PRO,
     PID_EMOTION_PRO_RADAR,
     PID_EHOME_HA,
+    EHubClient,
+    EHubError,
     PID_EREMOTE_HA,
     PID_ULTRA,
     TYPE_EMOTION,
@@ -59,6 +61,7 @@ from .const import (  # noqa: E402
     CONF_DEVICE_TYPE,
     CONF_LOCAL_KEY,
     DEVICE_TYPE_EHOME,
+    DEVICE_TYPE_EHUB,
     DEVICE_TYPE_REMOTE,
     DEVICE_TYPE_ETHS,
     DEVICE_TYPE_EMOTION,
@@ -70,6 +73,7 @@ from .const import (  # noqa: E402
 )
 from .coordinator import (
     EHomeDataUpdateCoordinator,
+    EHubDataUpdateCoordinator,
     EthsDataUpdateCoordinator,
     IbgDataUpdateCoordinator,
     UltraDataUpdateCoordinator,
@@ -80,6 +84,7 @@ LinknLinkConfigEntry: TypeAlias = ConfigEntry[
     | UltraDataUpdateCoordinator
     | EHomeDataUpdateCoordinator
     | EthsDataUpdateCoordinator
+    | EHubDataUpdateCoordinator
 ]
 
 
@@ -94,6 +99,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: LinknLinkConfigEntry) ->
         return await _async_setup_ultra_entry(hass, entry)
     if device_type == DEVICE_TYPE_EHOME:
         return await _async_setup_ehome_entry(hass, entry)
+    if device_type == DEVICE_TYPE_EHUB:
+        return await _async_setup_ehub_entry(hass, entry)
     return await _async_setup_ibg_entry(hass, entry)
 
 
@@ -106,6 +113,28 @@ async def _async_setup_ehome_entry(hass: HomeAssistant, entry: LinknLinkConfigEn
     except EHomeError as err:
         raise ConfigEntryNotReady(f"Could not connect to eHome: {err}") from err
     coordinator = EHomeDataUpdateCoordinator(hass, client, device, session)
+    await coordinator.async_config_entry_first_refresh()
+    entry.runtime_data = coordinator
+    dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={("linknlink", device.id)},
+        name=device.name,
+        manufacturer="LinknLink",
+        model=device.model,
+    )
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    return True
+
+
+async def _async_setup_ehub_entry(hass: HomeAssistant, entry: LinknLinkConfigEntry) -> bool:
+    """Set up one eHub Modbus TCP gateway."""
+    client = EHubClient()
+    try:
+        device = await client.discover_host(entry.data[CONF_HOST])
+        session = await client.connect(device)
+    except EHubError as err:
+        raise ConfigEntryNotReady(f"Could not connect to eHub: {err}") from err
+    coordinator = EHubDataUpdateCoordinator(hass, client, device, session)
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
     dr.async_get(hass).async_get_or_create(

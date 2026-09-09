@@ -8,6 +8,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN
 from .coordinator import (
     EHomeDataUpdateCoordinator,
+    EHubDataUpdateCoordinator,
     EthsDataUpdateCoordinator,
     IbgDataUpdateCoordinator,
     UltraDataUpdateCoordinator,
@@ -160,6 +161,27 @@ class EHomeCoordinatorEntity(CoordinatorEntity[EHomeDataUpdateCoordinator]):
     @property
     def device_info(self) -> DeviceInfo:
         """Return eHome device registry information."""
+        return DeviceInfo(
+            identifiers={(DOMAIN, self.coordinator.device.id)},
+            name=self.coordinator.device.name,
+            manufacturer="LinknLink",
+            model=self.coordinator.device.model,
+        )
+
+
+class EHubCoordinatorEntity(CoordinatorEntity[EHubDataUpdateCoordinator]):
+    """Base entity for one eHub host field."""
+
+    _attr_has_entity_name = True
+
+    def __init__(self, coordinator: EHubDataUpdateCoordinator, key: str) -> None:
+        super().__init__(coordinator)
+        self.key = key
+        self._attr_unique_id = f"{coordinator.device.id}_{key}"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return eHub device registry information."""
         return DeviceInfo(
             identifiers={(DOMAIN, self.coordinator.device.id)},
             name=self.coordinator.device.name,

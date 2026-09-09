@@ -34,6 +34,12 @@ from aiolinknlink import (
     EHomeError,
     EHomeSession,
     EHomeState,
+    EHubClient,
+    EHubConnectionError,
+    EHubDevice,
+    EHubError,
+    EHubSession,
+    EHubState,
     EthsClient,
     EthsConnectionError,
     EthsDevice,
@@ -294,6 +300,49 @@ class EHomeDataUpdateCoordinator(DataUpdateCoordinator[EHomeState]):
         try:
             state = await self.client.set_absence_delay(self.session, value)
         except EHomeConnectionError:
+            self.session = await self.client.connect(self.device)
+            state = await self.client.set_absence_delay(self.session, value)
+        self.async_set_updated_data(state)
+
+    async def async_shutdown(self) -> None:
+        """Release the logical session."""
+        await self.client.close(self.session)
+
+
+class EHubDataUpdateCoordinator(DataUpdateCoordinator[EHubState]):
+    """Poll one eHub host over Modbus TCP."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        client: EHubClient,
+        device: EHubDevice,
+        session: EHubSession,
+    ) -> None:
+        super().__init__(
+            hass,
+            _LOGGER,
+            name=f"{DOMAIN}_{device.id}",
+            update_interval=timedelta(seconds=UPDATE_INTERVAL_SECONDS),
+        )
+        self.client = client
+        self.device = device
+        self.session = session
+
+    async def _async_update_data(self) -> EHubState:
+        try:
+            return await self.client.read_state(self.session)
+        except EHubConnectionError:
+            self.session = await self.client.connect(self.device)
+            return await self.client.read_state(self.session)
+        except EHubError as err:
+            raise UpdateFailed(f"Could not update eHub {self.device.ip}: {err}") from err
+
+    async def async_set_absence_delay(self, value: int) -> None:
+        """Set and publish the confirmed no-person delay."""
+        try:
+            state = await self.client.set_absence_delay(self.session, value)
+        except EHubConnectionError:
             self.session = await self.client.connect(self.device)
             state = await self.client.set_absence_delay(self.session, value)
         self.async_set_updated_data(state)

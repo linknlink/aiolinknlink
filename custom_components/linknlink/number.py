@@ -21,8 +21,8 @@ from aiolinknlink import (
 )
 
 from . import LinknLinkConfigEntry
-from .coordinator import EHomeDataUpdateCoordinator, EthsDataUpdateCoordinator, UltraDataUpdateCoordinator
-from .entity import EHomeCoordinatorEntity, IbgCoordinatorEntity, UltraCoordinatorEntity
+from .coordinator import EHomeDataUpdateCoordinator, EHubDataUpdateCoordinator, EthsDataUpdateCoordinator, UltraDataUpdateCoordinator
+from .entity import EHomeCoordinatorEntity, EHubCoordinatorEntity, IbgCoordinatorEntity, UltraCoordinatorEntity
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -203,6 +203,9 @@ async def async_setup_entry(
     if isinstance(coordinator, EHomeDataUpdateCoordinator):
         async_add_entities([EHomeAbsenceDelay(coordinator)])
         return
+    if isinstance(coordinator, EHubDataUpdateCoordinator):
+        async_add_entities([EHubAbsenceDelay(coordinator)])
+        return
     if isinstance(coordinator, EthsDataUpdateCoordinator):
         return
     if isinstance(coordinator, UltraDataUpdateCoordinator):
@@ -271,6 +274,30 @@ class EHomeAbsenceDelay(EHomeCoordinatorEntity, NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         """Set the delay and require read-back confirmation."""
+        if not float(value).is_integer():
+            raise ValueError("absence delay must be a whole number")
+        await self.coordinator.async_set_absence_delay(int(value))
+
+
+class EHubAbsenceDelay(EHubCoordinatorEntity, NumberEntity):
+    """eHub no-person delay in minutes."""
+
+    _attr_name = "Absence delay"
+    _attr_translation_key = "absence_delay"
+    _attr_native_min_value = 0
+    _attr_native_max_value = 65535
+    _attr_native_step = 1
+    _attr_native_unit_of_measurement = UnitOfTime.MINUTES
+    _attr_mode = NumberMode.BOX
+
+    def __init__(self, coordinator: EHubDataUpdateCoordinator) -> None:
+        super().__init__(coordinator, "absence_delay")
+
+    @property
+    def native_value(self) -> float:
+        return float(self.coordinator.data.absence_delay)
+
+    async def async_set_native_value(self, value: float) -> None:
         if not float(value).is_integer():
             raise ValueError("absence delay must be a whole number")
         await self.coordinator.async_set_absence_delay(int(value))
