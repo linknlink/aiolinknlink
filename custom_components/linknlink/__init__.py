@@ -45,6 +45,7 @@ from aiolinknlink import (  # noqa: E402  # noqa: E402
     TYPE_EHOME_HA,
     TYPE_EREMOTE_HA,
     TYPE_ULTRA,
+    DeviceCapability,
     EHomeClient,
     EHomeError,
     IbgClient,
@@ -217,18 +218,7 @@ async def _async_setup_ultra_entry(hass: HomeAssistant, entry: LinknLinkConfigEn
         )
     coordinator = UltraDataUpdateCoordinator(hass, client, device, session, local_key=local_key)
     await coordinator.async_config_entry_first_refresh()
-    if device.type_id not in {
-        TYPE_ULTRA,
-        TYPE_EMOTION,
-        TYPE_EMOTION_WIRE,
-        TYPE_EMOTION_PRO,
-        TYPE_EMOTION_PRO_RADAR,
-    } and device.pid.lower() not in {
-        PID_ULTRA,
-        PID_EMOTION,
-        PID_EMOTION_PRO,
-        PID_EMOTION_PRO_RADAR,
-    }:
+    if DeviceCapability.LOCAL_UDP in device.capabilities:
         await coordinator.async_start_position()
     entry.runtime_data = coordinator
     dr.async_get(hass).async_get_or_create(

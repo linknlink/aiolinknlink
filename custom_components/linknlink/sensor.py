@@ -42,6 +42,7 @@ from aiolinknlink import (
     TYPE_EMOTION,
     TYPE_EMOTION_WIRE,
     TYPE_ULTRA,
+    DeviceCapability,
 )
 
 from . import LinknLinkConfigEntry
@@ -626,6 +627,8 @@ async def async_setup_entry(
         async_add_entities(EHomeSensor(coordinator, description) for description in EHOME_SENSORS)
         return
     if isinstance(coordinator, UltraDataUpdateCoordinator):
+        if coordinator._is_remote:
+            return
         if coordinator._is_emotion_pro:
             async_add_entities(UltraSensor(coordinator, description) for description in EMOTION_PRO_SENSORS)
             return
@@ -635,17 +638,27 @@ async def async_setup_entry(
         }:
             async_add_entities(UltraSensor(coordinator, description) for description in EMOTION_SENSORS)
             return
-        async_add_entities(
-            [
-                *(UltraSensor(coordinator, description) for description in ULTRA_SENSORS),
-                *(
-                    UltraPositionSensor(coordinator, description)
-                    for description in ULTRA_POSITION_SENSORS
-                    if coordinator.device.type_id != TYPE_ULTRA
-                    and coordinator.session.ultra1_probe is not True
-                ),
-            ]
+        capabilities = coordinator.device.capabilities
+        capability_by_key = {
+            "temperature": DeviceCapability.TEMPERATURE,
+            "humidity": DeviceCapability.HUMIDITY,
+            "illuminance": DeviceCapability.ILLUMINANCE,
+            "target_count": DeviceCapability.TARGET_COUNT,
+            "persons_in_fenced_zones": DeviceCapability.ZONES,
+            "distance": DeviceCapability.DISTANCE,
+            "target_distance": DeviceCapability.DISTANCE,
+        }
+        environment_entities = (
+            UltraSensor(coordinator, description)
+            for description in ULTRA_SENSORS
+            if capability_by_key.get(description.key, DeviceCapability.ENVIRONMENT) in capabilities
         )
+        position_entities = (
+            UltraPositionSensor(coordinator, description)
+            for description in ULTRA_POSITION_SENSORS
+            if DeviceCapability.POSITION in capabilities
+        )
+        async_add_entities([*environment_entities, *position_entities])
         return
     entities = [
         IbgSensor(coordinator, device.did, description)

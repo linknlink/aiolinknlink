@@ -17,6 +17,7 @@ from aiolinknlink import (
     TYPE_EMOTION,
     TYPE_EMOTION_WIRE,
     TYPE_ULTRA,
+    DeviceCapability,
 )
 
 from . import LinknLinkConfigEntry
@@ -203,6 +204,8 @@ async def async_setup_entry(
         async_add_entities([EHomeAbsenceDelay(coordinator)])
         return
     if isinstance(coordinator, UltraDataUpdateCoordinator):
+        if coordinator._is_remote:
+            return
         if coordinator._is_emotion_pro:
             async_add_entities(UltraRadarNumber(coordinator, description) for description in EMOTION_PRO_NUMBERS)
             return
@@ -213,7 +216,7 @@ async def async_setup_entry(
         if is_emotion:
             async_add_entities(UltraRadarNumber(coordinator, description) for description in EMOTION_NUMBERS)
             return
-        if coordinator.device.type_id != TYPE_ULTRA or coordinator.session.ultra1_probe is True:
+        if DeviceCapability.RADAR_CONFIGURATION in coordinator.device.capabilities:
             async_add_entities(UltraRadarNumber(coordinator, description) for description in ULTRA_RADAR_NUMBERS)
         return
     async_add_entities(

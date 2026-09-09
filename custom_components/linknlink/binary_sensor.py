@@ -22,6 +22,7 @@ from aiolinknlink import (
     TYPE_EMOTION,
     TYPE_EMOTION_WIRE,
     TYPE_ULTRA,
+    DeviceCapability,
 )
 
 from . import LinknLinkConfigEntry
@@ -108,6 +109,8 @@ async def async_setup_entry(
         async_add_entities([EHomePresenceSensor(coordinator)])
         return
     if isinstance(coordinator, UltraDataUpdateCoordinator):
+        if coordinator._is_remote:
+            return
         if coordinator._is_emotion_pro:
             async_add_entities([UltraBinarySensor(coordinator, ULTRA_BINARY_SENSORS[0])])
             return
@@ -115,9 +118,13 @@ async def async_setup_entry(
             TYPE_EMOTION,
             TYPE_EMOTION_WIRE,
         }
-        descriptions = ULTRA_BINARY_SENSORS[:1] if is_emotion else ULTRA_BINARY_SENSORS
+        descriptions = (
+            ULTRA_BINARY_SENSORS[:1]
+            if is_emotion or DeviceCapability.ZONES not in coordinator.device.capabilities
+            else ULTRA_BINARY_SENSORS
+        )
         entities = [UltraBinarySensor(coordinator, description) for description in descriptions]
-        if coordinator.device.type_id != TYPE_ULTRA and not is_emotion:
+        if DeviceCapability.POSITION in coordinator.device.capabilities:
             entities.append(UltraPositionSubscriptionBinarySensor(coordinator))
         async_add_entities(entities)
         return
