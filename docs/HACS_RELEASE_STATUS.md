@@ -9,26 +9,29 @@ The `feature/hacs-integration` candidate is based on the validated
 
 - iBG2 SE discovery, authentication, session-key persistence, and push updates.
 - The validated iBG subdevice profiles listed in `README.md`.
-- eHome/EHUB sensor support and the related Home Assistant entities.
-- The previously validated local eMotion Ultra and Ultra2 support present on
-  the `feature/ehome` line.
+- eHome, eTHS, and eHub host sensor support with related Home Assistant
+  entities.
+- eHub infrared remote support.
+- eMotion, eMotion Pro, eMotion Ultra/Ultra1, eMotion Ultra2, and eMotion Max
+  protocol adapters, HA entities, and automated tests.
+- eHomeHA/eRemoteHA local infrared remote support.
 - A self-contained Home Assistant package under
   `custom_components/linknlink`.
 
-## Deliberately not included yet
+These profiles are included in the code candidate, but production
+advertisement still depends on recording real-device validation for each
+model. A passing protocol test alone does not prove compatibility with every
+firmware revision.
 
-The following branches require protocol-layer adaptation rather than a
-whole-branch merge:
+## Not yet release-complete
 
-- `feature/emotion-pro`
-- `feature/emotion-max`
-- `feature/emotion-remotes`
-- `feature/emotion-ultra1`
-
-Their implementations remain available for the next device-specific porting
-steps. They must not be advertised as part of this release candidate until
-their shared client changes, Home Assistant entities, and hardware validation
-are integrated.
+- eHub RF learning, frequency scan, study/cancel-study, and RF replay have
+  protocol constants and raw-send support, but are not exposed as HA services
+  until a real learn/send sequence is validated.
+- Full Python 3.11+ test, Ruff, mypy, and Home Assistant integration checks
+  still need to run in a dependency-complete environment.
+- Clean-instance HACS installation and multi-gateway restart/recovery checks
+  still need to be recorded.
 
 ## Checks completed locally
 

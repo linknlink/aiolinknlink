@@ -13,21 +13,32 @@ through HACS.
 | `feature/ehome` | Most complete validated iBG/eHome feature line | Integrated into the HACS branch |
 | `feature/ibg-integration-hardening` | iBG hardening line with eMotion changes reverted | Not used as the release base |
 
-## Device branches requiring deliberate adaptation
+## Device branch disposition
 
-The following branches change the shared client architecture and must not be
-merged wholesale into the HACS branch:
+The following device branches have been deliberately ported into
+`feature/hacs-integration`; they must not be merged wholesale in the future
+because they replace shared protocol files:
 
-- `feature/emotion-pro`
-- `feature/emotion-max`
-- `feature/emotion-remotes`
-- `feature/emotion-ultra1`
+| Branch | Ported scope | Current status |
+| --- | --- | --- |
+| `feature/emotion-pro` | eMotion Pro and Pro radar protocol, entities, and tests | Code and automated tests integrated; field validation tracked separately |
+| `feature/emotion-max` | eMotion Max protocol variants, entities, and tests | Code and automated tests integrated; field validation tracked separately |
+| `feature/emotion-remotes` | Local infrared remote protocol and HA remote entity | Code and automated tests integrated; real learn/send validation tracked separately |
+| `feature/emotion-ultra1` | First-generation eMotion Ultra protocol and entities | Code and automated tests integrated; field validation tracked separately |
 
-Their commits contain useful protocol implementations and tests, but they
-replace common files such as `client.py`, `models.py`, and
-`protocol/dna.py`. Each supported model must therefore be ported into the
-current client/profile architecture, with its Home Assistant entities and
-hardware validation reviewed before release.
+The current HACS branch is the source of truth for these devices. The feature
+branches remain historical development references and should only be used to
+port a missing fix after reviewing it against the shared client/profile
+architecture.
+
+## Current support layers
+
+| Layer | Included profiles | Verification state |
+| --- | --- | --- |
+| iBG gateway and reviewed iBG subdevices | iBG2 SE plus the documented RF, Modbus, DLT645, DTU, lighting, sensor, and air-conditioner profiles | Hardware validation completed for the devices previously verified in the handover; regression testing remains |
+| eMotion local devices | eMotion, eMotion Pro, Ultra, Ultra1, Ultra2, and Max variants | Protocol tests and HA entity tests integrated; hardware validation must be recorded per model |
+| eHome/eTHS/eHub | eHome, eTHS, eHub host sensors, and eHub infrared remote | Protocol tests and HA entity tests integrated; eHub RF capabilities remain incomplete |
+| eHomeHA/eRemoteHA | Local infrared remote devices | Protocol and HA remote tests integrated; real learn/send validation remains |
 
 ## Release policy
 

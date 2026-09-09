@@ -5,12 +5,12 @@
 The library implements LinknLink DNA discovery, authentication, encrypted UDP transport, local multi-target radar position subscriptions, environmental and occupancy state reads, and device-verified radar configuration. It communicates directly with devices on the local network and does not require a cloud service or MQTT broker.
 
 The included Home Assistant custom integration automatically distinguishes
-supported iBG gateways from eMotion Ultra2 devices by their local discovery
-identity. Ultra2 entities include temperature, humidity, illuminance, Wi-Fi
-signal, occupancy, target counts, per-zone presence/counts, multi-target
-coordinates and nearest distances, plus device-confirmed radar configuration
-controls. Existing iBG entries without a stored product-family marker remain
-compatible.
+supported iBG gateways, eHome/eTHS/eHub hosts, eMotion family devices, and
+local infrared remote devices by their local discovery identity. The
+integration exposes only the entities supported by the detected product
+profile, including the reviewed iBG subdevices, eMotion environment/radar
+entities, eHome/eTHS/eHub sensor entities, and local remote entities.
+Existing iBG entries without a stored product-family marker remain compatible.
 
 An Ultra2 stores one local UDP position destination. Running another position subscriber for the same device redirects updates away from the current subscriber.
 
@@ -30,7 +30,8 @@ credentials are never included in public state.
 ## Requirements
 
 - Python 3.11 or newer
-- A supported eMotion Ultra, eMotion Ultra2, or iBG2 SE connected to the local network
+- A supported LinknLink device connected to the local network, such as an
+  iBG2 SE, eMotion-family device, eHome, eTHS, or eHub
 - The client and device on the same local network
 
 ## Example

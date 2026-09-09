@@ -15,10 +15,13 @@
 - [ ] Install from HACS into a clean Home Assistant instance.
 - [ ] Restart Home Assistant and confirm the integration loads without import
       errors.
-- [ ] Add at least one iBG, eHome, and eMotion device where hardware is
-      available.
+- [ ] Add at least one iBG, eHome/eTHS/eHub, and eMotion-family device where
+      hardware is available.
 - [ ] Restart Home Assistant and confirm config entries reconnect.
 - [ ] Confirm multiple gateways do not collide in the device registry.
+- [ ] Record field validation separately for every advertised device profile.
+- [ ] Validate eHub infrared learn/send and keep RF features experimental until
+      a real RF learn/replay sequence is confirmed.
 
 ## Device support policy
 
