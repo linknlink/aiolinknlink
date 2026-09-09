@@ -24,19 +24,26 @@ for _library_source in (_BUNDLED_LIBRARY_ROOT, _DEVELOPMENT_LIBRARY_SOURCE):
 
 from homeassistant.config_entries import ConfigEntry  # noqa: E402
 from homeassistant.const import CONF_HOST  # noqa: E402
+from homeassistant.const import ATTR_ENTITY_ID  # noqa: E402
 from homeassistant.core import HomeAssistant  # noqa: E402
-from homeassistant.exceptions import ConfigEntryNotReady  # noqa: E402
+from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError  # noqa: E402
 from homeassistant.helpers import device_registry as dr  # noqa: E402
+from homeassistant.helpers import config_validation as cv  # noqa: E402
+import voluptuous as vol  # noqa: E402
 
 from aiolinknlink import (  # noqa: E402  # noqa: E402
     PID_EMOTION,
     PID_EMOTION_PRO,
     PID_EMOTION_PRO_RADAR,
+    PID_EHOME_HA,
+    PID_EREMOTE_HA,
     PID_ULTRA,
     TYPE_EMOTION,
     TYPE_EMOTION_WIRE,
     TYPE_EMOTION_PRO,
     TYPE_EMOTION_PRO_RADAR,
+    TYPE_EHOME_HA,
+    TYPE_EREMOTE_HA,
     TYPE_ULTRA,
     EHomeClient,
     EHomeError,
@@ -50,6 +57,7 @@ from .const import (  # noqa: E402
     CONF_DEVICE_TYPE,
     CONF_LOCAL_KEY,
     DEVICE_TYPE_EHOME,
+    DEVICE_TYPE_REMOTE,
     DEVICE_TYPE_EMOTION,
     DEVICE_TYPE_IBG,
     DEVICE_TYPE_ULTRA,
@@ -60,13 +68,67 @@ from .const import (  # noqa: E402
 from .coordinator import EHomeDataUpdateCoordinator, IbgDataUpdateCoordinator, UltraDataUpdateCoordinator  # noqa: E402
 
 LinknLinkConfigEntry: TypeAlias = ConfigEntry[
-    IbgDataUpdateCoordinator | UltraDataUpdateCoordinator | EHomeDataUpdateCoordinator
+    IbgDataUpdateCoordinator
+    | UltraDataUpdateCoordinator
+    | EHomeDataUpdateCoordinator
 ]
+
+
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Register integration-wide infrared remote services."""
+    del config
+    hass.data.setdefault("linknlink", {})
+    if not hass.services.has_service("linknlink", "learn_command"):
+        hass.services.async_register(
+            "linknlink",
+            "learn_command",
+            _async_learn_command,
+            schema=vol.Schema(
+                {
+                    vol.Required(ATTR_ENTITY_ID): cv.entity_ids,
+                    vol.Required("command"): cv.string,
+                }
+            ),
+        )
+    if not hass.services.has_service("linknlink", "delete_command"):
+        hass.services.async_register(
+            "linknlink",
+            "delete_command",
+            _async_delete_command,
+            schema=vol.Schema(
+                {
+                    vol.Required(ATTR_ENTITY_ID): cv.entity_ids,
+                    vol.Required("command"): cv.string,
+                }
+            ),
+        )
+    return True
+
+
+async def _async_learn_command(call) -> None:
+    """Learn a command on the selected remote entity."""
+    await _call_remote_method(call, "async_learn_command")
+
+
+async def _async_delete_command(call) -> None:
+    """Delete a learned command on the selected remote entity."""
+    await _call_remote_method(call, "async_delete_command")
+
+
+async def _call_remote_method(call, method: str) -> None:
+    entities = call.hass.data.get("linknlink", {}).get("remote_entities", {})
+    for entity_id in call.data[ATTR_ENTITY_ID]:
+        entity = entities.get(entity_id)
+        if entity is None:
+            raise HomeAssistantError(f"Remote entity is not available: {entity_id}")
+        await getattr(entity, method)(call.data["command"])
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: LinknLinkConfigEntry) -> bool:
     """Set up LinknLink from a config entry."""
     device_type = entry.data.get(CONF_DEVICE_TYPE, DEVICE_TYPE_IBG)
+    if device_type == DEVICE_TYPE_REMOTE:
+        return await _async_setup_remote_entry(hass, entry)
     if device_type in {DEVICE_TYPE_EMOTION, DEVICE_TYPE_ULTRA, DEVICE_TYPE_ULTRA2}:
         return await _async_setup_ultra_entry(hass, entry)
     if device_type == DEVICE_TYPE_EHOME:
@@ -168,6 +230,41 @@ async def _async_setup_ultra_entry(hass: HomeAssistant, entry: LinknLinkConfigEn
         PID_EMOTION_PRO_RADAR,
     }:
         await coordinator.async_start_position()
+    entry.runtime_data = coordinator
+    dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={("linknlink", device.id)},
+        name=device.name,
+        manufacturer="LinknLink",
+        model=device.model,
+    )
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    return True
+
+
+async def _async_setup_remote_entry(hass: HomeAssistant, entry: LinknLinkConfigEntry) -> bool:
+    """Set up an eHomeHA/eRemoteHA infrared device."""
+    client = UltraClient()
+    local_key_hex = entry.data.get(CONF_LOCAL_KEY, "")
+    local_key = bytes.fromhex(local_key_hex) if local_key_hex else None
+    try:
+        device = await client.discover_host(entry.data[CONF_HOST])
+        session = await client.connect(device, session_key=local_key)
+    except UltraError as err:
+        raise ConfigEntryNotReady(f"Could not connect to infrared remote: {err}") from err
+    if device.type_id not in {TYPE_EHOME_HA, TYPE_EREMOTE_HA} and device.pid.lower() not in {
+        PID_EHOME_HA,
+        PID_EREMOTE_HA,
+    }:
+        raise ConfigEntryNotReady("Configured remote is not an eHomeHA/eRemoteHA device")
+    if local_key is None and session.session_key is not None:
+        stored_local_key_hex = resolve_local_key_hex(local_key_hex, session.session_key)
+        hass.config_entries.async_update_entry(
+            entry,
+            data={**entry.data, CONF_LOCAL_KEY: stored_local_key_hex},
+        )
+    coordinator = UltraDataUpdateCoordinator(hass, client, device, session, local_key=local_key)
+    await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
     dr.async_get(hass).async_get_or_create(
         config_entry_id=entry.entry_id,

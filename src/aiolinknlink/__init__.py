@@ -135,6 +135,14 @@ from .ibg import (
 )
 from .ibg_push import IbgPushSubscription
 from .local_udp import UltraPositionSubscription
+from .remote import (
+    LinknLinkRemoteClient,
+    LinknLinkRemoteCommandError,
+    LinknLinkRemoteConnectionError,
+    LinknLinkRemoteError,
+    LinknLinkRemoteProtocolError,
+    LinknLinkRemoteTimeoutError,
+)
 from .models import (
     EmotionPresenceState,
     IbgDevice,
@@ -293,4 +301,10 @@ __all__ = [
     "derive_peripheral_did",
     "derive_radar_did",
     "derive_ultra2_protocol_mac",
+    "LinknLinkRemoteClient",
+    "LinknLinkRemoteError",
+    "LinknLinkRemoteConnectionError",
+    "LinknLinkRemoteProtocolError",
+    "LinknLinkRemoteCommandError",
+    "LinknLinkRemoteTimeoutError",
 ]

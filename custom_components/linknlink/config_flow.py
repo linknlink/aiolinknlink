@@ -12,9 +12,13 @@ from homeassistant.helpers.selector import TextSelector, TextSelectorConfig, Tex
 
 from aiolinknlink import (
     PID_EMOTION,
+    PID_EHOME_HA,
+    PID_EREMOTE_HA,
     PID_ULTRA,
     TYPE_EMOTION,
     TYPE_EMOTION_WIRE,
+    TYPE_EHOME_HA,
+    TYPE_EREMOTE_HA,
     TYPE_ULTRA,
     EHomeClient,
     EHomeConnectionError,
@@ -34,6 +38,7 @@ from .const import (
     CONF_DEVICE_TYPE,
     CONF_LOCAL_KEY,
     DEVICE_TYPE_EHOME,
+    DEVICE_TYPE_REMOTE,
     DEVICE_TYPE_EMOTION,
     DEVICE_TYPE_IBG,
     DEVICE_TYPE_ULTRA,
@@ -88,12 +93,17 @@ class LinknLinkConfigFlow(ConfigFlow, domain=DOMAIN):
                     entry_data = {
                         CONF_HOST: device.ip,
                         CONF_DEVICE_TYPE: (
-                            DEVICE_TYPE_EMOTION
-                            if device.type_id in {TYPE_EMOTION, TYPE_EMOTION_WIRE} or device.pid.lower() == PID_EMOTION
+                            DEVICE_TYPE_REMOTE
+                            if device.type_id in {TYPE_EHOME_HA, TYPE_EREMOTE_HA}
+                            or device.pid.lower() in {PID_EHOME_HA, PID_EREMOTE_HA}
                             else (
-                                DEVICE_TYPE_ULTRA
-                                if device.type_id == TYPE_ULTRA or device.pid.lower() == PID_ULTRA
-                                else DEVICE_TYPE_ULTRA2
+                                DEVICE_TYPE_EMOTION
+                                if device.type_id in {TYPE_EMOTION, TYPE_EMOTION_WIRE} or device.pid.lower() == PID_EMOTION
+                                else (
+                                    DEVICE_TYPE_ULTRA
+                                    if device.type_id == TYPE_ULTRA or device.pid.lower() == PID_ULTRA
+                                    else DEVICE_TYPE_ULTRA2
+                                )
                             )
                         ),
                         **({CONF_LOCAL_KEY: stored_local_key_hex} if stored_local_key_hex else {}),

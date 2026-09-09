@@ -57,6 +57,10 @@ TYPE_EMOTION_MAX3 = 0xDEAC
 PID_EMOTION_MAX1 = "0000000000000000000000009eac0000"
 PID_EMOTION_MAX2 = "000000000000000000000000d6ac0000"
 PID_EMOTION_MAX3 = "000000000000000000000000deac0000"
+TYPE_EHOME_HA = 0x85AC
+TYPE_EREMOTE_HA = 0x90AC
+PID_EHOME_HA = "00000000000000000000000085ac0000"
+PID_EREMOTE_HA = "00000000000000000000000090ac0000"
 DEFAULT_TIMEOUT = 5.0
 DEFAULT_AUTH_TIMEOUT = 15.0
 DEFAULT_PREFERRED_COMMAND_TIMEOUT = 15.0
@@ -188,7 +192,7 @@ class UltraClient:
         last_error: Exception | None = None
         for auth_type in _auth_device_type_candidates(device.type_id, device.pid):
             try:
-                is_legacy_pro = _matches_emotion_pro(device) or _matches_emotion_max(device)
+                is_legacy_pro = _matches_emotion_pro(device) or _matches_emotion_max(device) or _matches_remote(device)
                 if _matches_emotion(device):
                     _terminal_id, session.session_key = await dna.send_legacy_terminal_add(
                         device.ip,
@@ -1187,6 +1191,8 @@ def _matches_ultra(device: UltraDevice) -> bool:
         PID_EMOTION_MAX1,
         PID_EMOTION_MAX2,
         PID_EMOTION_MAX3,
+        PID_EHOME_HA,
+        PID_EREMOTE_HA,
     }:
         return True
     return device.type_id in {
@@ -1200,6 +1206,8 @@ def _matches_ultra(device: UltraDevice) -> bool:
         TYPE_EMOTION_MAX1,
         TYPE_EMOTION_MAX2,
         TYPE_EMOTION_MAX3,
+        TYPE_EHOME_HA,
+        TYPE_EREMOTE_HA,
     }
 
 
@@ -1222,6 +1230,14 @@ def _matches_emotion_max(device: UltraDevice) -> bool:
         TYPE_EMOTION_MAX1,
         TYPE_EMOTION_MAX2,
         TYPE_EMOTION_MAX3,
+    }
+
+
+def _matches_remote(device: UltraDevice) -> bool:
+    """Return whether a device provides the local infrared protocol."""
+    return device.pid.lower() in {PID_EHOME_HA, PID_EREMOTE_HA} or device.type_id in {
+        TYPE_EHOME_HA,
+        TYPE_EREMOTE_HA,
     }
 
 
@@ -1569,6 +1585,10 @@ def _model_for_device_type(device_type: int, pid: str = "") -> str:
         return "eMotion Max 2"
     if pid.lower() == PID_EMOTION_MAX3 or device_type == TYPE_EMOTION_MAX3:
         return "eMotion Max 3"
+    if pid.lower() == PID_EHOME_HA or device_type == TYPE_EHOME_HA:
+        return "eHomeHA"
+    if pid.lower() == PID_EREMOTE_HA or device_type == TYPE_EREMOTE_HA:
+        return "eRemoteHA"
     if pid.lower() in {PID_EMOTION_PRO, PID_EMOTION_PRO_RADAR} or device_type in {
         TYPE_EMOTION_PRO,
         TYPE_EMOTION_PRO_RADAR,
@@ -1590,6 +1610,10 @@ def _pid_for_device_type(device_type: int) -> str:
         return PID_EMOTION_MAX2
     if device_type == TYPE_EMOTION_MAX3:
         return PID_EMOTION_MAX3
+    if device_type == TYPE_EHOME_HA:
+        return PID_EHOME_HA
+    if device_type == TYPE_EREMOTE_HA:
+        return PID_EREMOTE_HA
     if device_type == TYPE_EMOTION_PRO:
         return PID_EMOTION_PRO
     if device_type == TYPE_EMOTION_PRO_RADAR:
@@ -1610,6 +1634,8 @@ def _auth_device_type_candidates(device_type: int, pid: str = "") -> list[int]:
         PID_EMOTION_MAX3,
     }:
         values = [device_type] if device_type else [TYPE_EMOTION_MAX1, TYPE_EMOTION_MAX2, TYPE_EMOTION_MAX3]
+    elif device_type in {TYPE_EHOME_HA, TYPE_EREMOTE_HA} or pid.lower() in {PID_EHOME_HA, PID_EREMOTE_HA}:
+        values = [device_type] if device_type else [TYPE_EHOME_HA, TYPE_EREMOTE_HA]
     elif device_type in {TYPE_ULTRA2, TYPE_ULTRA2_LAN}:
         values = [device_type, TYPE_ULTRA2, TYPE_ULTRA2_LAN]
     elif device_type == TYPE_EMOTION_PRO_RADAR or pid.lower() == PID_EMOTION_PRO_RADAR:
@@ -1625,6 +1651,8 @@ def _command_device_type_candidates(session: UltraSession) -> list[int]:
     if _matches_emotion(session.device):
         defaults = [TYPE_EMOTION, TYPE_EMOTION_WIRE]
     elif _matches_emotion_max(session.device):
+        defaults = [session.device.type_id]
+    elif _matches_remote(session.device):
         defaults = [session.device.type_id]
     elif session.device.type_id == TYPE_ULTRA or session.device.pid.lower() == PID_ULTRA:
         defaults = [TYPE_ULTRA, TYPE_ULTRA2, TYPE_ULTRA2_LAN]

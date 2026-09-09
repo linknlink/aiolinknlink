@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -54,6 +54,8 @@ from aiolinknlink import (
     UltraProtocolError,
     UltraRadarStatus,
     UltraSession,
+    LinknLinkRemoteClient,
+    DeviceCapability,
 )
 
 from .const import DOMAIN, UPDATE_INTERVAL_SECONDS
@@ -328,6 +330,7 @@ class UltraDataUpdateCoordinator(DataUpdateCoordinator[UltraCoordinatorData]):
         self.session = session
         self.local_key = local_key
         self.position_subscription: UltraPositionSubscription | None = None
+        self.remote_client: LinknLinkRemoteClient | None = None
 
     async def _async_update_data(self) -> UltraCoordinatorData:
         try:
@@ -344,6 +347,17 @@ class UltraDataUpdateCoordinator(DataUpdateCoordinator[UltraCoordinatorData]):
                 raise UpdateFailed(f"Could not update Ultra2 {self.device.ip}: {err}") from err
 
     async def _read_data(self) -> UltraCoordinatorData:
+        if self._is_remote:
+            return UltraCoordinatorData(
+                environment=UltraEnvironmentState(
+                    device_id=self.device.id,
+                    values={},
+                    available_fields=frozenset(),
+                    received_at=datetime.now(UTC),
+                ),
+                radar=None,
+                position=None,
+            )
         if self._is_emotion_pro:
             environment = await self.client.get_environment_state(self.session)
             return UltraCoordinatorData(environment=environment, radar=None, position=None)
@@ -393,6 +407,16 @@ class UltraDataUpdateCoordinator(DataUpdateCoordinator[UltraCoordinatorData]):
             PID_EMOTION_PRO,
             PID_EMOTION_PRO_RADAR,
         }
+
+    @property
+    def _is_remote(self) -> bool:
+        return DeviceCapability.REMOTE in self.device.capabilities
+
+    def get_remote_client(self) -> LinknLinkRemoteClient:
+        """Return the shared local infrared client for this device."""
+        if self.remote_client is None:
+            self.remote_client = LinknLinkRemoteClient(self.device)
+        return self.remote_client
 
     async def async_set_pro_absence_delay(self, value: int) -> None:
         """Set standard eMotion Pro absence delay and publish confirmation."""
@@ -569,3 +593,6 @@ class UltraDataUpdateCoordinator(DataUpdateCoordinator[UltraCoordinatorData]):
         if self.position_subscription is not None:
             await self.position_subscription.stop()
             self.position_subscription = None
+        if self.remote_client is not None:
+            await self.remote_client.close()
+            self.remote_client = None
