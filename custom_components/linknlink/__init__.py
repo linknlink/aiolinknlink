@@ -14,11 +14,12 @@ from typing import TypeAlias
 _DEVELOPMENT_LIBRARY_SOURCE = Path(__file__).parents[2] / "deps" / "aiolinknlink" / "src"
 _BUNDLED_LIBRARY_ROOT = Path(__file__).parent
 
-# Internal deployments may provide a newer checkout in /config/deps. HACS
-# installs use the bundled client library next to this integration instead.
-# Insert the bundled path first, then the development path so the latter wins
-# when both are present.
-for _library_source in (_BUNDLED_LIBRARY_ROOT, _DEVELOPMENT_LIBRARY_SOURCE):
+# Internal development deployments may provide a checkout in /config/deps.
+# HACS installs must use the bundled client library next to this integration;
+# otherwise a stale development checkout can override a newer HACS release.
+# Insert the development path first and the bundled path last so the bundled
+# release wins whenever both are present.
+for _library_source in (_DEVELOPMENT_LIBRARY_SOURCE, _BUNDLED_LIBRARY_ROOT):
     if _library_source.is_dir():
         with suppress(ValueError):
             sys.path.remove(str(_library_source))

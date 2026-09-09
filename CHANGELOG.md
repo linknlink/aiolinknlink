@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.19.1 - 2026-09-09
+
+- Prefer the bundled HACS client library over a stale `/config/deps`
+  development checkout so eHub and eTHS discovery cannot be misclassified by
+  older protocol code.
+
 ## 0.19.0 - 2026-09-09
 
 - Add legacy eMotion Ultra (`PID 0000000000000000000000009cac0000`, DNA type
