@@ -1,6 +1,7 @@
 # HACS release candidate status
 
 Date: 2026-09-09
+Target release: `0.19.1`
 
 ## Included in the current candidate
 
@@ -17,6 +18,8 @@ The `feature/hacs-integration` candidate is based on the validated
 - eHomeHA/eRemoteHA local infrared remote support.
 - A self-contained Home Assistant package under
   `custom_components/linknlink`.
+- The bundled client library takes precedence over any stale development
+  checkout under `/config/deps/aiolinknlink`.
 
 These profiles are included in the code candidate, but production
 advertisement still depends on recording real-device validation for each
