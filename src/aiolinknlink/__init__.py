@@ -47,6 +47,17 @@ from .ehome import (
     EHomeSession,
     EHomeState,
 )
+from .ehub import (
+    DISPLAY_MODEL_EHUB,
+    PID_EHUB,
+    EHubClient,
+    EHubConnectionError,
+    EHubDevice,
+    EHubError,
+    EHubProtocolError,
+    EHubSession,
+    EHubState,
+)
 from .eths import (
     DISPLAY_MODEL_ETHS,
     PID_ETHS,
@@ -215,6 +226,15 @@ __all__ = [
     "EHomeProtocolError",
     "EHomeSession",
     "EHomeState",
+    "DISPLAY_MODEL_EHUB",
+    "PID_EHUB",
+    "EHubClient",
+    "EHubConnectionError",
+    "EHubDevice",
+    "EHubError",
+    "EHubProtocolError",
+    "EHubSession",
+    "EHubState",
     "DISPLAY_MODEL_ETHS",
     "PID_ETHS",
     "EthsClient",
