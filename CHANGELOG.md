@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.19.0 - 2026-09-09
+
 - Add legacy eMotion Ultra (`PID 0000000000000000000000009cac0000`, DNA type
   `0x9CAC`) detection and gateway-state environment entities. Legacy Ultra
   entries use a separate capability path and do not expose Ultra2-only
