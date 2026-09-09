@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Iterable
 from typing import Any
 
-from homeassistant.components.remote import RemoteEntity
+from homeassistant.components.remote import RemoteEntity, RemoteEntityFeature
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -37,6 +39,9 @@ class LinknLinkRemoteEntity(UltraCoordinatorEntity, RemoteEntity):
     _attr_has_entity_name = True
     _attr_name = "Remote"
     _attr_should_poll = False
+    _attr_supported_features = (
+        RemoteEntityFeature.LEARN_COMMAND | RemoteEntityFeature.DELETE_COMMAND
+    )
 
     def __init__(self, coordinator: UltraDataUpdateCoordinator) -> None:
         super().__init__(coordinator, "remote")
@@ -55,7 +60,7 @@ class LinknLinkRemoteEntity(UltraCoordinatorEntity, RemoteEntity):
         return self.coordinator.last_update_success
 
     async def async_added_to_hass(self) -> None:
-        """Load learned commands and register this entity for custom services."""
+        """Load learned commands from persistent storage."""
         await super().async_added_to_hass()
         self._store = Store(
             self.hass,
@@ -65,33 +70,40 @@ class LinknLinkRemoteEntity(UltraCoordinatorEntity, RemoteEntity):
         stored = await self._store.async_load()
         if isinstance(stored, dict):
             self._codes = {key: value for key, value in stored.items() if isinstance(key, str) and isinstance(value, str)}
-        self.hass.data.setdefault(DOMAIN, {}).setdefault("remote_entities", {})[self.entity_id] = self
         self.async_write_ha_state()
 
     async def async_will_remove_from_hass(self) -> None:
-        """Unregister this entity from custom service lookup."""
-        entities = self.hass.data.get(DOMAIN, {}).get("remote_entities", {})
-        entities.pop(self.entity_id, None)
+        """Release the entity from Home Assistant."""
         await super().async_will_remove_from_hass()
 
-    async def async_send_command(self, command: list[str], **kwargs: Any) -> None:
+    async def async_send_command(self, command: Iterable[str], **kwargs: Any) -> None:
         """Transmit one or more learned infrared commands."""
-        del kwargs
-        commands = [command] if isinstance(command, str) else command
+        commands = list(command)
         if not commands:
             raise HomeAssistantError("At least one remote command is required")
+        repeats = kwargs.get("num_repeats", 1)
+        delay = kwargs.get("delay_secs", 0)
+        if not isinstance(repeats, int) or repeats < 1:
+            raise HomeAssistantError("num_repeats must be a positive integer")
         for name in commands:
             code = self._codes.get(name)
             if code is None:
                 raise HomeAssistantError(f"Unknown learned remote command: {name}")
             try:
-                await self._client.send_code(code)
+                for index in range(repeats):
+                    await self._client.send_code(code)
+                    if delay and index + 1 < repeats:
+                        await asyncio.sleep(float(delay))
             except Exception as err:
                 raise HomeAssistantError(f"Could not send remote command {name}: {err}") from err
 
-    async def async_learn_command(self, command: str) -> None:
+    async def async_learn_command(self, **kwargs: Any) -> None:
         """Learn and persist one infrared command."""
-        name = command.strip()
+        command = kwargs.get("command")
+        if isinstance(command, list):
+            name = command[0].strip() if len(command) == 1 and isinstance(command[0], str) else ""
+        else:
+            name = command.strip() if isinstance(command, str) else ""
         if not name:
             raise HomeAssistantError("Remote command name must not be empty")
         try:
@@ -104,12 +116,22 @@ class LinknLinkRemoteEntity(UltraCoordinatorEntity, RemoteEntity):
         await self._store.async_save(self._codes)
         self.async_write_ha_state()
 
-    async def async_delete_command(self, command: str) -> None:
+    async def async_delete_command(self, **kwargs: Any) -> None:
         """Delete one learned command from persistent storage."""
-        name = command.strip()
-        if name not in self._codes:
-            raise HomeAssistantError(f"Unknown learned remote command: {name}")
-        self._codes.pop(name)
+        command = kwargs.get("command")
+        if isinstance(command, list):
+            names = [item.strip() for item in command if isinstance(item, str)]
+        elif isinstance(command, str):
+            names = [command.strip()]
+        else:
+            names = []
+        if not names:
+            raise HomeAssistantError("At least one remote command is required")
+        missing = [name for name in names if name not in self._codes]
+        if missing:
+            raise HomeAssistantError(f"Unknown learned remote command: {missing[0]}")
+        for name in names:
+            self._codes.pop(name)
         if self._store is None:
             raise HomeAssistantError("Remote storage is not ready")
         await self._store.async_save(self._codes)

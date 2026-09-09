@@ -38,6 +38,10 @@ class LinknLinkRemoteProtocolError(LinknLinkRemoteError):
 class LinknLinkRemoteCommandError(LinknLinkRemoteError):
     """The remote rejected a command."""
 
+    def __init__(self, message: str, *, code: int | None = None) -> None:
+        super().__init__(message)
+        self.code = code
+
 
 class LinknLinkRemoteTimeoutError(LinknLinkRemoteConnectionError):
     """A remote operation timed out."""
@@ -160,7 +164,11 @@ class LinknLinkRemoteClient:
         except (OSError, ConnectionError) as err:
             await self._close_locked()
             raise LinknLinkRemoteConnectionError(f"remote request {method} failed") from err
-        return _parse_response(response, request_id)
+        try:
+            return _parse_response(response, request_id)
+        except LinknLinkRemoteProtocolError:
+            await self._close_locked()
+            raise
 
     async def _ensure_connected(self) -> None:
         if self.connected:
@@ -182,11 +190,16 @@ class LinknLinkRemoteClient:
             data.extend(chunk)
             try:
                 text = data.decode()
+            except UnicodeDecodeError as err:
+                raise LinknLinkRemoteProtocolError("remote response is not valid UTF-8") from err
+            try:
                 value, end = decoder.raw_decode(text.lstrip())
-            except (UnicodeDecodeError, json.JSONDecodeError):
+            except json.JSONDecodeError:
                 continue
-            if text.lstrip()[end:].strip() or not isinstance(value, dict):
-                raise LinknLinkRemoteProtocolError("invalid remote JSON-RPC response")
+            if text.lstrip()[end:].strip():
+                raise LinknLinkRemoteProtocolError("remote response contains trailing data")
+            if not isinstance(value, dict):
+                raise LinknLinkRemoteProtocolError("remote response is not a JSON object")
             return value
         raise LinknLinkRemoteProtocolError("remote response exceeds size limit")
 
@@ -215,7 +228,7 @@ def _parse_response(response: dict[str, Any], request_id: int) -> object:
         code = error.get("code")
         if isinstance(code, bool) or (code is not None and not isinstance(code, int)):
             raise LinknLinkRemoteProtocolError("invalid JSON-RPC error code")
-        raise LinknLinkRemoteCommandError(error["message"])
+        raise LinknLinkRemoteCommandError(error["message"], code=code)
     return response["result"]
 
 

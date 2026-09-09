@@ -24,12 +24,9 @@ for _library_source in (_BUNDLED_LIBRARY_ROOT, _DEVELOPMENT_LIBRARY_SOURCE):
 
 from homeassistant.config_entries import ConfigEntry  # noqa: E402
 from homeassistant.const import CONF_HOST  # noqa: E402
-from homeassistant.const import ATTR_ENTITY_ID  # noqa: E402
 from homeassistant.core import HomeAssistant  # noqa: E402
-from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError  # noqa: E402
+from homeassistant.exceptions import ConfigEntryNotReady  # noqa: E402
 from homeassistant.helpers import device_registry as dr  # noqa: E402
-from homeassistant.helpers import config_validation as cv  # noqa: E402
-import voluptuous as vol  # noqa: E402
 
 from aiolinknlink import (  # noqa: E402  # noqa: E402
     PID_EMOTION,
@@ -73,56 +70,6 @@ LinknLinkConfigEntry: TypeAlias = ConfigEntry[
     | UltraDataUpdateCoordinator
     | EHomeDataUpdateCoordinator
 ]
-
-
-async def async_setup(hass: HomeAssistant, config: dict) -> bool:
-    """Register integration-wide infrared remote services."""
-    del config
-    hass.data.setdefault("linknlink", {})
-    if not hass.services.has_service("linknlink", "learn_command"):
-        hass.services.async_register(
-            "linknlink",
-            "learn_command",
-            _async_learn_command,
-            schema=vol.Schema(
-                {
-                    vol.Required(ATTR_ENTITY_ID): cv.entity_ids,
-                    vol.Required("command"): cv.string,
-                }
-            ),
-        )
-    if not hass.services.has_service("linknlink", "delete_command"):
-        hass.services.async_register(
-            "linknlink",
-            "delete_command",
-            _async_delete_command,
-            schema=vol.Schema(
-                {
-                    vol.Required(ATTR_ENTITY_ID): cv.entity_ids,
-                    vol.Required("command"): cv.string,
-                }
-            ),
-        )
-    return True
-
-
-async def _async_learn_command(call) -> None:
-    """Learn a command on the selected remote entity."""
-    await _call_remote_method(call, "async_learn_command")
-
-
-async def _async_delete_command(call) -> None:
-    """Delete a learned command on the selected remote entity."""
-    await _call_remote_method(call, "async_delete_command")
-
-
-async def _call_remote_method(call, method: str) -> None:
-    entities = call.hass.data.get("linknlink", {}).get("remote_entities", {})
-    for entity_id in call.data[ATTR_ENTITY_ID]:
-        entity = entities.get(entity_id)
-        if entity is None:
-            raise HomeAssistantError(f"Remote entity is not available: {entity_id}")
-        await getattr(entity, method)(call.data["command"])
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: LinknLinkConfigEntry) -> bool:
