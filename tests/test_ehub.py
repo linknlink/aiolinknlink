@@ -81,10 +81,7 @@ class _ModbusServer:
                         response = pdu
                     elif function == 16:
                         count = count_or_value
-                        values = [
-                            int.from_bytes(pdu[6 + index * 2 : 8 + index * 2], "big")
-                            for index in range(count)
-                        ]
+                        values = [int.from_bytes(pdu[6 + index * 2 : 8 + index * 2], "big") for index in range(count)]
                         for index, value in enumerate(values):
                             self.values[address + index] = value
                         response = pdu[:5]

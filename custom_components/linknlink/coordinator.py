@@ -480,8 +480,7 @@ class UltraDataUpdateCoordinator(DataUpdateCoordinator[UltraCoordinatorData]):
             )
         environment = await self.client.get_environment_state(self.session)
         if (
-            self.device.type_id == TYPE_ULTRA
-            or self.device.pid.lower() == PID_ULTRA
+            self.device.type_id == TYPE_ULTRA or self.device.pid.lower() == PID_ULTRA
         ) and self.session.ultra1_probe is not True:
             return UltraCoordinatorData(environment=environment, radar=None, position=None)
         if self.session.ultra1_probe is True:
@@ -525,9 +524,7 @@ class UltraDataUpdateCoordinator(DataUpdateCoordinator[UltraCoordinatorData]):
         except (UltraConnectionError, UltraError):
             self.session = await self.client.connect(self.device, session_key=self.local_key)
             environment = await self.client.set_pro_absence_delay(self.session, value)
-        self.async_set_updated_data(
-            UltraCoordinatorData(environment=environment, radar=None, position=None)
-        )
+        self.async_set_updated_data(UltraCoordinatorData(environment=environment, radar=None, position=None))
 
     async def async_set_emotion_absence_delay(self, value: int) -> None:
         """Set eMotion absence delay and publish the confirmed state."""

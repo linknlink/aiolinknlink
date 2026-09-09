@@ -71,8 +71,7 @@ class _ModbusServer:
                     count = struct.unpack(">H", pdu[3:5])[0]
                     if function == 3:
                         body = bytes([3, count * 2]) + b"".join(
-                            struct.pack(">H", self.values.get(address + index, 0))
-                            for index in range(count)
+                            struct.pack(">H", self.values.get(address + index, 0)) for index in range(count)
                         )
                     elif function == 6:
                         self.values[address] = count

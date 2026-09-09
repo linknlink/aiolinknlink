@@ -1485,8 +1485,7 @@ def _validate_subdevice_response(response: bytes, did: str, operation: str) -> N
     status = payload.get("status")
     if response_did.lower() != did.lower() or isinstance(status, bool) or status != 0:
         raise UltraProtocolError(
-            f"eMotion Pro {operation} failed: "
-            f"response_did={response_did or 'missing'} status={status!r}"
+            f"eMotion Pro {operation} failed: response_did={response_did or 'missing'} status={status!r}"
         )
 
 

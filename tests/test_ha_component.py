@@ -333,9 +333,7 @@ def test_coordinator_tracks_four_two_channel_scene_edges() -> None:
     )
     coordinator = _coordinator(AsyncMock())
     values = {f"scenarioswitch_{channel}": 0 for channel in range(1, 5)}
-    coordinator._track_scene_edges(
-        {device.did: IbgSubDeviceState(device, values, datetime.now(UTC))}
-    )
+    coordinator._track_scene_edges({device.did: IbgSubDeviceState(device, values, datetime.now(UTC))})
     values["scenarioswitch_4"] = 1
     coordinator._track_scene_edges(
         {device.did: IbgSubDeviceState(device, values, datetime.now(UTC))},
@@ -356,9 +354,7 @@ def test_coordinator_tracks_six_three_channel_scene_edges() -> None:
     )
     coordinator = _coordinator(AsyncMock())
     values = {f"scenarioswitch_{channel}": 0 for channel in range(1, 7)}
-    coordinator._track_scene_edges(
-        {device.did: IbgSubDeviceState(device, values, datetime.now(UTC))}
-    )
+    coordinator._track_scene_edges({device.did: IbgSubDeviceState(device, values, datetime.now(UTC))})
     values["scenarioswitch_6"] = 1
     coordinator._track_scene_edges(
         {device.did: IbgSubDeviceState(device, values, datetime.now(UTC))},

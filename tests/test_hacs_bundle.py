@@ -28,8 +28,6 @@ def test_bundled_client_library_matches_source() -> None:
 
 def test_manifest_and_library_versions_match() -> None:
     """The HACS manifest and bundled library release must stay aligned."""
-    manifest = json.loads(
-        (ROOT / "custom_components" / "linknlink" / "manifest.json").read_text(encoding="utf-8")
-    )
+    manifest = json.loads((ROOT / "custom_components" / "linknlink" / "manifest.json").read_text(encoding="utf-8"))
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     assert f'version = "{manifest["version"]}"' in pyproject

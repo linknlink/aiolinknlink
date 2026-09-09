@@ -47,9 +47,7 @@ class _LearnedRemoteMixin:
         stored = await self._store.async_load()
         if isinstance(stored, dict):
             self._codes = {
-                key: value
-                for key, value in stored.items()
-                if isinstance(key, str) and isinstance(value, str)
+                key: value for key, value in stored.items() if isinstance(key, str) and isinstance(value, str)
             }
         self.async_write_ha_state()
 

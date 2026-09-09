@@ -65,23 +65,19 @@ SINGLE_CHANNEL_LIGHT_WRITABLE_FIELDS = frozenset(
 TWO_CHANNEL_LIGHT_POWER_FIELDS = frozenset({"pwr1", "pwr2"})
 TWO_CHANNEL_LIGHT_MASTER_POWER_FIELD = "mpwr"
 TWO_CHANNEL_LIGHT_BACKLIGHT_FIELD = "bglight"
-TWO_CHANNEL_LIGHT_SCENE_FIELDS = frozenset(
-    {f"scenarioswitch_{channel}" for channel in range(1, 5)}
-)
-TWO_CHANNEL_LIGHT_WRITABLE_FIELDS = (
-    TWO_CHANNEL_LIGHT_POWER_FIELDS
-    | {TWO_CHANNEL_LIGHT_MASTER_POWER_FIELD, TWO_CHANNEL_LIGHT_BACKLIGHT_FIELD}
-)
+TWO_CHANNEL_LIGHT_SCENE_FIELDS = frozenset({f"scenarioswitch_{channel}" for channel in range(1, 5)})
+TWO_CHANNEL_LIGHT_WRITABLE_FIELDS = TWO_CHANNEL_LIGHT_POWER_FIELDS | {
+    TWO_CHANNEL_LIGHT_MASTER_POWER_FIELD,
+    TWO_CHANNEL_LIGHT_BACKLIGHT_FIELD,
+}
 THREE_CHANNEL_LIGHT_POWER_FIELDS = frozenset({"pwr1", "pwr2", "pwr3"})
 THREE_CHANNEL_LIGHT_MASTER_POWER_FIELD = "mpwr"
 THREE_CHANNEL_LIGHT_BACKLIGHT_FIELD = "bglight"
-THREE_CHANNEL_LIGHT_SCENE_FIELDS = frozenset(
-    {f"scenarioswitch_{channel}" for channel in range(1, 7)}
-)
-THREE_CHANNEL_LIGHT_WRITABLE_FIELDS = (
-    THREE_CHANNEL_LIGHT_POWER_FIELDS
-    | {THREE_CHANNEL_LIGHT_MASTER_POWER_FIELD, THREE_CHANNEL_LIGHT_BACKLIGHT_FIELD}
-)
+THREE_CHANNEL_LIGHT_SCENE_FIELDS = frozenset({f"scenarioswitch_{channel}" for channel in range(1, 7)})
+THREE_CHANNEL_LIGHT_WRITABLE_FIELDS = THREE_CHANNEL_LIGHT_POWER_FIELDS | {
+    THREE_CHANNEL_LIGHT_MASTER_POWER_FIELD,
+    THREE_CHANNEL_LIGHT_BACKLIGHT_FIELD,
+}
 DTU_POWER_FIELDS = frozenset(f"pwr{channel}" for channel in range(1, 3))
 DTU_VOLTAGE_OUTPUT_FIELD = "voltage"
 DTU_WRITABLE_FIELDS = DTU_POWER_FIELDS | {DTU_VOLTAGE_OUTPUT_FIELD}
@@ -680,9 +676,7 @@ def _normalize_two_channel_light_switch_state(
     elif isinstance(master, int) and master in {0, 1}:
         values[TWO_CHANNEL_LIGHT_MASTER_POWER_FIELD] = bool(master)
     elif master == 2 and TWO_CHANNEL_LIGHT_POWER_FIELDS <= values.keys():
-        values[TWO_CHANNEL_LIGHT_MASTER_POWER_FIELD] = all(
-            values[key] for key in TWO_CHANNEL_LIGHT_POWER_FIELDS
-        )
+        values[TWO_CHANNEL_LIGHT_MASTER_POWER_FIELD] = all(values[key] for key in TWO_CHANNEL_LIGHT_POWER_FIELDS)
 
     for key in TWO_CHANNEL_LIGHT_SCENE_FIELDS:
         raw = payload.get(key)
@@ -709,9 +703,7 @@ def _normalize_three_channel_light_switch_state(
     elif isinstance(master, int) and master in {0, 1}:
         values[THREE_CHANNEL_LIGHT_MASTER_POWER_FIELD] = bool(master)
     elif master == 2 and THREE_CHANNEL_LIGHT_POWER_FIELDS <= values.keys():
-        values[THREE_CHANNEL_LIGHT_MASTER_POWER_FIELD] = all(
-            values[key] for key in THREE_CHANNEL_LIGHT_POWER_FIELDS
-        )
+        values[THREE_CHANNEL_LIGHT_MASTER_POWER_FIELD] = all(values[key] for key in THREE_CHANNEL_LIGHT_POWER_FIELDS)
 
     for key in THREE_CHANNEL_LIGHT_SCENE_FIELDS:
         raw = payload.get(key)
