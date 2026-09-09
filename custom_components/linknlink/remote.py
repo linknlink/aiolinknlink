@@ -1,4 +1,4 @@
-"""Remote platform for eHomeHA and eRemoteHA infrared devices."""
+"""Remote platform for eHomeHA, eRemoteHA, and eHub infrared devices."""
 
 from __future__ import annotations
 
@@ -14,8 +14,8 @@ from homeassistant.helpers.storage import Store
 
 from . import LinknLinkConfigEntry
 from .const import DOMAIN
-from .coordinator import UltraDataUpdateCoordinator
-from .entity import UltraCoordinatorEntity
+from .coordinator import EHubDataUpdateCoordinator, UltraDataUpdateCoordinator
+from .entity import EHubCoordinatorEntity, UltraCoordinatorEntity
 
 STORAGE_VERSION = 1
 
@@ -28,39 +28,16 @@ async def async_setup_entry(
     """Create one infrared remote entity."""
     del hass
     coordinator = entry.runtime_data
-    if not isinstance(coordinator, UltraDataUpdateCoordinator) or not coordinator._is_remote:
-        return
-    async_add_entities([LinknLinkRemoteEntity(coordinator)])
+    if isinstance(coordinator, EHubDataUpdateCoordinator):
+        async_add_entities([EHubRemoteEntity(coordinator)])
+    elif isinstance(coordinator, UltraDataUpdateCoordinator) and coordinator._is_remote:
+        async_add_entities([LinknLinkRemoteEntity(coordinator)])
 
 
-class LinknLinkRemoteEntity(UltraCoordinatorEntity, RemoteEntity):
-    """A learned-command infrared remote backed by the device TCP API."""
+class _LearnedRemoteMixin:
+    """Persistence and command handling shared by local remote entities."""
 
-    _attr_has_entity_name = True
-    _attr_name = "Remote"
-    _attr_should_poll = False
-    _attr_supported_features = (
-        RemoteEntityFeature.LEARN_COMMAND | RemoteEntityFeature.DELETE_COMMAND
-    )
-
-    def __init__(self, coordinator: UltraDataUpdateCoordinator) -> None:
-        super().__init__(coordinator, "remote")
-        self._client = coordinator.get_remote_client()
-        self._store: Store[dict[str, str]] | None = None
-        self._codes: dict[str, str] = {}
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Expose command names without exposing infrared payloads."""
-        return {"commands": sorted(self._codes)}
-
-    @property
-    def available(self) -> bool:
-        """Remote availability follows the authenticated device, not sensors."""
-        return self.coordinator.last_update_success
-
-    async def async_added_to_hass(self) -> None:
-        """Load learned commands from persistent storage."""
+    async def _async_load_codes(self) -> None:
         await super().async_added_to_hass()
         self._store = Store(
             self.hass,
@@ -69,15 +46,22 @@ class LinknLinkRemoteEntity(UltraCoordinatorEntity, RemoteEntity):
         )
         stored = await self._store.async_load()
         if isinstance(stored, dict):
-            self._codes = {key: value for key, value in stored.items() if isinstance(key, str) and isinstance(value, str)}
+            self._codes = {
+                key: value
+                for key, value in stored.items()
+                if isinstance(key, str) and isinstance(value, str)
+            }
         self.async_write_ha_state()
 
-    async def async_will_remove_from_hass(self) -> None:
-        """Release the entity from Home Assistant."""
-        await super().async_will_remove_from_hass()
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {"commands": sorted(self._codes)}
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.last_update_success
 
     async def async_send_command(self, command: Iterable[str], **kwargs: Any) -> None:
-        """Transmit one or more learned infrared commands."""
         commands = list(command)
         if not commands:
             raise HomeAssistantError("At least one remote command is required")
@@ -98,7 +82,6 @@ class LinknLinkRemoteEntity(UltraCoordinatorEntity, RemoteEntity):
                 raise HomeAssistantError(f"Could not send remote command {name}: {err}") from err
 
     async def async_learn_command(self, **kwargs: Any) -> None:
-        """Learn and persist one infrared command."""
         command = kwargs.get("command")
         if isinstance(command, list):
             name = command[0].strip() if len(command) == 1 and isinstance(command[0], str) else ""
@@ -117,7 +100,6 @@ class LinknLinkRemoteEntity(UltraCoordinatorEntity, RemoteEntity):
         self.async_write_ha_state()
 
     async def async_delete_command(self, **kwargs: Any) -> None:
-        """Delete one learned command from persistent storage."""
         command = kwargs.get("command")
         if isinstance(command, list):
             names = [item.strip() for item in command if isinstance(item, str)]
@@ -136,3 +118,39 @@ class LinknLinkRemoteEntity(UltraCoordinatorEntity, RemoteEntity):
             raise HomeAssistantError("Remote storage is not ready")
         await self._store.async_save(self._codes)
         self.async_write_ha_state()
+
+
+class LinknLinkRemoteEntity(_LearnedRemoteMixin, UltraCoordinatorEntity, RemoteEntity):
+    """A learned-command infrared remote backed by the device TCP API."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Remote"
+    _attr_should_poll = False
+    _attr_supported_features = RemoteEntityFeature.LEARN_COMMAND | RemoteEntityFeature.DELETE_COMMAND
+
+    def __init__(self, coordinator: UltraDataUpdateCoordinator) -> None:
+        UltraCoordinatorEntity.__init__(self, coordinator, "remote")
+        self._client = coordinator.get_remote_client()
+        self._store: Store[dict[str, str]] | None = None
+        self._codes: dict[str, str] = {}
+
+    async def async_added_to_hass(self) -> None:
+        await self._async_load_codes()
+
+
+class EHubRemoteEntity(_LearnedRemoteMixin, EHubCoordinatorEntity, RemoteEntity):
+    """A learned-command infrared remote backed by an eHub TCP API."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Remote"
+    _attr_should_poll = False
+    _attr_supported_features = RemoteEntityFeature.LEARN_COMMAND | RemoteEntityFeature.DELETE_COMMAND
+
+    def __init__(self, coordinator: EHubDataUpdateCoordinator) -> None:
+        EHubCoordinatorEntity.__init__(self, coordinator, "remote")
+        self._client = coordinator.get_remote_client()
+        self._store: Store[dict[str, str]] | None = None
+        self._codes: dict[str, str] = {}
+
+    async def async_added_to_hass(self) -> None:
+        await self._async_load_codes()

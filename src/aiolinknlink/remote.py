@@ -10,6 +10,7 @@ import struct
 from contextlib import suppress
 from typing import Any
 
+from .ehub import EHubDevice
 from .devices import DeviceCapability
 from .models import UltraDevice
 
@@ -52,12 +53,12 @@ class LinknLinkRemoteClient:
 
     def __init__(
         self,
-        device: UltraDevice,
+        device: UltraDevice | EHubDevice,
         *,
         port: int = DEFAULT_REMOTE_PORT,
         timeout: float = DEFAULT_REMOTE_TIMEOUT,
     ) -> None:
-        if DeviceCapability.REMOTE not in device.capabilities:
+        if isinstance(device, UltraDevice) and DeviceCapability.REMOTE not in device.capabilities:
             raise ValueError("device does not support the local remote protocol")
         if not device.ip.strip():
             raise ValueError("remote device IP address is required")

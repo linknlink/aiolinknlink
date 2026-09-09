@@ -328,6 +328,7 @@ class EHubDataUpdateCoordinator(DataUpdateCoordinator[EHubState]):
         self.client = client
         self.device = device
         self.session = session
+        self.remote_client: LinknLinkRemoteClient | None = None
 
     async def _async_update_data(self) -> EHubState:
         try:
@@ -347,9 +348,17 @@ class EHubDataUpdateCoordinator(DataUpdateCoordinator[EHubState]):
             state = await self.client.set_absence_delay(self.session, value)
         self.async_set_updated_data(state)
 
+    def get_remote_client(self) -> LinknLinkRemoteClient:
+        """Return the shared local infrared client for this eHub."""
+        if self.remote_client is None:
+            self.remote_client = LinknLinkRemoteClient(self.device)
+        return self.remote_client
+
     async def async_shutdown(self) -> None:
         """Release the logical session."""
         await self.client.close(self.session)
+        if self.remote_client is not None:
+            await self.remote_client.close()
 
 
 class EthsDataUpdateCoordinator(DataUpdateCoordinator[EthsState]):
