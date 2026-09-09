@@ -276,11 +276,11 @@ def _modbus_write_registers(
 ) -> None:
     if not 1 <= len(values) <= RAW_CODE_REGISTER_COUNT:
         raise ValueError("invalid Modbus register write length")
-    pdu = struct.pack(">BBHHB", 16, address, len(values), len(values) * 2) + b"".join(
+    pdu = struct.pack(">BHHB", 16, address, len(values), len(values) * 2) + b"".join(
         struct.pack(">H", value) for value in values
     )
     response = _exchange(host, port, [(transaction_id, pdu)], timeout)[0]
-    if len(response) != 5 or response[:3] != struct.pack(">BHH", 16, address, len(values)):
+    if response != struct.pack(">BHH", 16, address, len(values)):
         raise EHubProtocolError("invalid Modbus multiple-write response")
 
 

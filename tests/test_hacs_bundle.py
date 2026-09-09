@@ -19,8 +19,16 @@ def _file_hash(path: Path) -> str:
 
 def test_bundled_client_library_matches_source() -> None:
     """Every source client file must be present and byte-identical in HACS."""
-    source_files = sorted(path.relative_to(SOURCE) for path in SOURCE.rglob("*") if path.is_file())
-    target_files = sorted(path.relative_to(TARGET) for path in TARGET.rglob("*") if path.is_file())
+
+    def package_files(root: Path) -> list[Path]:
+        return sorted(
+            path.relative_to(root)
+            for path in root.rglob("*")
+            if path.is_file() and "__pycache__" not in path.parts and path.suffix != ".pyc"
+        )
+
+    source_files = package_files(SOURCE)
+    target_files = package_files(TARGET)
     assert target_files == source_files
     for relative_path in source_files:
         assert _file_hash(SOURCE / relative_path) == _file_hash(TARGET / relative_path)

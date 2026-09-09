@@ -260,8 +260,6 @@ class UltraClient:
                 return await self._get_max1_environment_state(session)
             return await self._get_max_subdevice_environment_state(session)
         if _matches_emotion_pro(session.device):
-            if session.device.type_id == TYPE_EMOTION_PRO_RADAR:
-                raise UltraProtocolError("eMotion Pro radar state adapter is not enabled yet")
             return await self._get_pro_environment_state(session)
         if session.device.type_id == TYPE_ULTRA or session.device.pid.lower() == PID_ULTRA:
             if session.ultra1_probe is not False:
@@ -1104,7 +1102,7 @@ class UltraClient:
             ip=raw.ip,
             port=raw.port or self.default_port,
             type_id=raw.device_type,
-            pid=pid or (PID_ULTRA if raw.device_type == TYPE_ULTRA else PID_ULTRA2),
+            pid=pid,
             name=name,
             model=model,
             raw={"message_type": raw.message_type, "raw_len": len(raw.raw)},
@@ -1200,7 +1198,6 @@ def _matches_ultra(device: UltraDevice) -> bool:
         PID_ULTRA,
         PID_ULTRA2,
         PID_EMOTION,
-        PID_EMOTION_PRO,
         PID_EMOTION_PRO_RADAR,
         PID_EMOTION_MAX1,
         PID_EMOTION_MAX2,
@@ -1215,7 +1212,6 @@ def _matches_ultra(device: UltraDevice) -> bool:
         TYPE_ULTRA2_LAN,
         TYPE_EMOTION,
         TYPE_EMOTION_WIRE,
-        TYPE_EMOTION_PRO,
         TYPE_EMOTION_PRO_RADAR,
         TYPE_EMOTION_MAX1,
         TYPE_EMOTION_MAX2,

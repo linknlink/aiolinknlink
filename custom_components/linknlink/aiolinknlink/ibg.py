@@ -524,7 +524,7 @@ class IbgClient:
         )
 
 
-def normalize_subdevice_state(pid: str, payload: dict[str, Any]) -> dict[str, int | float | bool | str]:
+def normalize_subdevice_state(pid: str, payload: dict[str, Any]) -> dict[str, Any]:
     """Return reviewed HA-safe fields, excluding all gateway configuration."""
     if pid.lower() == PID_BOX7_CONTROLLER:
         return _normalize_box7_state(payload)
