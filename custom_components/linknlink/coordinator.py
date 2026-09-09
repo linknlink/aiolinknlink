@@ -367,8 +367,14 @@ class UltraDataUpdateCoordinator(DataUpdateCoordinator[UltraCoordinatorData]):
                 emotion=emotion,
             )
         environment = await self.client.get_environment_state(self.session)
-        if self.device.type_id == TYPE_ULTRA or self.device.pid.lower() == PID_ULTRA:
+        if (
+            self.device.type_id == TYPE_ULTRA
+            or self.device.pid.lower() == PID_ULTRA
+        ) and self.session.ultra1_probe is not True:
             return UltraCoordinatorData(environment=environment, radar=None, position=None)
+        if self.session.ultra1_probe is True:
+            radar = await self.client.get_radar_status(self.session)
+            return UltraCoordinatorData(environment=environment, radar=radar, position=None)
         if self.position_subscription is None:
             radar = await self.client.get_radar_status(self.session)
             position = None

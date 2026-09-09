@@ -213,7 +213,7 @@ async def async_setup_entry(
         if is_emotion:
             async_add_entities(UltraRadarNumber(coordinator, description) for description in EMOTION_NUMBERS)
             return
-        if coordinator.device.type_id != TYPE_ULTRA:
+        if coordinator.device.type_id != TYPE_ULTRA or coordinator.session.ultra1_probe is True:
             async_add_entities(UltraRadarNumber(coordinator, description) for description in ULTRA_RADAR_NUMBERS)
         return
     async_add_entities(

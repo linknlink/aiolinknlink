@@ -642,6 +642,7 @@ async def async_setup_entry(
                     UltraPositionSensor(coordinator, description)
                     for description in ULTRA_POSITION_SENSORS
                     if coordinator.device.type_id != TYPE_ULTRA
+                    and coordinator.session.ultra1_probe is not True
                 ),
             ]
         )

@@ -12,21 +12,22 @@ from aiolinknlink import (
     PID_EMOTION,
     PID_EMOTION_PRO,
     PID_EMOTION_PRO_RADAR,
-    PID_EMOTION_PRO_RADAR,
     TYPE_EMOTION,
     TYPE_EMOTION_PRO,
     TYPE_EMOTION_PRO_RADAR,
-    TYPE_PRO_RADAR_24G,
-    TYPE_LEGACY_SHTXX,
-    TYPE_EMOTION_PRO_RADAR,
-    TYPE_EMOTION_WIRE,
     TYPE_ULTRA,
+    TYPE_LEGACY_SHTXX,
+    TYPE_PRO_RADAR_24G,
+    TYPE_EMOTION_WIRE,
     UltraClient,
     UltraDevice,
     UltraProtocolError,
     derive_peripheral_did,
+    derive_radar_did,
 )
 from aiolinknlink.client import (
+    TYPE_LEGACY_OPT3004,
+    TYPE_ULTRA2_RADAR,
     _auth_device_type_candidates,
     _matches_emotion,
     _matches_emotion_pro,
@@ -287,3 +288,53 @@ async def test_emotion_pro_radar_reads_virtual_peripherals() -> None:
         "temperature": 23.5,
         "humidity": 48.5,
     }
+
+
+async def test_shared_ultra_type_probes_first_generation_peripherals() -> None:
+    device = UltraDevice(
+        id="e04b41006515",
+        ip="192.168.3.31",
+        port=80,
+        mac="e0:4b:41:00:65:15",
+        pid="0000000000000000000000009cac0000",
+        type_id=TYPE_ULTRA,
+    )
+    radar_did = derive_peripheral_did(device.mac, TYPE_ULTRA2_RADAR)
+    light_did = derive_peripheral_did(device.mac, TYPE_LEGACY_OPT3004)
+    climate_did = derive_peripheral_did(device.mac, TYPE_LEGACY_SHTXX)
+    client = UltraClient()
+    client.send_command = AsyncMock(
+        side_effect=[
+            emotion.build_subdevice_frame(
+                emotion.CMD_SUBDEVICE_LIST_RESPONSE,
+                {"status": 0, "list": [{"did": radar_did}, {"did": light_did}, {"did": climate_did}]},
+            ),
+            emotion.build_subdevice_frame(
+                emotion.CMD_STATUS_RESPONSE,
+                {"did": radar_did, "status": 0, "pir_detected": 1, "sf_opcount": 2, "area1": 1},
+            ),
+            emotion.build_subdevice_frame(
+                emotion.CMD_STATUS_RESPONSE,
+                {"did": light_did, "status": 0, "envlux": 150},
+            ),
+            emotion.build_subdevice_frame(
+                emotion.CMD_STATUS_RESPONSE,
+                {"did": climate_did, "status": 0, "envtemp": 7700, "envhumid": 5000, "tempunit": 2},
+            ),
+        ]
+    )
+
+    session = UltraSession(device=device, session_key=b"0123456789abcdef")
+    state = await client.get_environment_state(session)
+
+    assert state.values == {
+        "occupancy": True,
+        "target_count": 2,
+        "zone_1_presence": True,
+        "illuminance": 150.0,
+        "temperature": 25.0,
+        "humidity": 50.0,
+    }
+    assert session.ultra1_probe is True
+    assert session.peripheral_dids[TYPE_ULTRA2_RADAR] == radar_did
+    assert derive_radar_did(device.mac) == radar_did

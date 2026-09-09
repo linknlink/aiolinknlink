@@ -50,6 +50,7 @@ TYPE_EMOTION_PRO = 0x6FAC
 TYPE_EMOTION_PRO_RADAR = 0xB9AC
 TYPE_PRO_RADAR_24G = 0xACD9
 TYPE_LEGACY_SHTXX = 0xACDC
+TYPE_LEGACY_OPT3004 = 0xACD8
 DEFAULT_TIMEOUT = 5.0
 DEFAULT_AUTH_TIMEOUT = 15.0
 DEFAULT_PREFERRED_COMMAND_TIMEOUT = 15.0
@@ -249,6 +250,14 @@ class UltraClient:
                 raise UltraProtocolError("eMotion Pro radar state adapter is not enabled yet")
             return await self._get_pro_environment_state(session)
         if session.device.type_id == TYPE_ULTRA or session.device.pid.lower() == PID_ULTRA:
+            if session.ultra1_probe is not False:
+                try:
+                    state = await self._get_ultra1_environment_state(session)
+                except UltraProtocolError:
+                    session.ultra1_probe = False
+                else:
+                    session.ultra1_probe = True
+                    return state
             return await self.get_legacy_environment_state(session)
         client = APIClient(
             session.device.ip,
@@ -331,6 +340,80 @@ class UltraClient:
             available_fields=frozenset(values),
             received_at=datetime.now(UTC),
         )
+
+    async def _get_ultra1_environment_state(self, session: UltraSession) -> UltraEnvironmentState:
+        """Read first-generation Ultra virtual peripherals and optional sensors."""
+        peripheral_dids = await self._get_ultra1_peripheral_dids(session)
+        if TYPE_ULTRA2_RADAR not in peripheral_dids:
+            raise UltraProtocolError("Ultra1 virtual peripheral list has no radar")
+        values: dict[str, int | float | bool] = {}
+        radar_did = peripheral_dids.get(TYPE_ULTRA2_RADAR, derive_radar_did(session.device.mac))
+        radar = await self._get_subdevice_state(session, radar_did, required=True)
+        if radar is not None:
+            if (occupancy := _optional_bool_int(radar, "pir_detected")) is not None:
+                values["occupancy"] = occupancy
+            if (target_count := _optional_number(radar, "sf_opcount")) is not None:
+                values["target_count"] = round(target_count)
+            for zone in range(1, 5):
+                if (present := _optional_bool_int(radar, f"area{zone}")) is not None:
+                    values[f"zone_{zone}_presence"] = present
+        illuminance = await self._get_subdevice_state(
+            session,
+            peripheral_dids.get(TYPE_LEGACY_OPT3004, derive_peripheral_did(session.device.mac, TYPE_LEGACY_OPT3004)),
+        )
+        if illuminance is not None and (lux := _optional_number(illuminance, "envlux")) is not None:
+            values["illuminance"] = lux
+        climate = await self._get_subdevice_state(
+            session,
+            peripheral_dids.get(TYPE_LEGACY_SHTXX, derive_peripheral_did(session.device.mac, TYPE_LEGACY_SHTXX)),
+        )
+        if climate is not None:
+            if (temperature := _optional_number(climate, "envtemp")) is not None:
+                temperature /= 100
+                if climate.get("tempunit") == 2:
+                    temperature = (temperature - 32) * 5 / 9
+                values["temperature"] = round(temperature, 2)
+            if (humidity := _optional_number(climate, "envhumid")) is not None:
+                values["humidity"] = round(humidity / 100, 2)
+        if not values:
+            raise UltraProtocolError("Ultra1 did not return any supported state")
+        session.last_seen = datetime.now(UTC)
+        return UltraEnvironmentState(
+            device_id=session.device.id,
+            values=values,
+            available_fields=frozenset(values),
+            received_at=datetime.now(UTC),
+        )
+
+    async def _get_ultra1_peripheral_dids(self, session: UltraSession) -> dict[int, str]:
+        """Read and cache first-generation Ultra virtual peripheral identities."""
+        if session.peripheral_dids:
+            return dict(session.peripheral_dids)
+        try:
+            response = await self.send_command(session, emotion.build_get_subdevice_list_frame())
+            frame = emotion.parse_subdevice_frame(response)
+            payload = emotion.parse_subdevice_json_payload(frame)
+        except (UltraError, emotion.EmotionError) as err:
+            raise UltraProtocolError(f"Ultra1 peripheral list read failed: {err}") from err
+        status = payload.get("status")
+        items = payload.get("list")
+        if isinstance(status, bool) or status != 0 or not isinstance(items, list):
+            raise UltraProtocolError("Ultra1 peripheral list response is invalid")
+        for item in items:
+            if not isinstance(item, dict) or not isinstance(item.get("did"), str):
+                continue
+            did = item["did"].lower()
+            offline = item.get("offline")
+            if isinstance(offline, bool) and offline:
+                continue
+            if isinstance(offline, int) and not isinstance(offline, bool) and offline != 0:
+                continue
+            peripheral_type = _peripheral_type_from_did(did)
+            if peripheral_type in {TYPE_ULTRA2_RADAR, TYPE_LEGACY_OPT3004, TYPE_LEGACY_SHTXX}:
+                session.peripheral_dids[peripheral_type] = did
+        if not session.peripheral_dids:
+            raise UltraProtocolError("Ultra1 peripheral list has no supported devices")
+        return dict(session.peripheral_dids)
 
     async def _get_pro_radar_environment_state(self, session: UltraSession) -> UltraEnvironmentState:
         """Read public state from the Pro radar and optional SHTXX peripherals."""
@@ -600,7 +683,7 @@ class UltraClient:
         exchange: dna.PacketExchange | None = None,
     ) -> UltraRadarStatus:
         """Read the validated Ultra2 radar configuration fields."""
-        radar_did = derive_ultra2_radar_did(session.device.mac)
+        radar_did = session.peripheral_dids.get(TYPE_ULTRA2_RADAR, derive_radar_did(session.device.mac))
         try:
             payload = await self.send_command(
                 session,
@@ -821,7 +904,7 @@ class UltraClient:
         values_match: Callable[[object, object], bool] | None = None,
     ) -> UltraRadarStatus:
         """Write one radar field and require a matching independent read-back."""
-        radar_did = derive_ultra2_radar_did(session.device.mac)
+        radar_did = session.peripheral_dids.get(TYPE_ULTRA2_RADAR, derive_radar_did(session.device.mac))
         await self.send_command(
             session,
             emotion.build_set_status_frame(radar_did, {field: value}),
@@ -1163,6 +1246,11 @@ def derive_peripheral_did(lan_mac: str, peripheral_type: int) -> str:
     return (mac + device_type + b"\x00\x00" + device_type[:3] + b"\x01").hex()
 
 
+def derive_radar_did(lan_mac: str) -> str:
+    """Derive the shared legacy Ultra radar peripheral DID."""
+    return derive_peripheral_did(lan_mac, TYPE_ULTRA2_RADAR)
+
+
 def _peripheral_type_from_did(did: str) -> int | None:
     try:
         raw_did = bytes.fromhex(did)
@@ -1171,6 +1259,23 @@ def _peripheral_type_from_did(did: str) -> int | None:
     if len(raw_did) != 16:
         return None
     return int.from_bytes(raw_did[6:10], "little")
+
+
+def _optional_number(payload: dict[str, object], key: str) -> float | None:
+    value = payload.get(key)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    return number if math.isfinite(number) else None
+
+
+def _optional_bool_int(payload: dict[str, object], key: str) -> bool | None:
+    value = payload.get(key)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int) and value in {0, 1}:
+        return bool(value)
+    return None
 
 
 def _validate_subdevice_response(response: bytes, did: str, operation: str) -> None:

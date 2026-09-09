@@ -16,6 +16,7 @@ from .client import (
     TYPE_EMOTION_PRO_RADAR,
     TYPE_PRO_RADAR_24G,
     TYPE_LEGACY_SHTXX,
+    TYPE_LEGACY_OPT3004,
     TYPE_ULTRA,
     TYPE_ULTRA2,
     TYPE_ULTRA2_LAN,
@@ -27,6 +28,7 @@ from .client import (
     derive_ultra2_protocol_mac,
     derive_ultra2_radar_did,
     derive_peripheral_did,
+    derive_radar_did,
 )
 from .ehome import (
     DISPLAY_MODEL_EHOME,
@@ -248,6 +250,7 @@ __all__ = [
     "TYPE_EMOTION_PRO_RADAR",
     "TYPE_PRO_RADAR_24G",
     "TYPE_LEGACY_SHTXX",
+    "TYPE_LEGACY_OPT3004",
     "PID_ULTRA",
     "TYPE_ULTRA",
     "TYPE_ULTRA2",
@@ -276,5 +279,6 @@ __all__ = [
     "UltraTargetPosition",
     "derive_ultra2_radar_did",
     "derive_peripheral_did",
+    "derive_radar_did",
     "derive_ultra2_protocol_mac",
 ]
