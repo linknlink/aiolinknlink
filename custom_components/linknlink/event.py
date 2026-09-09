@@ -16,7 +16,7 @@ from aiolinknlink import (
 )
 
 from . import LinknLinkConfigEntry
-from .coordinator import EHomeDataUpdateCoordinator, UltraDataUpdateCoordinator
+from .coordinator import EHomeDataUpdateCoordinator, EthsDataUpdateCoordinator, UltraDataUpdateCoordinator
 from .entity import EHomeCoordinatorEntity, IbgCoordinatorEntity
 
 EVENT_TYPE_PRESSED = "pressed"
@@ -35,7 +35,7 @@ async def async_setup_entry(
     if isinstance(coordinator, EHomeDataUpdateCoordinator):
         async_add_entities([EHomeKeyEvent(coordinator)])
         return
-    if isinstance(coordinator, UltraDataUpdateCoordinator):
+    if isinstance(coordinator, (UltraDataUpdateCoordinator, EthsDataUpdateCoordinator)):
         return
     async_add_entities(
         IbgKeyEvent(coordinator, device.did) for device in coordinator.data.subdevices if device.pid == PID_SR3_SENSOR

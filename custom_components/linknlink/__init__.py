@@ -45,6 +45,10 @@ from aiolinknlink import (  # noqa: E402  # noqa: E402
     DeviceCapability,
     EHomeClient,
     EHomeError,
+    EthsClient,
+    EthsConnectionError,
+    EthsDevice,
+    EthsError,
     IbgClient,
     IbgError,
     UltraClient,
@@ -56,6 +60,7 @@ from .const import (  # noqa: E402
     CONF_LOCAL_KEY,
     DEVICE_TYPE_EHOME,
     DEVICE_TYPE_REMOTE,
+    DEVICE_TYPE_ETHS,
     DEVICE_TYPE_EMOTION,
     DEVICE_TYPE_IBG,
     DEVICE_TYPE_ULTRA,
@@ -63,12 +68,18 @@ from .const import (  # noqa: E402
     PLATFORMS,
     resolve_local_key_hex,
 )
-from .coordinator import EHomeDataUpdateCoordinator, IbgDataUpdateCoordinator, UltraDataUpdateCoordinator  # noqa: E402
+from .coordinator import (
+    EHomeDataUpdateCoordinator,
+    EthsDataUpdateCoordinator,
+    IbgDataUpdateCoordinator,
+    UltraDataUpdateCoordinator,
+)  # noqa: E402
 
 LinknLinkConfigEntry: TypeAlias = ConfigEntry[
     IbgDataUpdateCoordinator
     | UltraDataUpdateCoordinator
     | EHomeDataUpdateCoordinator
+    | EthsDataUpdateCoordinator
 ]
 
 
@@ -77,6 +88,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: LinknLinkConfigEntry) ->
     device_type = entry.data.get(CONF_DEVICE_TYPE, DEVICE_TYPE_IBG)
     if device_type == DEVICE_TYPE_REMOTE:
         return await _async_setup_remote_entry(hass, entry)
+    if device_type == DEVICE_TYPE_ETHS:
+        return await _async_setup_eths_entry(hass, entry)
     if device_type in {DEVICE_TYPE_EMOTION, DEVICE_TYPE_ULTRA, DEVICE_TYPE_ULTRA2}:
         return await _async_setup_ultra_entry(hass, entry)
     if device_type == DEVICE_TYPE_EHOME:
@@ -93,6 +106,28 @@ async def _async_setup_ehome_entry(hass: HomeAssistant, entry: LinknLinkConfigEn
     except EHomeError as err:
         raise ConfigEntryNotReady(f"Could not connect to eHome: {err}") from err
     coordinator = EHomeDataUpdateCoordinator(hass, client, device, session)
+    await coordinator.async_config_entry_first_refresh()
+    entry.runtime_data = coordinator
+    dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={("linknlink", device.id)},
+        name=device.name,
+        manufacturer="LinknLink",
+        model=device.model,
+    )
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    return True
+
+
+async def _async_setup_eths_entry(hass: HomeAssistant, entry: LinknLinkConfigEntry) -> bool:
+    """Set up one eTHS temperature/humidity sensor."""
+    client = EthsClient()
+    try:
+        device = await client.discover_host(entry.data[CONF_HOST])
+        session = await client.connect(device)
+    except EthsError as err:
+        raise ConfigEntryNotReady(f"Could not connect to eTHS: {err}") from err
+    coordinator = EthsDataUpdateCoordinator(hass, client, device, session)
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
     dr.async_get(hass).async_get_or_create(

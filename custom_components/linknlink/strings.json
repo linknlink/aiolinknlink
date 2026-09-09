@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Connect to a LinknLink device",
-        "description": "Enter the local IP address of a supported iBG gateway or eMotion device.",
+        "description": "Enter the local IP address of a supported LinknLink device.",
         "data": {"host": "Host", "local_key": "Local key (optional)"}
       }
     },

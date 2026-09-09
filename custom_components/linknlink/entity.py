@@ -6,7 +6,12 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
-from .coordinator import EHomeDataUpdateCoordinator, IbgDataUpdateCoordinator, UltraDataUpdateCoordinator
+from .coordinator import (
+    EHomeDataUpdateCoordinator,
+    EthsDataUpdateCoordinator,
+    IbgDataUpdateCoordinator,
+    UltraDataUpdateCoordinator,
+)
 
 SUBDEVICE_MODELS = {
     "00000000000000000000000005000100": "RF environment/occupancy sensor",
@@ -155,6 +160,27 @@ class EHomeCoordinatorEntity(CoordinatorEntity[EHomeDataUpdateCoordinator]):
     @property
     def device_info(self) -> DeviceInfo:
         """Return eHome device registry information."""
+        return DeviceInfo(
+            identifiers={(DOMAIN, self.coordinator.device.id)},
+            name=self.coordinator.device.name,
+            manufacturer="LinknLink",
+            model=self.coordinator.device.model,
+        )
+
+
+class EthsCoordinatorEntity(CoordinatorEntity[EthsDataUpdateCoordinator]):
+    """Base entity for one eTHS sensor field."""
+
+    _attr_has_entity_name = True
+
+    def __init__(self, coordinator: EthsDataUpdateCoordinator, key: str) -> None:
+        super().__init__(coordinator)
+        self.key = key
+        self._attr_unique_id = f"{coordinator.device.id}_{key}"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return eTHS device registry information."""
         return DeviceInfo(
             identifiers={(DOMAIN, self.coordinator.device.id)},
             name=self.coordinator.device.name,

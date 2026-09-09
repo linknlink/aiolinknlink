@@ -46,8 +46,8 @@ from aiolinknlink import (
 )
 
 from . import LinknLinkConfigEntry
-from .coordinator import EHomeDataUpdateCoordinator, UltraDataUpdateCoordinator
-from .entity import EHomeCoordinatorEntity, IbgCoordinatorEntity, UltraCoordinatorEntity
+from .coordinator import EHomeDataUpdateCoordinator, EthsDataUpdateCoordinator, UltraDataUpdateCoordinator
+from .entity import EHomeCoordinatorEntity, EthsCoordinatorEntity, IbgCoordinatorEntity, UltraCoordinatorEntity
 
 SR3_SENSORS = (
     SensorEntityDescription(
@@ -361,6 +361,24 @@ EHOME_SENSORS = (
         state_class=SensorStateClass.MEASUREMENT,
     ),
 )
+ETHS_SENSORS = (
+    SensorEntityDescription(
+        key="temperature",
+        name="Temperature",
+        translation_key="temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    SensorEntityDescription(
+        key="humidity",
+        name="Humidity",
+        translation_key="humidity",
+        device_class=SensorDeviceClass.HUMIDITY,
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+)
 
 MODBUS_ELECTRICITY_METER_SENSORS = (
     SensorEntityDescription(
@@ -626,6 +644,9 @@ async def async_setup_entry(
     if isinstance(coordinator, EHomeDataUpdateCoordinator):
         async_add_entities(EHomeSensor(coordinator, description) for description in EHOME_SENSORS)
         return
+    if isinstance(coordinator, EthsDataUpdateCoordinator):
+        async_add_entities(EthsSensor(coordinator, description) for description in ETHS_SENSORS)
+        return
     if isinstance(coordinator, UltraDataUpdateCoordinator):
         if coordinator._is_remote:
             return
@@ -702,6 +723,22 @@ class EHomeSensor(EHomeCoordinatorEntity, SensorEntity):
     @property
     def native_value(self) -> float | None:
         """Return the latest eHome scalar value."""
+        value = getattr(self.coordinator.data, self.key, None)
+        return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+class EthsSensor(EthsCoordinatorEntity, SensorEntity):
+    """One eTHS temperature or humidity measurement."""
+
+    entity_description: SensorEntityDescription
+
+    def __init__(self, coordinator: EthsDataUpdateCoordinator, description: SensorEntityDescription) -> None:
+        super().__init__(coordinator, description.key)
+        self.entity_description = description
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the latest validated measurement."""
         value = getattr(self.coordinator.data, self.key, None)
         return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
 

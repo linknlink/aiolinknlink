@@ -34,6 +34,12 @@ from aiolinknlink import (
     EHomeError,
     EHomeSession,
     EHomeState,
+    EthsClient,
+    EthsConnectionError,
+    EthsDevice,
+    EthsError,
+    EthsSession,
+    EthsState,
     EmotionPresenceState,
     IbgClient,
     IbgConnectionError,
@@ -291,6 +297,40 @@ class EHomeDataUpdateCoordinator(DataUpdateCoordinator[EHomeState]):
             self.session = await self.client.connect(self.device)
             state = await self.client.set_absence_delay(self.session, value)
         self.async_set_updated_data(state)
+
+    async def async_shutdown(self) -> None:
+        """Release the logical session."""
+        await self.client.close(self.session)
+
+
+class EthsDataUpdateCoordinator(DataUpdateCoordinator[EthsState]):
+    """Poll one eTHS temperature/humidity sensor."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        client: EthsClient,
+        device: EthsDevice,
+        session: EthsSession,
+    ) -> None:
+        super().__init__(
+            hass,
+            _LOGGER,
+            name=f"{DOMAIN}_{device.id}",
+            update_interval=timedelta(seconds=UPDATE_INTERVAL_SECONDS),
+        )
+        self.client = client
+        self.device = device
+        self.session = session
+
+    async def _async_update_data(self) -> EthsState:
+        try:
+            return await self.client.read_state(self.session)
+        except EthsConnectionError:
+            self.session = await self.client.connect(self.device)
+            return await self.client.read_state(self.session)
+        except EthsError as err:
+            raise UpdateFailed(f"Could not update eTHS {self.device.ip}: {err}") from err
 
     async def async_shutdown(self) -> None:
         """Release the logical session."""

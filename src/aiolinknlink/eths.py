@@ -253,10 +253,7 @@ def _modbus_write_register(host: str, port: int, transaction_id: int, address: i
 
 def _exchange(host: str, port: int, requests: list[tuple[int, bytes]], timeout: float) -> list[bytes]:
     deadline = time.monotonic() + timeout
-    try:
-        sock = socket.create_connection((host, port), timeout=timeout)
-    except (OSError, TimeoutError) as err:
-        raise EthsConnectionError(f"could not connect to {host}:{port}") from err
+    sock = _connect_with_retry(host, port, deadline)
     responses: list[bytes] = []
     try:
         for transaction_id, pdu in requests:
@@ -278,6 +275,18 @@ def _exchange(host: str, port: int, requests: list[tuple[int, bytes]], timeout: 
     finally:
         sock.close()
     return responses
+
+
+def _connect_with_retry(host: str, port: int, deadline: float) -> socket.socket:
+    """Retry while the firmware releases its previous single client slot."""
+    last_error: OSError | None = None
+    while (remaining := deadline - time.monotonic()) > 0:
+        try:
+            return socket.create_connection((host, port), timeout=remaining)
+        except OSError as err:
+            last_error = err
+            time.sleep(min(0.2, max(0.0, deadline - time.monotonic())))
+    raise EthsConnectionError(f"could not connect to {host}:{port}") from last_error
 
 
 def _recv_exact(sock: socket.socket, size: int) -> bytes:

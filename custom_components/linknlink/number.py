@@ -21,7 +21,7 @@ from aiolinknlink import (
 )
 
 from . import LinknLinkConfigEntry
-from .coordinator import EHomeDataUpdateCoordinator, UltraDataUpdateCoordinator
+from .coordinator import EHomeDataUpdateCoordinator, EthsDataUpdateCoordinator, UltraDataUpdateCoordinator
 from .entity import EHomeCoordinatorEntity, IbgCoordinatorEntity, UltraCoordinatorEntity
 
 
@@ -202,6 +202,8 @@ async def async_setup_entry(
     coordinator = entry.runtime_data
     if isinstance(coordinator, EHomeDataUpdateCoordinator):
         async_add_entities([EHomeAbsenceDelay(coordinator)])
+        return
+    if isinstance(coordinator, EthsDataUpdateCoordinator):
         return
     if isinstance(coordinator, UltraDataUpdateCoordinator):
         if coordinator._is_remote:
