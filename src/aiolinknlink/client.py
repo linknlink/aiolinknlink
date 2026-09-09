@@ -380,13 +380,19 @@ class UltraClient:
         values = _max_environment_values(radar)
         illuminance = await self._get_subdevice_state(
             session,
-            session.peripheral_dids.get(TYPE_LEGACY_OPT3004, derive_peripheral_did(session.device.mac, TYPE_LEGACY_OPT3004)),
+            session.peripheral_dids.get(
+                TYPE_LEGACY_OPT3004,
+                derive_peripheral_did(session.device.mac, TYPE_LEGACY_OPT3004),
+            ),
         )
         if illuminance is not None and (lux := _optional_number(illuminance, "envlux")) is not None:
             values["illuminance"] = lux
         climate = await self._get_subdevice_state(
             session,
-            session.peripheral_dids.get(TYPE_LEGACY_SHTXX, derive_peripheral_did(session.device.mac, TYPE_LEGACY_SHTXX)),
+            session.peripheral_dids.get(
+                TYPE_LEGACY_SHTXX,
+                derive_peripheral_did(session.device.mac, TYPE_LEGACY_SHTXX),
+            ),
         )
         if climate is not None:
             if (temperature := _optional_number(climate, "envtemp")) is not None:
@@ -488,7 +494,10 @@ class UltraClient:
     async def _get_pro_radar_environment_state(self, session: UltraSession) -> UltraEnvironmentState:
         """Read public state from the Pro radar and optional SHTXX peripherals."""
         peripheral_dids = await self._get_pro_radar_peripheral_dids(session)
-        radar_did = peripheral_dids.get(TYPE_PRO_RADAR_24G, derive_peripheral_did(session.device.mac, TYPE_PRO_RADAR_24G))
+        radar_did = peripheral_dids.get(
+            TYPE_PRO_RADAR_24G,
+            derive_peripheral_did(session.device.mac, TYPE_PRO_RADAR_24G),
+        )
         radar = await self._get_subdevice_state(session, radar_did, required=True)
         assert radar is not None
         values: dict[str, int | float | bool] = {}
@@ -496,7 +505,10 @@ class UltraClient:
             values["occupancy"] = bool(_pro_int(radar, "pir_detected", minimum=0, maximum=1))
         if "delaytime" in radar:
             values["absence_delay"] = _pro_int(radar, "delaytime", minimum=0, maximum=MAX_ABSENCE_DELAY)
-        climate_did = peripheral_dids.get(TYPE_LEGACY_SHTXX, derive_peripheral_did(session.device.mac, TYPE_LEGACY_SHTXX))
+        climate_did = peripheral_dids.get(
+            TYPE_LEGACY_SHTXX,
+            derive_peripheral_did(session.device.mac, TYPE_LEGACY_SHTXX),
+        )
         climate = await self._get_subdevice_state(session, climate_did)
         if climate is not None:
             if "envtemp" in climate:
@@ -582,7 +594,8 @@ class UltraClient:
             state = await self._get_pro_radar_environment_state(session)
             if state.values.get("absence_delay") != seconds:
                 raise UltraProtocolError(
-                    f"eMotion Pro delaytime read-back mismatch ({state.values.get('absence_delay')!r}, expected {seconds!r})"
+                    "eMotion Pro delaytime read-back mismatch "
+                    f"({state.values.get('absence_delay')!r}, expected {seconds!r})"
                 )
             return state
         if isinstance(seconds, bool) or not isinstance(seconds, int) or not 0 <= seconds <= 0xFFFF * 60:
@@ -596,7 +609,8 @@ class UltraClient:
         state = await self._get_pro_environment_state(session)
         if state.values.get("absence_delay") != seconds:
             raise UltraProtocolError(
-                f"eMotion Pro delaytime read-back mismatch ({state.values.get('absence_delay')!r}, expected {seconds!r})"
+                "eMotion Pro delaytime read-back mismatch "
+                f"({state.values.get('absence_delay')!r}, expected {seconds!r})"
             )
         return state
 

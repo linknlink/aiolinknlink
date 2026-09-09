@@ -41,13 +41,23 @@ from aiolinknlink import (
     PID_SR3_SENSOR,
     TYPE_EMOTION,
     TYPE_EMOTION_WIRE,
-    TYPE_ULTRA,
     DeviceCapability,
 )
 
 from . import LinknLinkConfigEntry
-from .coordinator import EHomeDataUpdateCoordinator, EHubDataUpdateCoordinator, EthsDataUpdateCoordinator, UltraDataUpdateCoordinator
-from .entity import EHomeCoordinatorEntity, EHubCoordinatorEntity, EthsCoordinatorEntity, IbgCoordinatorEntity, UltraCoordinatorEntity
+from .coordinator import (
+    EHomeDataUpdateCoordinator,
+    EHubDataUpdateCoordinator,
+    EthsDataUpdateCoordinator,
+    UltraDataUpdateCoordinator,
+)
+from .entity import (
+    EHomeCoordinatorEntity,
+    EHubCoordinatorEntity,
+    EthsCoordinatorEntity,
+    IbgCoordinatorEntity,
+    UltraCoordinatorEntity,
+)
 
 SR3_SENSORS = (
     SensorEntityDescription(
@@ -766,6 +776,7 @@ class EHubSensor(EHubCoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self) -> float | int | None:
+        """Return the latest eHub host measurement."""
         value = getattr(self.coordinator.data, self.key, None)
         return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
 

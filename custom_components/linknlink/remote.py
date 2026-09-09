@@ -135,6 +135,7 @@ class LinknLinkRemoteEntity(_LearnedRemoteMixin, UltraCoordinatorEntity, RemoteE
         self._codes: dict[str, str] = {}
 
     async def async_added_to_hass(self) -> None:
+        """Load learned commands when the entity is added to Home Assistant."""
         await self._async_load_codes()
 
 
@@ -153,4 +154,5 @@ class EHubRemoteEntity(_LearnedRemoteMixin, EHubCoordinatorEntity, RemoteEntity)
         self._codes: dict[str, str] = {}
 
     async def async_added_to_hass(self) -> None:
+        """Load learned commands when the entity is added to Home Assistant."""
         await self._async_load_codes()

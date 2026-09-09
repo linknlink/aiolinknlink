@@ -21,12 +21,16 @@ from aiolinknlink import (
     PID_SR3_SENSOR,
     TYPE_EMOTION,
     TYPE_EMOTION_WIRE,
-    TYPE_ULTRA,
     DeviceCapability,
 )
 
 from . import LinknLinkConfigEntry
-from .coordinator import EHomeDataUpdateCoordinator, EHubDataUpdateCoordinator, EthsDataUpdateCoordinator, UltraDataUpdateCoordinator
+from .coordinator import (
+    EHomeDataUpdateCoordinator,
+    EHubDataUpdateCoordinator,
+    EthsDataUpdateCoordinator,
+    UltraDataUpdateCoordinator,
+)
 from .entity import EHomeCoordinatorEntity, EHubCoordinatorEntity, IbgCoordinatorEntity, UltraCoordinatorEntity
 
 SR3_BINARY_SENSORS = (
@@ -185,6 +189,7 @@ class EHubPresenceSensor(EHubCoordinatorEntity, BinarySensorEntity):
 
     @property
     def is_on(self) -> bool | None:
+        """Return whether eHub reports a person."""
         value = self.coordinator.data.occupied
         return bool(value) if value is not None else None
 

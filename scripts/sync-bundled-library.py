@@ -6,7 +6,6 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "src" / "aiolinknlink"
 TARGET = ROOT / "custom_components" / "linknlink" / "aiolinknlink"

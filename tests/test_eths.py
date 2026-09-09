@@ -10,13 +10,13 @@ from socket import socket
 import pytest
 
 from aiolinknlink.eths import (
-    EthsClient,
-    EthsDevice,
-    EthsSession,
     REG_HUMIDITY,
     REG_TEMPERATURE,
     REG_THRESHOLDS,
     REG_VERSION,
+    EthsClient,
+    EthsDevice,
+    EthsSession,
 )
 
 

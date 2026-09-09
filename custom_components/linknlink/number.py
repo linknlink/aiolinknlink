@@ -16,12 +16,16 @@ from aiolinknlink import (
     PID_EMOTION,
     TYPE_EMOTION,
     TYPE_EMOTION_WIRE,
-    TYPE_ULTRA,
     DeviceCapability,
 )
 
 from . import LinknLinkConfigEntry
-from .coordinator import EHomeDataUpdateCoordinator, EHubDataUpdateCoordinator, EthsDataUpdateCoordinator, UltraDataUpdateCoordinator
+from .coordinator import (
+    EHomeDataUpdateCoordinator,
+    EHubDataUpdateCoordinator,
+    EthsDataUpdateCoordinator,
+    UltraDataUpdateCoordinator,
+)
 from .entity import EHomeCoordinatorEntity, EHubCoordinatorEntity, IbgCoordinatorEntity, UltraCoordinatorEntity
 
 
@@ -295,9 +299,11 @@ class EHubAbsenceDelay(EHubCoordinatorEntity, NumberEntity):
 
     @property
     def native_value(self) -> float:
+        """Return the confirmed absence delay."""
         return float(self.coordinator.data.absence_delay)
 
     async def async_set_native_value(self, value: float) -> None:
+        """Set the absence delay and verify the device read-back."""
         if not float(value).is_integer():
             raise ValueError("absence delay must be a whole number")
         await self.coordinator.async_set_absence_delay(int(value))

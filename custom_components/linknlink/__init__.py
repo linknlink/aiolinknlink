@@ -1,5 +1,7 @@
 """LinknLink Home Assistant integration."""
 
+# ruff: noqa: E402
+
 from __future__ import annotations
 
 import sys
@@ -22,34 +24,26 @@ for _library_source in (_BUNDLED_LIBRARY_ROOT, _DEVELOPMENT_LIBRARY_SOURCE):
             sys.path.remove(str(_library_source))
         sys.path.insert(0, str(_library_source))
 
-from homeassistant.config_entries import ConfigEntry  # noqa: E402
-from homeassistant.const import CONF_HOST  # noqa: E402
-from homeassistant.core import HomeAssistant  # noqa: E402
-from homeassistant.exceptions import ConfigEntryNotReady  # noqa: E402
-from homeassistant.helpers import device_registry as dr  # noqa: E402
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import CONF_HOST
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers import device_registry as dr
 
-from aiolinknlink import (  # noqa: E402  # noqa: E402
-    PID_EMOTION,
-    PID_EMOTION_PRO,
-    PID_EMOTION_PRO_RADAR,
+from aiolinknlink import (
     PID_EHOME_HA,
-    EHubClient,
-    EHubError,
+    PID_EMOTION,
     PID_EREMOTE_HA,
-    PID_ULTRA,
+    TYPE_EHOME_HA,
     TYPE_EMOTION,
     TYPE_EMOTION_WIRE,
-    TYPE_EMOTION_PRO,
-    TYPE_EMOTION_PRO_RADAR,
-    TYPE_EHOME_HA,
     TYPE_EREMOTE_HA,
-    TYPE_ULTRA,
     DeviceCapability,
     EHomeClient,
     EHomeError,
+    EHubClient,
+    EHubError,
     EthsClient,
-    EthsConnectionError,
-    EthsDevice,
     EthsError,
     IbgClient,
     IbgError,
@@ -57,15 +51,15 @@ from aiolinknlink import (  # noqa: E402  # noqa: E402
     UltraError,
 )
 
-from .const import (  # noqa: E402
+from .const import (
     CONF_DEVICE_TYPE,
     CONF_LOCAL_KEY,
     DEVICE_TYPE_EHOME,
     DEVICE_TYPE_EHUB,
-    DEVICE_TYPE_REMOTE,
-    DEVICE_TYPE_ETHS,
     DEVICE_TYPE_EMOTION,
+    DEVICE_TYPE_ETHS,
     DEVICE_TYPE_IBG,
+    DEVICE_TYPE_REMOTE,
     DEVICE_TYPE_ULTRA,
     DEVICE_TYPE_ULTRA2,
     PLATFORMS,
@@ -77,7 +71,7 @@ from .coordinator import (
     EthsDataUpdateCoordinator,
     IbgDataUpdateCoordinator,
     UltraDataUpdateCoordinator,
-)  # noqa: E402
+)
 
 LinknLinkConfigEntry: TypeAlias = ConfigEntry[
     IbgDataUpdateCoordinator

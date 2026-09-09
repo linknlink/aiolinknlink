@@ -10,9 +10,6 @@ from socket import socket
 import pytest
 
 from aiolinknlink.ehub import (
-    EHubClient,
-    EHubDevice,
-    EHubSession,
     REG_ABSENCE_DELAY,
     REG_HUMIDITY,
     REG_IP,
@@ -20,6 +17,9 @@ from aiolinknlink.ehub import (
     REG_PIR,
     REG_TEMPERATURE,
     REG_VERSION,
+    EHubClient,
+    EHubDevice,
+    EHubSession,
 )
 
 

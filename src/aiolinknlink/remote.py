@@ -10,8 +10,8 @@ import struct
 from contextlib import suppress
 from typing import Any
 
-from .ehub import EHubDevice
 from .devices import DeviceCapability
+from .ehub import EHubDevice
 from .models import UltraDevice
 
 DEFAULT_REMOTE_PORT = 502
@@ -76,19 +76,24 @@ class LinknLinkRemoteClient:
 
     @property
     def connected(self) -> bool:
+        """Return whether the TCP connection is open."""
         return self._writer is not None and not self._writer.is_closing()
 
     async def close(self) -> None:
+        """Close the TCP connection."""
         async with self._lock:
             await self._close_locked()
 
     async def start_learning(self) -> None:
+        """Start infrared learning."""
         await self._study(True)
 
     async def stop_learning(self) -> None:
+        """Stop infrared learning."""
         await self._study(False)
 
     async def read_learned_code(self) -> str | None:
+        """Read the most recently learned infrared code."""
         async with self._lock:
             result = await self._request_locked("irdaRead")
         if not isinstance(result, dict) or set(result) != {"data"}:
@@ -105,6 +110,7 @@ class LinknLinkRemoteClient:
         return data
 
     async def send_code(self, data: str) -> None:
+        """Send one learned infrared code."""
         _validate_ir_code(data)
         result = await self._request("irdaSend", {"data": data})
         _require_success(result, "infrared send")
@@ -115,6 +121,7 @@ class LinknLinkRemoteClient:
         timeout: float = DEFAULT_LEARN_TIMEOUT,
         poll_interval: float = DEFAULT_LEARN_POLL_INTERVAL,
     ) -> str:
+        """Learn an infrared code and return it as a base64 string."""
         if timeout <= 0 or poll_interval <= 0:
             raise ValueError("learning timeout and poll interval must be greater than zero")
         result = await self._request("irdaStudy", {"start": 1})

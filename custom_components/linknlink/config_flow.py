@@ -11,13 +11,13 @@ from homeassistant.const import CONF_HOST
 from homeassistant.helpers.selector import TextSelector, TextSelectorConfig, TextSelectorType
 
 from aiolinknlink import (
-    PID_EMOTION,
     PID_EHOME_HA,
+    PID_EMOTION,
     PID_EREMOTE_HA,
     PID_ULTRA,
+    TYPE_EHOME_HA,
     TYPE_EMOTION,
     TYPE_EMOTION_WIRE,
-    TYPE_EHOME_HA,
     TYPE_EREMOTE_HA,
     TYPE_ULTRA,
     EHomeClient,
@@ -47,10 +47,10 @@ from .const import (
     CONF_LOCAL_KEY,
     DEVICE_TYPE_EHOME,
     DEVICE_TYPE_EHUB,
-    DEVICE_TYPE_REMOTE,
-    DEVICE_TYPE_ETHS,
     DEVICE_TYPE_EMOTION,
+    DEVICE_TYPE_ETHS,
     DEVICE_TYPE_IBG,
+    DEVICE_TYPE_REMOTE,
     DEVICE_TYPE_ULTRA,
     DEVICE_TYPE_ULTRA2,
     DOMAIN,
@@ -118,7 +118,8 @@ class LinknLinkConfigFlow(ConfigFlow, domain=DOMAIN):
                             or device.pid.lower() in {PID_EHOME_HA, PID_EREMOTE_HA}
                             else (
                                 DEVICE_TYPE_EMOTION
-                                if device.type_id in {TYPE_EMOTION, TYPE_EMOTION_WIRE} or device.pid.lower() == PID_EMOTION
+                                if device.type_id in {TYPE_EMOTION, TYPE_EMOTION_WIRE}
+                                or device.pid.lower() == PID_EMOTION
                                 else (
                                     DEVICE_TYPE_ULTRA
                                     if device.type_id == TYPE_ULTRA or device.pid.lower() == PID_ULTRA

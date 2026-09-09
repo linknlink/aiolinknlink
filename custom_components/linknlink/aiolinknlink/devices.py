@@ -113,11 +113,41 @@ DEVICE_PROFILES: tuple[DeviceProfile, ...] = (
         PID_ULTRA2,
         _ULTRA2_CAPABILITIES,
     ),
-    DeviceProfile(DeviceModel.EMOTION_MAX1, "eMotion Max", frozenset({TYPE_EMOTION_MAX1}), PID_EMOTION_MAX1, _MAX1_CAPABILITIES),
-    DeviceProfile(DeviceModel.EMOTION_MAX2, "eMotion Max 2", frozenset({TYPE_EMOTION_MAX2}), PID_EMOTION_MAX2, _MAX2_CAPABILITIES),
-    DeviceProfile(DeviceModel.EMOTION_MAX3, "eMotion Max 3", frozenset({TYPE_EMOTION_MAX3}), PID_EMOTION_MAX3, _MAX3_CAPABILITIES),
-    DeviceProfile(DeviceModel.EHOME_HA, "eHomeHA", frozenset({TYPE_EHOME_HA}), PID_EHOME_HA, frozenset({DeviceCapability.REMOTE})),
-    DeviceProfile(DeviceModel.EREMOTE_HA, "eRemoteHA", frozenset({TYPE_EREMOTE_HA}), PID_EREMOTE_HA, frozenset({DeviceCapability.REMOTE})),
+    DeviceProfile(
+        DeviceModel.EMOTION_MAX1,
+        "eMotion Max",
+        frozenset({TYPE_EMOTION_MAX1}),
+        PID_EMOTION_MAX1,
+        _MAX1_CAPABILITIES,
+    ),
+    DeviceProfile(
+        DeviceModel.EMOTION_MAX2,
+        "eMotion Max 2",
+        frozenset({TYPE_EMOTION_MAX2}),
+        PID_EMOTION_MAX2,
+        _MAX2_CAPABILITIES,
+    ),
+    DeviceProfile(
+        DeviceModel.EMOTION_MAX3,
+        "eMotion Max 3",
+        frozenset({TYPE_EMOTION_MAX3}),
+        PID_EMOTION_MAX3,
+        _MAX3_CAPABILITIES,
+    ),
+    DeviceProfile(
+        DeviceModel.EHOME_HA,
+        "eHomeHA",
+        frozenset({TYPE_EHOME_HA}),
+        PID_EHOME_HA,
+        frozenset({DeviceCapability.REMOTE}),
+    ),
+    DeviceProfile(
+        DeviceModel.EREMOTE_HA,
+        "eRemoteHA",
+        frozenset({TYPE_EREMOTE_HA}),
+        PID_EREMOTE_HA,
+        frozenset({DeviceCapability.REMOTE}),
+    ),
 )
 
 _PROFILES_BY_TYPE = {type_id: profile for profile in DEVICE_PROFILES for type_id in profile.type_ids}

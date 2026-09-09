@@ -1,12 +1,11 @@
 """Tests for shared LinknLink device profiles."""
 
 from aiolinknlink import (
-    DeviceCapability,
-    DeviceModel,
     PID_EMOTION_MAX1,
     PID_ULTRA1,
-    TYPE_EMOTION_MAX1,
     TYPE_ULTRA1,
+    DeviceCapability,
+    DeviceModel,
     UltraDevice,
     get_device_profile,
 )
