@@ -1,6 +1,6 @@
 # HACS release candidate status
 
-Date: 2026-09-08
+Date: 2026-09-09
 
 ## Included in the current candidate
 
