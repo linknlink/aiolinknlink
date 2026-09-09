@@ -51,6 +51,12 @@ TYPE_EMOTION_PRO_RADAR = 0xB9AC
 TYPE_PRO_RADAR_24G = 0xACD9
 TYPE_LEGACY_SHTXX = 0xACDC
 TYPE_LEGACY_OPT3004 = 0xACD8
+TYPE_EMOTION_MAX1 = 0x9EAC
+TYPE_EMOTION_MAX2 = 0xD6AC
+TYPE_EMOTION_MAX3 = 0xDEAC
+PID_EMOTION_MAX1 = "0000000000000000000000009eac0000"
+PID_EMOTION_MAX2 = "000000000000000000000000d6ac0000"
+PID_EMOTION_MAX3 = "000000000000000000000000deac0000"
 DEFAULT_TIMEOUT = 5.0
 DEFAULT_AUTH_TIMEOUT = 15.0
 DEFAULT_PREFERRED_COMMAND_TIMEOUT = 15.0
@@ -182,7 +188,7 @@ class UltraClient:
         last_error: Exception | None = None
         for auth_type in _auth_device_type_candidates(device.type_id, device.pid):
             try:
-                is_legacy_pro = _matches_emotion_pro(device)
+                is_legacy_pro = _matches_emotion_pro(device) or _matches_emotion_max(device)
                 if _matches_emotion(device):
                     _terminal_id, session.session_key = await dna.send_legacy_terminal_add(
                         device.ip,
@@ -245,6 +251,10 @@ class UltraClient:
 
     async def get_environment_state(self, session: UltraSession) -> UltraEnvironmentState:
         """Read environmental, occupancy, and count states from the local API."""
+        if _matches_emotion_max(session.device):
+            if session.device.type_id == TYPE_EMOTION_MAX1 or session.device.pid.lower() == PID_EMOTION_MAX1:
+                return await self._get_max1_environment_state(session)
+            return await self._get_max_subdevice_environment_state(session)
         if _matches_emotion_pro(session.device):
             if session.device.type_id == TYPE_EMOTION_PRO_RADAR:
                 raise UltraProtocolError("eMotion Pro radar state adapter is not enabled yet")
@@ -340,6 +350,62 @@ class UltraClient:
             available_fields=frozenset(values),
             received_at=datetime.now(UTC),
         )
+
+    async def _get_max1_environment_state(self, session: UltraSession) -> UltraEnvironmentState:
+        """Read first-generation Max state from its KeyValue endpoint."""
+        payload = await self._get_keyvalue_state(session)
+        values = _max_environment_values(payload)
+        if not values:
+            raise UltraProtocolError("eMotion Max response did not contain supported state")
+        session.last_seen = datetime.now(UTC)
+        return UltraEnvironmentState(
+            device_id=session.device.id,
+            values=values,
+            available_fields=frozenset(values),
+            received_at=datetime.now(UTC),
+        )
+
+    async def _get_max_subdevice_environment_state(self, session: UltraSession) -> UltraEnvironmentState:
+        """Read Max2/Max3 radar and optional environmental peripherals."""
+        radar = await self._get_subdevice_state(
+            session,
+            session.peripheral_dids.get(TYPE_ULTRA2_RADAR, derive_radar_did(session.device.mac)),
+            required=True,
+        )
+        assert radar is not None
+        values = _max_environment_values(radar)
+        illuminance = await self._get_subdevice_state(
+            session,
+            session.peripheral_dids.get(TYPE_LEGACY_OPT3004, derive_peripheral_did(session.device.mac, TYPE_LEGACY_OPT3004)),
+        )
+        if illuminance is not None and (lux := _optional_number(illuminance, "envlux")) is not None:
+            values["illuminance"] = lux
+        climate = await self._get_subdevice_state(
+            session,
+            session.peripheral_dids.get(TYPE_LEGACY_SHTXX, derive_peripheral_did(session.device.mac, TYPE_LEGACY_SHTXX)),
+        )
+        if climate is not None:
+            if (temperature := _optional_number(climate, "envtemp")) is not None:
+                values["temperature"] = round(temperature / 100, 2)
+            if (humidity := _optional_number(climate, "envhumid")) is not None:
+                values["humidity"] = round(humidity / 100, 2)
+        if not values:
+            raise UltraProtocolError("eMotion Max response did not contain supported state")
+        session.last_seen = datetime.now(UTC)
+        return UltraEnvironmentState(
+            device_id=session.device.id,
+            values=values,
+            available_fields=frozenset(values),
+            received_at=datetime.now(UTC),
+        )
+
+    async def _get_keyvalue_state(self, session: UltraSession) -> dict[str, object]:
+        """Read and validate a DNA KeyValue status object."""
+        try:
+            response = await self.send_command(session, keyvalue.build_get_status_frame())
+            return keyvalue.parse_status_response(response)
+        except (UltraError, keyvalue.KeyValueError) as err:
+            raise UltraProtocolError(str(err)) from err
 
     async def _get_ultra1_environment_state(self, session: UltraSession) -> UltraEnvironmentState:
         """Read first-generation Ultra virtual peripherals and optional sensors."""
@@ -665,6 +731,18 @@ class UltraClient:
         """Ask the device to push position updates to a local UDP port."""
         if not session.session_key:
             raise UltraAuthError("missing DNA session key")
+        if _matches_emotion_max(session.device) and session.device.type_id == TYPE_EMOTION_MAX1:
+            try:
+                response = await self.send_command(
+                    session,
+                    keyvalue.build_set_status_frame({"port": port, "timeout": timeout}),
+                    try_all=try_all,
+                    exchange=exchange,
+                )
+                keyvalue.parse_status_response(response)
+            except (UltraError, keyvalue.KeyValueError) as err:
+                raise UltraProtocolError(str(err)) from err
+            return UltraLocalUDPConfig(ip="0.0.0.0", port=port, timeout=timeout)
         payload = await self.send_command(
             session,
             emotion.build_local_udp_upload_command(port, timeout),
@@ -683,6 +761,8 @@ class UltraClient:
         exchange: dna.PacketExchange | None = None,
     ) -> UltraRadarStatus:
         """Read the validated Ultra2 radar configuration fields."""
+        if _matches_emotion_max(session.device) and session.device.type_id == TYPE_EMOTION_MAX1:
+            return _radar_status_from_payload(await self._get_keyvalue_state(session), "", require_status=False)
         radar_did = session.peripheral_dids.get(TYPE_ULTRA2_RADAR, derive_radar_did(session.device.mac))
         try:
             payload = await self.send_command(
@@ -904,12 +984,24 @@ class UltraClient:
         values_match: Callable[[object, object], bool] | None = None,
     ) -> UltraRadarStatus:
         """Write one radar field and require a matching independent read-back."""
-        radar_did = session.peripheral_dids.get(TYPE_ULTRA2_RADAR, derive_radar_did(session.device.mac))
-        await self.send_command(
-            session,
-            emotion.build_set_status_frame(radar_did, {field: value}),
-            exchange=exchange,
-        )
+        if _matches_emotion_max(session.device) and session.device.type_id == TYPE_EMOTION_MAX1:
+            wire_field = "delaytime1" if field == "delaytime" else field
+            try:
+                response = await self.send_command(
+                    session,
+                    keyvalue.build_set_status_frame({wire_field: value}),
+                    exchange=exchange,
+                )
+                keyvalue.parse_status_response(response)
+            except (UltraError, keyvalue.KeyValueError) as err:
+                raise UltraProtocolError(str(err)) from err
+        else:
+            radar_did = session.peripheral_dids.get(TYPE_ULTRA2_RADAR, derive_radar_did(session.device.mac))
+            await self.send_command(
+                session,
+                emotion.build_set_status_frame(radar_did, {field: value}),
+                exchange=exchange,
+            )
         status = await self.get_radar_status(session, exchange=exchange)
         actual = read_value(status)
         matches = values_match(actual, expected) if values_match else actual == expected
@@ -1086,7 +1178,16 @@ def _outbound_ipv4() -> str:
 
 
 def _matches_ultra(device: UltraDevice) -> bool:
-    if device.pid.lower() in {PID_ULTRA, PID_ULTRA2, PID_EMOTION, PID_EMOTION_PRO, PID_EMOTION_PRO_RADAR}:
+    if device.pid.lower() in {
+        PID_ULTRA,
+        PID_ULTRA2,
+        PID_EMOTION,
+        PID_EMOTION_PRO,
+        PID_EMOTION_PRO_RADAR,
+        PID_EMOTION_MAX1,
+        PID_EMOTION_MAX2,
+        PID_EMOTION_MAX3,
+    }:
         return True
     return device.type_id in {
         TYPE_ULTRA,
@@ -1096,6 +1197,9 @@ def _matches_ultra(device: UltraDevice) -> bool:
         TYPE_EMOTION_WIRE,
         TYPE_EMOTION_PRO,
         TYPE_EMOTION_PRO_RADAR,
+        TYPE_EMOTION_MAX1,
+        TYPE_EMOTION_MAX2,
+        TYPE_EMOTION_MAX3,
     }
 
 
@@ -1110,6 +1214,68 @@ def _matches_emotion_pro(device: UltraDevice) -> bool:
         TYPE_EMOTION_PRO,
         TYPE_EMOTION_PRO_RADAR,
     }
+
+
+def _matches_emotion_max(device: UltraDevice) -> bool:
+    """Return whether a device is one of the eMotion Max generations."""
+    return device.pid.lower() in {PID_EMOTION_MAX1, PID_EMOTION_MAX2, PID_EMOTION_MAX3} or device.type_id in {
+        TYPE_EMOTION_MAX1,
+        TYPE_EMOTION_MAX2,
+        TYPE_EMOTION_MAX3,
+    }
+
+
+def _max_environment_values(payload: dict[str, object]) -> dict[str, int | float | bool]:
+    """Normalize public eMotion Max state fields."""
+    values: dict[str, int | float | bool] = {}
+    if (occupied := _optional_bool_int(payload, "pir_detected")) is not None:
+        values["occupancy"] = occupied
+    if (target_count := _optional_number(payload, "sf_opcount")) is not None:
+        values["target_count"] = round(target_count)
+    for zone in range(1, 5):
+        if (present := _optional_bool_int(payload, f"area{zone}")) is not None:
+            values[f"zone_{zone}_presence"] = present
+    if (temperature := _optional_number(payload, "envtemp")) is not None:
+        values["temperature"] = round(temperature / 100, 2)
+    if (humidity := _optional_number(payload, "envhumid")) is not None:
+        values["humidity"] = round(humidity / 100, 2)
+    if (illuminance := _optional_number(payload, "envlux")) is not None:
+        values["illuminance"] = illuminance
+    return values
+
+
+def _radar_status_from_payload(
+    status: dict[str, object],
+    radar_did: str,
+    *,
+    require_status: bool,
+) -> UltraRadarStatus:
+    """Normalize shared Max/Ultra radar configuration payloads."""
+    if radar_did and str(status.get("did", "")).lower() != radar_did.lower():
+        raise UltraProtocolError(f"radar status DID mismatch: {status.get('did') or 'missing'}")
+    if require_status:
+        response_status = status.get("status")
+        if isinstance(response_status, bool) or response_status != 0:
+            raise UltraProtocolError(f"radar status read failed: {response_status!r}")
+    sensitivity = _required_int(status, "level_of_sensitivity", valid_values=range(3))
+    delay_key = "delaytime" if "delaytime" in status else "delaytime1"
+    return UltraRadarStatus(
+        did=radar_did,
+        sensitivity=sensitivity,
+        received_at=datetime.now(UTC),
+        trigger_speed=_optional_int(status, "triger_speed", valid_values=range(3)),
+        install_mode=_optional_int(status, "install_mode", valid_values=range(2)),
+        height=_optional_int(status, "height", minimum=0, maximum=0xFFFF),
+        install_direction=_optional_int(status, "install_direction", minimum=0, maximum=0xFF),
+        z_range=_optional_z_range(status),
+        default_absence_delay=_optional_int(status, delay_key, minimum=0, maximum=0xFFFF),
+        zone_absence_delays=(
+            _optional_int(status, "duration1", minimum=0, maximum=0xFFFF),
+            _optional_int(status, "duration2", minimum=0, maximum=0xFFFF),
+            _optional_int(status, "duration3", minimum=0, maximum=0xFFFF),
+            _optional_int(status, "duration4", minimum=0, maximum=0xFFFF),
+        ),
+    )
 
 
 def _pro_int(
@@ -1397,6 +1563,12 @@ def _model_for_device_type(device_type: int, pid: str = "") -> str:
         return DISPLAY_MODEL_EMOTION
     if device_type == TYPE_ULTRA:
         return DISPLAY_MODEL_ULTRA
+    if pid.lower() == PID_EMOTION_MAX1 or device_type == TYPE_EMOTION_MAX1:
+        return "eMotion Max"
+    if pid.lower() == PID_EMOTION_MAX2 or device_type == TYPE_EMOTION_MAX2:
+        return "eMotion Max 2"
+    if pid.lower() == PID_EMOTION_MAX3 or device_type == TYPE_EMOTION_MAX3:
+        return "eMotion Max 3"
     if pid.lower() in {PID_EMOTION_PRO, PID_EMOTION_PRO_RADAR} or device_type in {
         TYPE_EMOTION_PRO,
         TYPE_EMOTION_PRO_RADAR,
@@ -1412,6 +1584,12 @@ def _pid_for_device_type(device_type: int) -> str:
         return PID_ULTRA2
     if device_type == TYPE_ULTRA:
         return PID_ULTRA
+    if device_type == TYPE_EMOTION_MAX1:
+        return PID_EMOTION_MAX1
+    if device_type == TYPE_EMOTION_MAX2:
+        return PID_EMOTION_MAX2
+    if device_type == TYPE_EMOTION_MAX3:
+        return PID_EMOTION_MAX3
     if device_type == TYPE_EMOTION_PRO:
         return PID_EMOTION_PRO
     if device_type == TYPE_EMOTION_PRO_RADAR:
@@ -1426,6 +1604,12 @@ def _auth_device_type_candidates(device_type: int, pid: str = "") -> list[int]:
             values = [TYPE_EMOTION, TYPE_EMOTION_WIRE]
     elif device_type == TYPE_ULTRA:
         values = [TYPE_ULTRA, TYPE_ULTRA2, TYPE_ULTRA2_LAN]
+    elif device_type in {TYPE_EMOTION_MAX1, TYPE_EMOTION_MAX2, TYPE_EMOTION_MAX3} or pid.lower() in {
+        PID_EMOTION_MAX1,
+        PID_EMOTION_MAX2,
+        PID_EMOTION_MAX3,
+    }:
+        values = [device_type] if device_type else [TYPE_EMOTION_MAX1, TYPE_EMOTION_MAX2, TYPE_EMOTION_MAX3]
     elif device_type in {TYPE_ULTRA2, TYPE_ULTRA2_LAN}:
         values = [device_type, TYPE_ULTRA2, TYPE_ULTRA2_LAN]
     elif device_type == TYPE_EMOTION_PRO_RADAR or pid.lower() == PID_EMOTION_PRO_RADAR:
@@ -1440,6 +1624,8 @@ def _auth_device_type_candidates(device_type: int, pid: str = "") -> list[int]:
 def _command_device_type_candidates(session: UltraSession) -> list[int]:
     if _matches_emotion(session.device):
         defaults = [TYPE_EMOTION, TYPE_EMOTION_WIRE]
+    elif _matches_emotion_max(session.device):
+        defaults = [session.device.type_id]
     elif session.device.type_id == TYPE_ULTRA or session.device.pid.lower() == PID_ULTRA:
         defaults = [TYPE_ULTRA, TYPE_ULTRA2, TYPE_ULTRA2_LAN]
     else:

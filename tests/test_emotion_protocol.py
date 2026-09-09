@@ -12,9 +12,13 @@ from aiolinknlink import (
     PID_EMOTION,
     PID_EMOTION_PRO,
     PID_EMOTION_PRO_RADAR,
+    PID_EMOTION_MAX1,
+    PID_EMOTION_MAX2,
     TYPE_EMOTION,
     TYPE_EMOTION_PRO,
     TYPE_EMOTION_PRO_RADAR,
+    TYPE_EMOTION_MAX1,
+    TYPE_EMOTION_MAX2,
     TYPE_ULTRA,
     TYPE_LEGACY_SHTXX,
     TYPE_PRO_RADAR_24G,
@@ -338,3 +342,74 @@ async def test_shared_ultra_type_probes_first_generation_peripherals() -> None:
     assert session.ultra1_probe is True
     assert session.peripheral_dids[TYPE_ULTRA2_RADAR] == radar_did
     assert derive_radar_did(device.mac) == radar_did
+
+
+async def test_emotion_max1_reads_keyvalue_environment() -> None:
+    device = UltraDevice(
+        id="e04b41006515",
+        ip="192.168.3.31",
+        port=80,
+        mac="e0:4b:41:00:65:15",
+        pid=PID_EMOTION_MAX1,
+        type_id=TYPE_EMOTION_MAX1,
+    )
+    client = UltraClient()
+    client.send_command = AsyncMock(
+        return_value=keyvalue.build_frame(
+            keyvalue.CMD_STATUS_RESPONSE,
+            b'{"pir_detected":1,"sf_opcount":2,"area1":1,"envtemp":2350,"envhumid":4800,"envlux":120}',
+        )
+    )
+
+    state = await client.get_environment_state(UltraSession(device=device, session_key=b"0123456789abcdef"))
+
+    assert state.values == {
+        "occupancy": True,
+        "target_count": 2,
+        "zone_1_presence": True,
+        "temperature": 23.5,
+        "humidity": 48.0,
+        "illuminance": 120.0,
+    }
+
+
+async def test_emotion_max2_reads_virtual_peripherals() -> None:
+    device = UltraDevice(
+        id="e04b41006515",
+        ip="192.168.3.31",
+        port=80,
+        mac="e0:4b:41:00:65:15",
+        pid=PID_EMOTION_MAX2,
+        type_id=TYPE_EMOTION_MAX2,
+    )
+    radar_did = derive_radar_did(device.mac)
+    light_did = derive_peripheral_did(device.mac, TYPE_LEGACY_OPT3004)
+    climate_did = derive_peripheral_did(device.mac, TYPE_LEGACY_SHTXX)
+    client = UltraClient()
+    client.send_command = AsyncMock(
+        side_effect=[
+            emotion.build_subdevice_frame(
+                emotion.CMD_STATUS_RESPONSE,
+                {"did": radar_did, "status": 0, "pir_detected": 1, "sf_opcount": 1, "area2": 1},
+            ),
+            emotion.build_subdevice_frame(
+                emotion.CMD_STATUS_RESPONSE,
+                {"did": light_did, "status": 0, "envlux": 96},
+            ),
+            emotion.build_subdevice_frame(
+                emotion.CMD_STATUS_RESPONSE,
+                {"did": climate_did, "status": 0, "envtemp": 2575, "envhumid": 5330},
+            ),
+        ]
+    )
+
+    state = await client.get_environment_state(UltraSession(device=device, session_key=b"0123456789abcdef"))
+
+    assert state.values == {
+        "occupancy": True,
+        "target_count": 1,
+        "zone_2_presence": True,
+        "illuminance": 96.0,
+        "temperature": 25.75,
+        "humidity": 53.3,
+    }
