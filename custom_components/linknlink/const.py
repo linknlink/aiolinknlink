@@ -12,6 +12,7 @@ DEVICE_TYPE_ULTRA = "ultra"
 DEVICE_TYPE_ULTRA2 = "ultra2"
 DEVICE_TYPE_EHOME = "ehome"
 DEVICE_TYPE_REMOTE = "remote"
+DEVICE_TYPE_ETHS = "eths"
 PLATFORMS = (
     Platform.SENSOR,
     Platform.BINARY_SENSOR,

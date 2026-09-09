@@ -47,6 +47,17 @@ from .ehome import (
     EHomeSession,
     EHomeState,
 )
+from .eths import (
+    DISPLAY_MODEL_ETHS,
+    PID_ETHS,
+    EthsClient,
+    EthsConnectionError,
+    EthsDevice,
+    EthsError,
+    EthsProtocolError,
+    EthsSession,
+    EthsState,
+)
 from .devices import (
     DEVICE_PROFILES,
     PROFILES_BY_PID,
@@ -204,6 +215,15 @@ __all__ = [
     "EHomeProtocolError",
     "EHomeSession",
     "EHomeState",
+    "DISPLAY_MODEL_ETHS",
+    "PID_ETHS",
+    "EthsClient",
+    "EthsConnectionError",
+    "EthsDevice",
+    "EthsError",
+    "EthsProtocolError",
+    "EthsSession",
+    "EthsState",
     "DTU_POWER_FIELDS",
     "DTU_VOLTAGE_OUTPUT_FIELD",
     "EAC1_CURRENT_TEMPERATURE_FIELD",
