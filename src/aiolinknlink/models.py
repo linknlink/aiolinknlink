@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from .devices import DeviceCapability, DeviceProfile, get_device_profile
+
 
 @dataclass(slots=True)
 class IbgDevice:
@@ -65,6 +67,17 @@ class UltraDevice:
     name: str = "eMotion Ultra2"
     model: str = "eMotion Ultra2"
     raw: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def profile(self) -> DeviceProfile | None:
+        """Return the static profile matching this device identity."""
+        return get_device_profile(self.type_id, self.pid)
+
+    @property
+    def capabilities(self) -> frozenset[DeviceCapability]:
+        """Return the static capabilities for this device identity."""
+        profile = self.profile
+        return profile.capabilities if profile is not None else frozenset()
 
 
 @dataclass(slots=True)
