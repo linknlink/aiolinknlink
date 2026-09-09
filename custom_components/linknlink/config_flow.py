@@ -172,7 +172,7 @@ async def _discover_device(host: str) -> IbgDevice | UltraDevice | EHomeDevice |
         return ibg_result
     if isinstance(ultra_result, UltraDevice):
         return ultra_result
-    for discover in (EthsClient().discover_host, EHubClient().discover_host, EHomeClient().discover_host):
+    for discover in (EHubClient().discover_host, EthsClient().discover_host, EHomeClient().discover_host):
         try:
             return await discover(host)
         except (EHomeError, EthsError, EHubError):
