@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.19.5 - 2026-09-10
+
+- Corrected eMotion Max V1 capabilities to match its radar-only hardware: it no
+  longer exposes temperature, humidity, illuminance, or Wi-Fi signal entities.
+
 ## 0.19.4 - 2026-09-10
 
 - Read eMotion Pro illuminance from the derived OPT3004 virtual peripheral even

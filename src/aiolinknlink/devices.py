@@ -30,6 +30,7 @@ class DeviceCapability(StrEnum):
     TEMPERATURE = "temperature"
     HUMIDITY = "humidity"
     ILLUMINANCE = "illuminance"
+    WIFI_SIGNAL = "wifi_signal"
     OCCUPANCY = "occupancy"
     TARGET_COUNT = "target_count"
     ZONES = "zones"
@@ -76,6 +77,7 @@ _RADAR_CAPABILITIES = frozenset(
         DeviceCapability.TEMPERATURE,
         DeviceCapability.HUMIDITY,
         DeviceCapability.ILLUMINANCE,
+        DeviceCapability.WIFI_SIGNAL,
         DeviceCapability.OCCUPANCY,
         DeviceCapability.TARGET_COUNT,
         DeviceCapability.ZONES,
@@ -91,7 +93,13 @@ _ULTRA2_CAPABILITIES = _RADAR_CAPABILITIES | {
     DeviceCapability.TARGET_SPEED,
     DeviceCapability.LOCAL_UDP,
 }
-_MAX1_CAPABILITIES = _RADAR_CAPABILITIES - {DeviceCapability.TARGET_SPEED}
+_MAX1_CAPABILITIES = _RADAR_CAPABILITIES - {
+    DeviceCapability.TARGET_SPEED,
+    DeviceCapability.TEMPERATURE,
+    DeviceCapability.HUMIDITY,
+    DeviceCapability.ILLUMINANCE,
+    DeviceCapability.WIFI_SIGNAL,
+}
 _MAX2_CAPABILITIES = _ULTRA2_CAPABILITIES
 _MAX3_CAPABILITIES = _ULTRA2_CAPABILITIES
 

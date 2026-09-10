@@ -21,6 +21,13 @@ def test_profiles_match_wire_type_and_pid() -> None:
     assert max1 is not None
     assert max1.model is DeviceModel.EMOTION_MAX1
     assert DeviceCapability.TARGET_SPEED not in max1.capabilities
+    for capability in (
+        DeviceCapability.TEMPERATURE,
+        DeviceCapability.HUMIDITY,
+        DeviceCapability.ILLUMINANCE,
+        DeviceCapability.WIFI_SIGNAL,
+    ):
+        assert capability not in max1.capabilities
 
 
 def test_ultra_device_exposes_profile_capabilities() -> None:

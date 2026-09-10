@@ -363,6 +363,8 @@ class UltraClient:
         """Read first-generation Max state from its KeyValue endpoint."""
         payload = await self._get_keyvalue_state(session)
         values = _max_environment_values(payload)
+        for unsupported_field in ("temperature", "humidity", "illuminance"):
+            values.pop(unsupported_field, None)
         if not values:
             raise UltraProtocolError("eMotion Max response did not contain supported state")
         session.last_seen = datetime.now(UTC)

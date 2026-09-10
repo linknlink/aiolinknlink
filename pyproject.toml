@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "aiolinknlink"
-version = "0.19.4"
+version = "0.19.5"
 description = "Asynchronous local client for LinknLink devices"
 readme = "README.md"
 requires-python = ">=3.11"

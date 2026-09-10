@@ -710,6 +710,7 @@ async def async_setup_entry(
             "temperature": DeviceCapability.TEMPERATURE,
             "humidity": DeviceCapability.HUMIDITY,
             "illuminance": DeviceCapability.ILLUMINANCE,
+            "wifi_signal": DeviceCapability.WIFI_SIGNAL,
             "target_count": DeviceCapability.TARGET_COUNT,
             "persons_in_fenced_zones": DeviceCapability.ZONES,
             "distance": DeviceCapability.DISTANCE,

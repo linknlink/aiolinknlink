@@ -394,9 +394,6 @@ async def test_emotion_max1_reads_keyvalue_environment() -> None:
         "occupancy": True,
         "target_count": 2,
         "zone_1_presence": True,
-        "temperature": 23.5,
-        "humidity": 48.0,
-        "illuminance": 120.0,
     }
 
 
