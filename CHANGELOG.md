@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Ship the Zigbee eMotion Air ZHA quirk in
+  `custom_components/linknlink/zha_quirks/` so HACS keeps it up to date.
+  Point ZHA's `custom_quirks_path` at that directory to use it. The quirk
+  requires eMotion Air firmware V1.2.7+ and reports button actions on the
+  proprietary `0xFC01` cluster.
+  The quirk also exposes the `0xFC00` air config cluster (radar frequency,
+  sensitivity, absence timeout, illuminance / temp-humidity intervals, and
+  illuminance thresholds) as number / switch / select entities.
+
 ## 0.19.5 - 2026-09-10
 
 - Corrected eMotion Max V1 capabilities to match its radar-only hardware: it no

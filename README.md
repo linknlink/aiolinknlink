@@ -188,9 +188,24 @@ python3 scripts/validate-hacs.py
 python3 -m pytest tests/test_hacs_bundle.py
 ```
 
-The Zigbee **eMotion Air** handoff package is not part of this integration.
-Its ZHA quirk, Blueprint, and Zigbee OTA firmware use a separate installation
-and release path and must not be copied into `custom_components/linknlink`.
+### Zigbee eMotion Air (ZHA quirk)
+
+The Zigbee **eMotion Air** is not handled by this integration; it talks to
+Home Assistant through ZHA. Its ZHA quirk ships alongside the integration in
+`custom_components/linknlink/zha_quirks/` so HACS keeps it up to date.
+
+To use it, point ZHA at that directory in `configuration.yaml`:
+
+```yaml
+zha:
+  enable_quirks: true
+  custom_quirks_path: /config/custom_components/linknlink/zha_quirks/
+```
+
+Restart Home Assistant, then remove the eMotion Air from ZHA and pair it again
+so zigpy re-reads the cluster schema. Requires firmware **V1.2.7+**. The
+Blueprint and Zigbee OTA firmware keep their own release path at
+<https://github.com/linknlinkiot/emotionair>.
 
 When changing `src/aiolinknlink`, refresh the HACS copy with:
 
