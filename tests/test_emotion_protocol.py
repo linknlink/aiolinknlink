@@ -153,6 +153,24 @@ async def test_emotion_pro_auth_forces_legacy_blc_transport(monkeypatch: pytest.
     assert send.call_args.kwargs["force_blc"] is True
 
 
+async def test_legacy_ultra_auth_forces_legacy_blc_transport(monkeypatch: pytest.MonkeyPatch) -> None:
+    device = UltraDevice(
+        id="e04b41024150",
+        ip="192.168.3.32",
+        port=80,
+        mac="e0:4b:41:02:41:50",
+        pid="0000000000000000000000009cac0000",
+        type_id=TYPE_ULTRA,
+    )
+    send = AsyncMock(return_value=b"\x00" * 4 + b"0123456789abcdef" + b"\x00" * 12)
+    monkeypatch.setattr(dna, "send_encrypted", send)
+
+    session = await UltraClient().connect(device)
+
+    assert session.session_key == b"0123456789abcdef"
+    assert send.call_args.kwargs["force_blc"] is True
+
+
 def test_keyvalue_frame_round_trip() -> None:
     frame = keyvalue.build_set_status_frame({"delaytime": 60, "enabled": True})
 
@@ -274,12 +292,7 @@ async def test_emotion_pro_radar_reads_virtual_peripherals() -> None:
             emotion.build_subdevice_frame(
                 emotion.CMD_SUBDEVICE_LIST_RESPONSE,
                 {
-                    "status": 0,
-                    "list": [
-                        {"did": radar_did, "offline": 0},
-                        {"did": climate_did, "offline": 0},
-                        {"did": light_did, "offline": 0},
-                    ],
+                    "status": -1,
                 },
             ),
             emotion.build_subdevice_frame(

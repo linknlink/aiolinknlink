@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.19.4 - 2026-09-10
+
+- Read eMotion Pro illuminance from the derived OPT3004 virtual peripheral even
+  when the device's virtual-peripheral list reports `status=-1`, matching the
+  Ultra and Max behavior.
+- Use the legacy BLC authentication transport for first-generation eMotion Ultra
+  devices so firmware that rejects the full-header pairing packet with status
+  `0xFFF9` can still be paired.
+
 ## 0.19.3 - 2026-09-10
 
 - Add the missing eMotion Pro illuminance entity and parse `envlux`, `lux`, or

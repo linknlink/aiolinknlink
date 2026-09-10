@@ -192,7 +192,13 @@ class UltraClient:
         last_error: Exception | None = None
         for auth_type in _auth_device_type_candidates(device.type_id, device.pid):
             try:
-                is_legacy_pro = _matches_emotion_pro(device) or _matches_emotion_max(device) or _matches_remote(device)
+                is_legacy_pro = (
+                    device.type_id == TYPE_ULTRA
+                    or device.pid.lower() == PID_ULTRA
+                    or _matches_emotion_pro(device)
+                    or _matches_emotion_max(device)
+                    or _matches_remote(device)
+                )
                 if _matches_emotion(device):
                     _terminal_id, session.session_key = await dna.send_legacy_terminal_add(
                         device.ip,
@@ -513,7 +519,10 @@ class UltraClient:
                 values["temperature"] = round(_pro_int(climate, "envtemp", minimum=-4500, maximum=13000) / 100, 2)
             if "envhumid" in climate:
                 values["humidity"] = round(_pro_int(climate, "envhumid", minimum=0, maximum=10000) / 100, 2)
-        light_did = peripheral_dids.get(TYPE_LEGACY_OPT3004)
+        light_did = peripheral_dids.get(
+            TYPE_LEGACY_OPT3004,
+            derive_peripheral_did(session.device.mac, TYPE_LEGACY_OPT3004),
+        )
         if light_did is not None:
             light = await self._get_subdevice_state(session, light_did)
             if light is not None:
