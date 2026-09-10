@@ -70,7 +70,7 @@ from aiolinknlink import (
     UltraSession,
 )
 
-from .const import DOMAIN, UPDATE_INTERVAL_SECONDS
+from .const import DOMAIN, UNAVAILABLE_RETRY_INTERVAL_SECONDS, UPDATE_INTERVAL_SECONDS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -432,15 +432,20 @@ class UltraDataUpdateCoordinator(DataUpdateCoordinator[UltraCoordinatorData]):
 
     async def _async_update_data(self) -> UltraCoordinatorData:
         try:
-            return await self._read_data()
+            data = await self._read_data()
+            self.update_interval = timedelta(seconds=UPDATE_INTERVAL_SECONDS)
+            return data
         except UltraProtocolError as err:
             raise UpdateFailed(f"Invalid response from Ultra2 {self.device.ip}: {err}") from err
         except UltraError as err:
+            self.update_interval = timedelta(seconds=UNAVAILABLE_RETRY_INTERVAL_SECONDS)
             if self.position_subscription is not None:
                 raise UpdateFailed(f"Could not update Ultra2 {self.device.ip}: {err}") from err
             try:
                 self.session = await self.client.connect(self.device, session_key=self.local_key)
-                return await self._read_data()
+                data = await self._read_data()
+                self.update_interval = timedelta(seconds=UPDATE_INTERVAL_SECONDS)
+                return data
             except UltraError as err:
                 raise UpdateFailed(f"Could not update Ultra2 {self.device.ip}: {err}") from err
 

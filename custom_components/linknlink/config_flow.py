@@ -164,15 +164,40 @@ class LinknLinkConfigFlow(ConfigFlow, domain=DOMAIN):
 
 async def _discover_device(host: str) -> IbgDevice | UltraDevice | EHomeDevice | EthsDevice | EHubDevice:
     """Detect one supported device without assuming its product family."""
-    ibg_result, ultra_result = await asyncio.gather(
-        IbgClient().discover_host(host),
-        UltraClient().discover_host(host),
-        return_exceptions=True,
-    )
-    if isinstance(ibg_result, IbgDevice):
-        return ibg_result
-    if isinstance(ultra_result, UltraDevice):
-        return ultra_result
+    discovery_tasks = {
+        asyncio.create_task(IbgClient().discover_host(host)),
+        asyncio.create_task(UltraClient().discover_host(host)),
+    }
+    discovery_errors: list[Exception] = []
+    ibg_result: IbgDevice | Exception | None = None
+    ultra_result: UltraDevice | Exception | None = None
+    try:
+        while discovery_tasks:
+            done, discovery_tasks = await asyncio.wait(discovery_tasks, return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                try:
+                    result = task.result()
+                except Exception as err:  # Discovery of one protocol must not block another.
+                    discovery_errors.append(err)
+                    if isinstance(err, IbgError):
+                        ibg_result = err
+                    elif isinstance(err, UltraError):
+                        ultra_result = err
+                    continue
+                if isinstance(result, IbgDevice):
+                    return result
+                if isinstance(result, UltraDevice):
+                    return result
+    finally:
+        for task in discovery_tasks:
+            task.cancel()
+        if discovery_tasks:
+            await asyncio.gather(*discovery_tasks, return_exceptions=True)
+
+    if ibg_result is None:
+        ibg_result = next((error for error in discovery_errors if isinstance(error, IbgError)), None)
+    if ultra_result is None:
+        ultra_result = next((error for error in discovery_errors if isinstance(error, UltraError)), None)
     # eTHS and eHub share the base Modbus map. Probe eTHS first because its
     # threshold block provides the distinguishing product signature; eHub is
     # used as the fallback for hosts without that block.

@@ -24,6 +24,7 @@ PLATFORMS = (
     Platform.REMOTE,
 )
 UPDATE_INTERVAL_SECONDS = 30
+UNAVAILABLE_RETRY_INTERVAL_SECONDS = 300
 
 
 def resolve_local_key_hex(configured_key_hex: str, negotiated_key: bytes | None) -> str:

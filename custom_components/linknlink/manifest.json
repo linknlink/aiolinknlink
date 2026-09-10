@@ -10,5 +10,5 @@
     "aioesphomeapi>=45.6.0,<46.0",
     "cryptography>=41.0.0"
   ],
-  "version": "0.19.2"
+  "version": "0.19.3"
 }

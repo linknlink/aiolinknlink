@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.19.3 - 2026-09-10
+
+- Add the missing eMotion Pro illuminance entity and parse `envlux`, `lux`, or
+  `illuminance` values from standard Pro status responses.
+- Read optional OPT3004 illuminance peripherals on eMotion Pro Radar devices.
+- Return the first successful protocol discovery result without waiting for an
+  unrelated protocol probe to time out.
+- Retry temporarily unavailable eMotion devices every five minutes and restore
+  the normal 30-second polling interval after recovery.
+
 ## 0.19.2 - 2026-09-10
 
 - Prefer the eTHS threshold-register signature when discovering eTHS and eHub

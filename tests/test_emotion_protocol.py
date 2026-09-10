@@ -210,7 +210,7 @@ async def test_emotion_pro_reads_normalized_environment_state() -> None:
     client.send_command = AsyncMock(
         return_value=keyvalue.build_frame(
             keyvalue.CMD_STATUS_RESPONSE,
-            b'{"tempsensor":235,"humsensor":48,"pir_detected":1,"delaytime":5}',
+            b'{"tempsensor":235,"humsensor":48,"envlux":120,"pir_detected":1,"delaytime":5}',
         )
     )
 
@@ -219,6 +219,7 @@ async def test_emotion_pro_reads_normalized_environment_state() -> None:
     assert state.values == {
         "temperature": 23.5,
         "humidity": 48,
+        "illuminance": 120.0,
         "occupancy": True,
         "absence_delay": 300,
     }
@@ -266,12 +267,20 @@ async def test_emotion_pro_radar_reads_virtual_peripherals() -> None:
     )
     radar_did = derive_peripheral_did(device.mac, TYPE_PRO_RADAR_24G)
     climate_did = derive_peripheral_did(device.mac, TYPE_LEGACY_SHTXX)
+    light_did = derive_peripheral_did(device.mac, TYPE_LEGACY_OPT3004)
     client = UltraClient()
     client.send_command = AsyncMock(
         side_effect=[
             emotion.build_subdevice_frame(
                 emotion.CMD_SUBDEVICE_LIST_RESPONSE,
-                {"status": 0, "list": [{"did": radar_did, "offline": 0}, {"did": climate_did, "offline": 0}]},
+                {
+                    "status": 0,
+                    "list": [
+                        {"did": radar_did, "offline": 0},
+                        {"did": climate_did, "offline": 0},
+                        {"did": light_did, "offline": 0},
+                    ],
+                },
             ),
             emotion.build_subdevice_frame(
                 emotion.CMD_STATUS_RESPONSE,
@@ -280,6 +289,10 @@ async def test_emotion_pro_radar_reads_virtual_peripherals() -> None:
             emotion.build_subdevice_frame(
                 emotion.CMD_STATUS_RESPONSE,
                 {"did": climate_did, "status": 0, "envtemp": 2350, "envhumid": 4850},
+            ),
+            emotion.build_subdevice_frame(
+                emotion.CMD_STATUS_RESPONSE,
+                {"did": light_did, "status": 0, "envlux": 150},
             ),
         ]
     )
@@ -291,6 +304,7 @@ async def test_emotion_pro_radar_reads_virtual_peripherals() -> None:
         "absence_delay": 120,
         "temperature": 23.5,
         "humidity": 48.5,
+        "illuminance": 150.0,
     }
 
 

@@ -490,7 +490,7 @@ class UltraClient:
         return dict(session.peripheral_dids)
 
     async def _get_pro_radar_environment_state(self, session: UltraSession) -> UltraEnvironmentState:
-        """Read public state from the Pro radar and optional SHTXX peripherals."""
+        """Read public state from the Pro radar and optional sensor peripherals."""
         peripheral_dids = await self._get_pro_radar_peripheral_dids(session)
         radar_did = peripheral_dids.get(
             TYPE_PRO_RADAR_24G,
@@ -513,6 +513,13 @@ class UltraClient:
                 values["temperature"] = round(_pro_int(climate, "envtemp", minimum=-4500, maximum=13000) / 100, 2)
             if "envhumid" in climate:
                 values["humidity"] = round(_pro_int(climate, "envhumid", minimum=0, maximum=10000) / 100, 2)
+        light_did = peripheral_dids.get(TYPE_LEGACY_OPT3004)
+        if light_did is not None:
+            light = await self._get_subdevice_state(session, light_did)
+            if light is not None:
+                illuminance = _optional_number(light, "envlux")
+                if illuminance is not None and 0 <= illuminance <= 65_535:
+                    values["illuminance"] = illuminance
         if not values:
             raise UltraProtocolError("eMotion Pro radar response did not contain supported state")
         session.last_seen = datetime.now(UTC)
@@ -544,7 +551,7 @@ class UltraClient:
             if bool(offline):
                 continue
             peripheral_type = _peripheral_type_from_did(did)
-            if peripheral_type in {TYPE_PRO_RADAR_24G, TYPE_LEGACY_SHTXX}:
+            if peripheral_type in {TYPE_PRO_RADAR_24G, TYPE_LEGACY_SHTXX, TYPE_LEGACY_OPT3004}:
                 session.peripheral_dids[peripheral_type] = did
         return dict(session.peripheral_dids)
 
@@ -1324,6 +1331,12 @@ def _pro_environment_values(payload: dict[str, object]) -> dict[str, int | float
         values["temperature"] = round(_pro_int(payload, "tempsensor", minimum=-450, maximum=1300) / 10, 1)
     if "humsensor" in payload:
         values["humidity"] = _pro_int(payload, "humsensor", minimum=0, maximum=100)
+    for key in ("envlux", "lux", "illuminance"):
+        if key in payload:
+            illuminance = _optional_number(payload, key)
+            if illuminance is not None and 0 <= illuminance <= 65_535:
+                values["illuminance"] = illuminance
+            break
     if "pir_detected" in payload:
         values["occupancy"] = bool(_pro_int(payload, "pir_detected", minimum=0, maximum=1))
     if "delaytime" in payload:
