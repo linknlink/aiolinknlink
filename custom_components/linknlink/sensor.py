@@ -332,7 +332,7 @@ EAC1_SENSORS = (
 EHOME_SENSORS = (
     SensorEntityDescription(
         key="sr3_temperature",
-        name="SR3 temperature",
+        name="Temperature",
         translation_key="temperature",
         device_class=SensorDeviceClass.TEMPERATURE,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
@@ -340,7 +340,7 @@ EHOME_SENSORS = (
     ),
     SensorEntityDescription(
         key="sr3_humidity",
-        name="SR3 humidity",
+        name="Humidity",
         translation_key="humidity",
         device_class=SensorDeviceClass.HUMIDITY,
         native_unit_of_measurement=PERCENTAGE,
@@ -348,7 +348,7 @@ EHOME_SENSORS = (
     ),
     SensorEntityDescription(
         key="sr3_illuminance",
-        name="SR3 illuminance",
+        name="Illuminance",
         translation_key="illuminance",
         device_class=SensorDeviceClass.ILLUMINANCE,
         native_unit_of_measurement=LIGHT_LUX,
@@ -356,25 +356,9 @@ EHOME_SENSORS = (
     ),
     SensorEntityDescription(
         key="sr3_battery",
-        name="SR3 battery",
+        name="Battery",
         translation_key="battery",
         device_class=SensorDeviceClass.BATTERY,
-        native_unit_of_measurement=PERCENTAGE,
-        state_class=SensorStateClass.MEASUREMENT,
-    ),
-    SensorEntityDescription(
-        key="virtual_temperature",
-        name="Virtual sensor temperature",
-        translation_key="temperature",
-        device_class=SensorDeviceClass.TEMPERATURE,
-        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        state_class=SensorStateClass.MEASUREMENT,
-    ),
-    SensorEntityDescription(
-        key="virtual_humidity",
-        name="Virtual sensor humidity",
-        translation_key="humidity",
-        device_class=SensorDeviceClass.HUMIDITY,
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
     ),

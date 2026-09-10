@@ -104,7 +104,8 @@ class EHomeKeyEvent(EHomeCoordinatorEntity, EventEntity):
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        pressed = self.coordinator.data.sr3_keypressed == 1
+        current = self.coordinator.data.sr3_keypressed
+        pressed = current == 1
         if pressed and not self._seen_pressed:
             self._trigger_event(EVENT_TYPE_PRESSED, {"keypressed": 1})
         self._seen_pressed = pressed
