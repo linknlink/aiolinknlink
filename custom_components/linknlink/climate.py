@@ -31,7 +31,12 @@ from aiolinknlink import (
 )
 
 from . import LinknLinkConfigEntry
-from .coordinator import EthsDataUpdateCoordinator, UltraDataUpdateCoordinator
+from .coordinator import (
+    EHomeDataUpdateCoordinator,
+    EHubDataUpdateCoordinator,
+    EthsDataUpdateCoordinator,
+    UltraDataUpdateCoordinator,
+)
 from .entity import IbgCoordinatorEntity
 
 FAN_MODE_AUTO = "auto"
@@ -70,7 +75,10 @@ async def async_setup_entry(
     """Create reviewed air-conditioner entities."""
     del hass
     coordinator = entry.runtime_data
-    if isinstance(coordinator, (UltraDataUpdateCoordinator, EthsDataUpdateCoordinator)):
+    if isinstance(
+        coordinator,
+        (EHomeDataUpdateCoordinator, EHubDataUpdateCoordinator, UltraDataUpdateCoordinator, EthsDataUpdateCoordinator),
+    ):
         return
     entities = [
         IbgModbusClimate(coordinator, device.did)

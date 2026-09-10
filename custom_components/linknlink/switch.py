@@ -27,7 +27,12 @@ from aiolinknlink import (
 )
 
 from . import LinknLinkConfigEntry
-from .coordinator import EthsDataUpdateCoordinator, UltraDataUpdateCoordinator
+from .coordinator import (
+    EHomeDataUpdateCoordinator,
+    EHubDataUpdateCoordinator,
+    EthsDataUpdateCoordinator,
+    UltraDataUpdateCoordinator,
+)
 from .entity import IbgCoordinatorEntity
 
 BOX7_SWITCHES = tuple(
@@ -114,7 +119,10 @@ async def async_setup_entry(
     """Create reviewed power switches for supported iBG subdevices."""
     del hass
     coordinator = entry.runtime_data
-    if isinstance(coordinator, (UltraDataUpdateCoordinator, EthsDataUpdateCoordinator)):
+    if isinstance(
+        coordinator,
+        (EHomeDataUpdateCoordinator, EHubDataUpdateCoordinator, UltraDataUpdateCoordinator, EthsDataUpdateCoordinator),
+    ):
         return
     async_add_entities(
         IbgPowerSwitch(coordinator, device.did, description)

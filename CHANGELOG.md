@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.19.2 - 2026-09-10
+
+- Prefer the eTHS threshold-register signature when discovering eTHS and eHub
+  devices so eTHS hosts are not classified as eHub.
+- Prevent eHub and eTHS coordinators from being passed to iBG-only event,
+  switch, and climate platforms.
+- Keep the bundled HACS client library synchronized with the source library.
+
 ## 0.19.1 - 2026-09-09
 
 - Prefer the bundled HACS client library over a stale `/config/deps`

@@ -16,6 +16,7 @@ from aiolinknlink.eths import (
     REG_VERSION,
     EthsClient,
     EthsDevice,
+    EthsProtocolError,
     EthsSession,
 )
 
@@ -104,6 +105,21 @@ async def test_read_state_normalizes_scaled_values() -> None:
         assert state.max_temperature == 125
         assert state.min_temperature == -40
         assert state.absence_delay == 60
+    finally:
+        server.close()
+
+
+@pytest.mark.asyncio
+async def test_read_state_rejects_ehub_without_threshold_signature() -> None:
+    server = _ModbusServer()
+    server.values[REG_THRESHOLDS] = 0
+    server.values[REG_THRESHOLDS + 1] = 0
+    server.values[REG_THRESHOLDS + 2] = 0
+    server.values[REG_THRESHOLDS + 3] = 0
+    try:
+        device = EthsDevice("test", "127.0.0.1", server.port)
+        with pytest.raises(EthsProtocolError, match="threshold signature"):
+            await EthsClient().read_state(EthsSession(device))
     finally:
         server.close()
 

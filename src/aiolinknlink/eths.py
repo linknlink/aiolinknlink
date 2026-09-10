@@ -117,6 +117,15 @@ class EthsClient:
         temperature = _signed(values[1][0]) / 100
         humidity = values[2][0] / 100
         thresholds = values[3]
+        max_temperature = _signed(thresholds[0]) / 100
+        min_temperature = _signed(thresholds[1]) / 100
+        max_humidity = thresholds[2] / 100
+        min_humidity = thresholds[3] / 100
+        # eHub exposes the same base registers but leaves the eTHS threshold
+        # block at zero. Require a meaningful, ordered threshold signature so
+        # a generic eHub is not misclassified as eTHS.
+        if not -40 <= min_temperature < max_temperature <= 125 or not 0 <= min_humidity < max_humidity <= 100:
+            raise EthsProtocolError("eTHS threshold signature is missing or invalid")
         if not -40 <= temperature <= 125 or not 0 <= humidity <= 100:
             raise EthsProtocolError("eTHS temperature or humidity is outside valid range")
         session.last_seen = datetime.now(UTC)
@@ -124,10 +133,10 @@ class EthsClient:
             gateway_version=version,
             temperature=temperature,
             humidity=humidity,
-            max_temperature=_signed(thresholds[0]) / 100,
-            min_temperature=_signed(thresholds[1]) / 100,
-            max_humidity=thresholds[2] / 100,
-            min_humidity=thresholds[3] / 100,
+            max_temperature=max_temperature,
+            min_temperature=min_temperature,
+            max_humidity=max_humidity,
+            min_humidity=min_humidity,
             temperature_alarm=thresholds[4],
             humidity_alarm=thresholds[5],
             absence_delay=thresholds[6],
