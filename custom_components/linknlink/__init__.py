@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import os
+import re
 import sys
 from contextlib import suppress
 from pathlib import Path
@@ -55,6 +57,7 @@ from aiolinknlink import (
 from .const import (
     CONF_DEVICE_TYPE,
     CONF_LOCAL_KEY,
+    CONFIGURATION_YAML,
     DEVICE_TYPE_EHOME,
     DEVICE_TYPE_EHUB,
     DEVICE_TYPE_EMOTION,
@@ -63,7 +66,9 @@ from .const import (
     DEVICE_TYPE_REMOTE,
     DEVICE_TYPE_ULTRA,
     DEVICE_TYPE_ULTRA2,
+    DEVICE_TYPE_ZHA_QUIRK,
     PLATFORMS,
+    QUIRKS_DIR,
     resolve_local_key_hex,
 )
 from .coordinator import (
@@ -86,6 +91,9 @@ LinknLinkConfigEntry: TypeAlias = ConfigEntry[
 async def async_setup_entry(hass: HomeAssistant, entry: LinknLinkConfigEntry) -> bool:
     """Set up LinknLink from a config entry."""
     device_type = entry.data.get(CONF_DEVICE_TYPE, DEVICE_TYPE_IBG)
+    if device_type == DEVICE_TYPE_ZHA_QUIRK:
+        await hass.async_add_executor_job(_ensure_zha_quirk_config)
+        return True
     if device_type == DEVICE_TYPE_REMOTE:
         return await _async_setup_remote_entry(hass, entry)
     if device_type == DEVICE_TYPE_ETHS:
@@ -279,3 +287,37 @@ async def async_unload_entry(hass: HomeAssistant, entry: LinknLinkConfigEntry) -
     if unloaded:
         await entry.runtime_data.async_shutdown()
     return unloaded
+
+
+def _ensure_zha_quirk_config() -> None:
+
+    if not os.path.exists(CONFIGURATION_YAML):
+        return
+    with open(CONFIGURATION_YAML, encoding="utf-8") as h:
+        content = h.read()
+    if "custom_components/linknlink/zha_quirks" in content:
+        return
+    ZHA_BLOCK = f"""
+# === eMotion Air ZHA Quirk - Auto Generated ===
+zha:
+  enable_quirks: true
+  custom_quirks_path: {QUIRKS_DIR}
+# === End eMotion Air ZHA Quirk ===
+"""
+    if "zha:" in content:
+        if "custom_quirks_path:" not in content:
+            new_content = re.sub(
+                r"(^zha:.*$)",
+                "\\1  enable_quirks: true\n  custom_quirks_path: " + QUIRKS_DIR + "\n",
+                content,
+                flags=re.MULTILINE,
+            )
+            if new_content != content:
+                with open(CONFIGURATION_YAML, "w", encoding="utf-8") as h:
+                    h.write(new_content)
+        return
+    if content and not content.endswith("\n"):
+        content += "\n"
+    content += ZHA_BLOCK
+    with open(CONFIGURATION_YAML, "w", encoding="utf-8") as h:
+        h.write(content)

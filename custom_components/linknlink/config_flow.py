@@ -53,6 +53,7 @@ from .const import (
     DEVICE_TYPE_REMOTE,
     DEVICE_TYPE_ULTRA,
     DEVICE_TYPE_ULTRA2,
+    DEVICE_TYPE_ZHA_QUIRK,
     DOMAIN,
     resolve_local_key_hex,
 )
@@ -64,7 +65,18 @@ class LinknLinkConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """Handle user setup by host address."""
+        """Show a menu to choose device type."""
+        return self.async_show_menu(
+            step_id="user",
+            menu_options={
+                "device": "Connect to a LinknLink device",
+                "zha_quirk": "Zigbee eMotion Air quirk setup (no device needed)",
+            },
+            description_placeholders={},
+        )
+
+    async def async_step_device(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Handle setup for a physical device by host address."""
         errors: dict[str, str] = {}
         if user_input is not None:
             host = user_input[CONF_HOST].strip()
@@ -149,7 +161,7 @@ class LinknLinkConfigFlow(ConfigFlow, domain=DOMAIN):
                     data=entry_data,
                 )
         return self.async_show_form(
-            step_id="user",
+            step_id="device",
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_HOST): str,
@@ -160,6 +172,20 @@ class LinknLinkConfigFlow(ConfigFlow, domain=DOMAIN):
             ),
             errors=errors,
         )
+
+    async def async_step_zha_quirk(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Handle Zigbee eMotion Air quirk setup (no physical device needed)."""
+        await self.async_set_unique_id("linknlink_zha_quirk")
+        self._abort_if_unique_id_configured()
+        if user_input is not None:
+            return self.async_create_entry(
+                title="eMotion Air ZHA Quirk",
+                data={
+                    CONF_HOST: "",
+                    CONF_DEVICE_TYPE: DEVICE_TYPE_ZHA_QUIRK,
+                },
+            )
+        return self.async_show_form(step_id="zha_quirk")
 
 
 async def _discover_device(host: str) -> IbgDevice | UltraDevice | EHomeDevice | EthsDevice | EHubDevice:

@@ -14,6 +14,12 @@ DEVICE_TYPE_EHOME = "ehome"
 DEVICE_TYPE_EHUB = "ehub"
 DEVICE_TYPE_REMOTE = "remote"
 DEVICE_TYPE_ETHS = "eths"
+DEVICE_TYPE_ZHA_QUIRK = "zha_quirk"
+
+# ZHA quirk auto-injection paths
+QUIRKS_DIR = "/config/custom_components/linknlink/zha_quirks"
+CONFIGURATION_YAML = "/config/configuration.yaml"
+
 PLATFORMS = (
     Platform.SENSOR,
     Platform.BINARY_SENSOR,
