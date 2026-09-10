@@ -4,7 +4,10 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 import sys
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,6 +38,7 @@ def main() -> int:
         "version",
         "config_flow",
         "documentation",
+        "issue_tracker",
         "integration_type",
         "iot_class",
     }
@@ -45,6 +49,22 @@ def main() -> int:
         raise SystemExit("manifest domain must be linknlink")
     if not isinstance(manifest["version"], str) or not manifest["version"]:
         raise SystemExit("manifest version must be a non-empty string")
+
+    try:
+        pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        project_version = pyproject["project"]["version"]
+    except (KeyError, OSError, tomllib.TOMLDecodeError) as err:
+        raise SystemExit(f"invalid project version in pyproject.toml: {err}") from err
+    if not isinstance(project_version, str) or not re.fullmatch(r"\d+\.\d+\.\d+", project_version):
+        raise SystemExit("pyproject.toml project.version must be a stable x.y.z version")
+    if manifest["version"] != project_version:
+        raise SystemExit(
+            f"manifest version {manifest['version']} does not match pyproject.toml version {project_version}"
+        )
+
+    release_ref = os.environ.get("GITHUB_REF_NAME", "")
+    if release_ref.startswith("v") and release_ref[1:] != manifest["version"]:
+        raise SystemExit(f"release tag {release_ref} does not match manifest version {manifest['version']}")
 
     for relative_path in (
         "custom_components/linknlink/__init__.py",

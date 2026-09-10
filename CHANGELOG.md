@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.19.8 - 2026-09-10
+
+- Correct the package and Home Assistant integration version metadata to
+  `0.19.8`.
+- Include the eMotion Air ZHA quirk and eHome duplicate-sensor fix in a
+  versioned HACS release.
+- Make GitHub Release creation independent of the optional PyPI publication
+  job so a PyPI failure cannot hide a HACS release.
+
 - Ship the Zigbee eMotion Air ZHA quirk in
   `custom_components/linknlink/zha_quirks/` so HACS keeps it up to date.
   Point ZHA's `custom_quirks_path` at that directory to use it. The quirk

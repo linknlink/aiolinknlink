@@ -5,10 +5,11 @@
   "config_flow": true,
   "documentation": "https://github.com/linknlink/aiolinknlink",
   "integration_type": "hub",
+  "issue_tracker": "https://github.com/linknlink/aiolinknlink/issues",
   "iot_class": "local_push",
   "requirements": [
     "aioesphomeapi>=45.6.0,<46.0",
     "cryptography>=41.0.0"
   ],
-  "version": "0.19.5"
+  "version": "0.19.8"
 }
