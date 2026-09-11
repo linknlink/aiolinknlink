@@ -39,24 +39,16 @@ from zhaquirks import CustomCluster
 from zhaquirks.const import (
     BUTTON,
     COMMAND,
-    DEVICE_TYPE,
     DOUBLE_PRESS,
-    ENDPOINTS,
-    INPUT_CLUSTERS,
     LONG_PRESS,
-    MODELS_INFO,
-    OUTPUT_CLUSTERS,
-    PROFILE_ID,
     SHORT_PRESS,
     TRIPLE_PRESS,
     ZHA_SEND_EVENT,
 )
 from zigpy.profiles import zha
-from zigpy.quirks import CustomDevice
 from zigpy.zcl import foundation
 from zigpy.zcl.clusters.general import (
     Basic,
-    Identify,
     Ota,
     PollControl,
     PowerConfiguration,
@@ -334,106 +326,15 @@ class AirConfigCluster(CustomCluster):
         return result
 
 
-class EmotionAir(CustomDevice):
-    """LinknLink eMotion Air."""
-
-    signature = {
-        MODELS_INFO: [("LinknLink", "eMotion Air")],
-        ENDPOINTS: {
-            1: {
-                PROFILE_ID: zha.PROFILE_ID,
-                DEVICE_TYPE: zha.DeviceType.TEMPERATURE_SENSOR,
-                INPUT_CLUSTERS: [
-                    Basic.cluster_id,  # 0x0000
-                    PollControl.cluster_id,  # 0x0020
-                    TemperatureMeasurement.cluster_id,  # 0x0402
-                    RelativeHumidity.cluster_id,  # 0x0405
-                    IlluminanceMeasurement.cluster_id,  # 0x0400
-                    OccupancySensing.cluster_id,  # 0x0406
-                    PowerConfiguration.cluster_id,  # 0x0001
-                    WWAH_CLUSTER_ID,  # 0xFC57
-                    BUTTON_ACTION_CLUSTER_ID,  # 0xFC01 button action
-                    AIR_CONFIG_CLUSTER_ID,  # 0xFC00 air config
-                ],
-                OUTPUT_CLUSTERS: [
-                    Ota.cluster_id,  # 0x0019
-                ],
-            }
-        },
-    }
-
-    replacement = {
-        ENDPOINTS: {
-            1: {
-                PROFILE_ID: zha.PROFILE_ID,
-                DEVICE_TYPE: zha.DeviceType.TEMPERATURE_SENSOR,
-                INPUT_CLUSTERS: [
-                    Basic.cluster_id,
-                    Identify.cluster_id,
-                    PollControl.cluster_id,
-                    TemperatureMeasurement.cluster_id,
-                    RelativeHumidity.cluster_id,
-                    IlluminanceMeasurement.cluster_id,
-                    OccupancySensing.cluster_id,
-                    PowerConfiguration.cluster_id,
-                    WWAH_CLUSTER_ID,
-                    ButtonActionCluster,
-                    AirConfigCluster,
-                ],
-                OUTPUT_CLUSTERS: [
-                    Ota.cluster_id,
-                ],
-            }
-        }
-    }
-
-    device_automation_triggers = {
-        (SHORT_PRESS, BUTTON): {COMMAND: ACTION_SINGLE},
-        (DOUBLE_PRESS, BUTTON): {COMMAND: ACTION_DOUBLE},
-        (TRIPLE_PRESS, BUTTON): {COMMAND: ACTION_TRIPLE},
-        (LONG_PRESS, BUTTON): {COMMAND: ACTION_HOLD},
-    }
-
-
-class EmotionAirWithTouchlink(EmotionAir):
-    """Same device, but firmware that also advertises Touchlink (0x1000) out."""
-
-    signature = {
-        MODELS_INFO: [("LinknLink", "eMotion Air")],
-        ENDPOINTS: {
-            1: {
-                PROFILE_ID: zha.PROFILE_ID,
-                DEVICE_TYPE: zha.DeviceType.TEMPERATURE_SENSOR,
-                INPUT_CLUSTERS: [
-                    Basic.cluster_id,
-                    PollControl.cluster_id,
-                    TemperatureMeasurement.cluster_id,
-                    RelativeHumidity.cluster_id,
-                    IlluminanceMeasurement.cluster_id,
-                    OccupancySensing.cluster_id,
-                    PowerConfiguration.cluster_id,
-                    WWAH_CLUSTER_ID,
-                    BUTTON_ACTION_CLUSTER_ID,
-                    AIR_CONFIG_CLUSTER_ID,
-                ],
-                OUTPUT_CLUSTERS: [
-                    Ota.cluster_id,
-                    0x1000,  # Touchlink Commissioning
-                ],
-            }
-        },
-    }
-
+# v1 CustomDevice signatures were removed on purpose.
+# On HA 2026.x they can win the match over QuirkBuilder v2 and then last_action /
+# radar config entities never get created. Keep QuirkBuilder-only registration.
 
 # ---------------------------------------------------------------------------
-# Quirks v2 registration.
+# Quirks v2 registration only.
 #
-# The v1 signature above must match the endpoint description exactly, which is
-# fragile (a single extra/missing output cluster makes it fail with
-# "Fail because output cluster mismatch on at least one endpoint").
-#
-# The v2 entry below matches on manufacturer/model only, replaces cluster
-# 0xFC01 with our custom cluster, and exposes last_action as a sensor entity.
+# Match on manufacturer/model, replace clusters 0xFC01/0xFC00 with custom
+# clusters, and expose last_action + radar config entities.
 # ---------------------------------------------------------------------------
 try:
     from zigpy.quirks.v2 import QuirkBuilder
