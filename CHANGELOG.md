@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.3
+
+- Allow aioesphomeapi 46.x so the library installs against current Home Assistant Core.
+
 ## 0.3.2
 
 - Refresh ESPHome entity capabilities on every state read so optional
