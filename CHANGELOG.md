@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.19.9 - 2026-10-22
+
+- Release the Home Assistant integration from `feature/hacs-integration` as
+  `0.19.9`, so HACS selects this package instead of the newer library-only
+  `v0.3.3` release on `main`.
+
 ## 0.19.8 - 2026-09-10
 
 - Correct the package and Home Assistant integration version metadata to
