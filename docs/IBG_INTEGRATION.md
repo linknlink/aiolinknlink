@@ -78,7 +78,8 @@ panels expose:
 Every writable panel field is range-, enum-, and type-whitelisted. HA accepts
 a control only after the device response confirms every requested value.
 
-PID `000000000000000000000000ed140100` Modbus electricity meters expose:
+PID `000000000000000000000000ed140100` Modbus electricity meters expose the
+reviewed fields that a gateway actually reports. The full profile can include:
 
 - combined, forward, and reverse active energy in kWh;
 - A/B/C phase voltage and AB/BC/AC line voltage;
@@ -89,10 +90,22 @@ PID `000000000000000000000000ed140100` Modbus electricity meters expose:
 - disabled-by-default diagnostics for the reported device name, electrical
   parameters, Modbus address, transformer ratio, and read/write result.
 
-All 37 documented fields are type-, range-, and scale-validated. The profile is
-strictly read-only. HA uses the stable inventory name plus the reported device
-name for display, while registry identifiers remain based on gateway ID, DID,
-and field name so multiple meters cannot collide.
+The iBG PLC service applies each configured multiplier before publishing DNA
+status, so HA keeps those engineering values and does not divide them again.
+Every accepted field is type- and range-validated. HA creates an entity only
+when that field is present in the device status, so a single-phase meter does
+not show empty three-phase entities. The profile is strictly read-only. HA
+uses the stable inventory name plus the reported device name for display,
+while registry identifiers remain based on gateway ID, DID, and field name so
+multiple meters cannot collide.
+
+PID `00000000000000000000000040160100` Modbus smart breakers expose one
+switch. HA writes `pwr` as `0` or `1` and reads `pwr_state` on the next poll.
+The gateway mapping already means `0` is off and `1` is on. The SET response is
+the previous snapshot plus the queued command, so HA accepts a successful write
+and does not require `pwr_state` in that same response. Disabled-by-default
+diagnostics cover the reported device name, Modbus address, and read/write
+result when the firmware includes them.
 
 PID `000000000000000000000000d10f0100` DLT645 electricity meters expose:
 
@@ -261,9 +274,11 @@ and one diagnostic fault-code sensor. Each PID `0f160100` Modbus multifunction
 sensor has four measurement entities. Each PID `34150100` Modbus water meter
 has two entities: cumulative water and instantaneous flow. Each PID `2b160100`
 water-cooled air-conditioner panel has one climate entity. Each PID `ed140100`
-Modbus electricity meter has 37 entities: 28 measurements, three overload
-binary sensors, and six disabled-by-default diagnostic sensors. Counts can
-differ on another gateway. Each PID `d10f0100` DLT645 electricity meter has
+Modbus electricity meter exposes only the reviewed fields present in its
+status. A full three-phase profile has 37 entities: 28 measurements, three
+overload binary sensors, and six disabled-by-default diagnostic sensors.
+Counts can differ on another gateway. Each PID `40160100` smart breaker has
+one switch. Each PID `d10f0100` DLT645 electricity meter has
 25 entities: 20 measurements, three overload binary sensors, and two
 disabled-by-default diagnostic sensors. Each PID `9b100100` eAC1 panel has four
 entities: one climate entity, one humidity sensor, one key-lock switch, and

@@ -20,6 +20,7 @@ from aiolinknlink import (
     PID_MODBUS_MULTI_SENSOR,
     PID_MODBUS_WATER_METER,
     PID_SINGLE_CHANNEL_LIGHT_SWITCH,
+    PID_SMART_BREAKER,
     PID_THREE_CHANNEL_LIGHT_SWITCH,
     PID_TWO_CHANNEL_LIGHT_SWITCH,
     PID_WATER_AC_PANEL,
@@ -628,6 +629,44 @@ def test_modbus_water_meter_state_handles_missing_and_invalid_fields() -> None:
     )
 
 
+def test_smart_breaker_state_uses_firmware_mapped_output() -> None:
+    values = normalize_subdevice_state(
+        PID_SMART_BREAKER,
+        {
+            "pwr": 0,
+            "pwr_state": 1,
+            "address": 27,
+            "modbusreadresult": 0,
+            "modbuswriteresult": 1,
+            "devicename": "继电器1",
+            "password": "must-not-be-exposed",
+        },
+    )
+
+    assert values == {
+        "pwr_state": True,
+        "address": 27,
+        "modbusreadresult": "success",
+        "modbuswriteresult": "failure",
+        "devicename": "继电器1",
+    }
+
+
+def test_smart_breaker_state_rejects_unmapped_values() -> None:
+    assert (
+        normalize_subdevice_state(
+            PID_SMART_BREAKER,
+            {
+                "pwr_state": 2,
+                "address": 256,
+                "modbusreadresult": 3,
+                "devicename": " ",
+            },
+        )
+        == {}
+    )
+
+
 def test_modbus_electricity_meter_state_normalization_uses_all_documented_fields() -> None:
     values = normalize_subdevice_state(
         PID_MODBUS_ELECTRICITY_METER,
@@ -674,34 +713,34 @@ def test_modbus_electricity_meter_state_normalization_uses_all_documented_fields
     )
 
     assert values == {
-        "Combenergy": 1234.56,
-        "totalconsum": 8830.48,
-        "Reverenergy": 1.23,
-        "Aphasevolt": 234.7,
-        "Bphasevolt": 235.7,
-        "Cphasevolt": 235.2,
-        "Aphasecurrent": 9.283,
-        "Bphasecurrent": -6.187,
-        "Cphasecurrent": 11.901,
-        "power": 5052.4,
-        "Aphasepower": 1964.7,
-        "Bphasepower": 999.5,
-        "Cphasepower": 2117.7,
-        "Combpowerfactor": 0.812,
-        "Apowerfactor": 0.901,
-        "Bpowerfactor": 0.685,
-        "Cpowerfactor": 0.756,
-        "Aphasehmccurrent": 0.321,
-        "Bphasehmccurrent": 0.654,
-        "Cphasehmccurrent": 0.987,
-        "frequency": 50.01,
-        "AB_linevoltage": 407.1,
-        "BC_linevoltage": 408.0,
-        "AC_linevoltage": 407.5,
-        "Aphase_reactivepower": -125.0,
-        "Bphase_reactivepower": 250.0,
-        "Cphase_reactivepower": 375.0,
-        "Total_reactivepower": 500.0,
+        "Combenergy": 123_456,
+        "totalconsum": 883_048,
+        "Reverenergy": 123,
+        "Aphasevolt": 2_347,
+        "Bphasevolt": 2_357,
+        "Cphasevolt": 2_352,
+        "Aphasecurrent": 9_283,
+        "Bphasecurrent": -6_187,
+        "Cphasecurrent": 11_901,
+        "power": 50_524,
+        "Aphasepower": 19_647,
+        "Bphasepower": 9_995,
+        "Cphasepower": 21_177,
+        "Combpowerfactor": 812,
+        "Apowerfactor": 901,
+        "Bpowerfactor": 685,
+        "Cpowerfactor": 756,
+        "Aphasehmccurrent": 321,
+        "Bphasehmccurrent": 654,
+        "Cphasehmccurrent": 987,
+        "frequency": 5_001,
+        "AB_linevoltage": 4_071,
+        "BC_linevoltage": 4_080,
+        "AC_linevoltage": 4_075,
+        "Aphase_reactivepower": -1_250,
+        "Bphase_reactivepower": 2_500,
+        "Cphase_reactivepower": 3_750,
+        "Total_reactivepower": 5_000,
         "Aphaseoverload": False,
         "Bphaseoverload": True,
         "Cphaseoverload": False,
@@ -953,6 +992,92 @@ async def test_box7_set_state_sends_only_reviewed_boolean_control() -> None:
     )
 
     assert state.values == {"pwr1": False, "pwr3": True, "power": 12.0}
+
+
+async def test_smart_breaker_accepts_queued_write_without_immediate_state() -> None:
+    device = IbgSubDevice(
+        "0011223344550000401601001b000000",
+        PID_SMART_BREAKER,
+        "PLC-27",
+        True,
+    )
+
+    async def exchange(
+        _ip: str,
+        _port: int,
+        packet: bytes,
+        _timeout: float,
+        _accept: dna.PacketAcceptor | None,
+    ) -> bytes:
+        _header, body = dna.parse_blc_packet(packet)
+        _aes, plain = dna.parse_blc_encrypted_payload(body, SESSION_KEY)
+        frame = gateway.parse_gateway_frame(plain)
+        assert frame.command_type == gateway.CMD_SET_STATUS
+        assert frame.payload == {"did": device.did, "pwr": 1}
+        # dna-appframework answers with the previous snapshot plus the command.
+        # The PLC service has not polled pwr_state yet.
+        return _response_packet(
+            packet,
+            SESSION_KEY,
+            gateway.build_gateway_frame(
+                gateway.CMD_STATUS_RESPONSE,
+                {
+                    "did": device.did,
+                    "pid": PID_SMART_BREAKER,
+                    "pwr": 1,
+                    "pwr_state": 0,
+                    "devicename": "继电器1",
+                },
+            ),
+        )
+
+    state = await IbgClient().set_subdevice_state(
+        IbgSession(device=GATEWAY, session_key=SESSION_KEY),
+        device,
+        {"pwr": True},
+        exchange=exchange,
+    )
+
+    assert state.values["pwr_state"] is False
+    assert state.values["devicename"] == "继电器1"
+
+
+async def test_smart_breaker_rejects_failed_write_result() -> None:
+    device = IbgSubDevice(
+        "0011223344550000401601001b000000",
+        PID_SMART_BREAKER,
+        "PLC-27",
+        True,
+    )
+
+    async def exchange(
+        _ip: str,
+        _port: int,
+        packet: bytes,
+        _timeout: float,
+        _accept: dna.PacketAcceptor | None,
+    ) -> bytes:
+        return _response_packet(
+            packet,
+            SESSION_KEY,
+            gateway.build_gateway_frame(
+                gateway.CMD_STATUS_RESPONSE,
+                {
+                    "did": device.did,
+                    "pid": PID_SMART_BREAKER,
+                    "pwr": 1,
+                    "modbuswriteresult": 1,
+                },
+            ),
+        )
+
+    with pytest.raises(IbgProtocolError, match="write was not successful"):
+        await IbgClient().set_subdevice_state(
+            IbgSession(device=GATEWAY, session_key=SESSION_KEY),
+            device,
+            {"pwr": True},
+            exchange=exchange,
+        )
 
 
 async def test_8_channel_light_switch_sets_master_and_confirms_actual_circuits() -> None:

@@ -99,7 +99,7 @@ asyncio.run(main())
 Supported iBG profiles include the RF environment/occupancy sensor, the
 seven-channel controller, the DTU, PID `93150100` Modbus air conditioners, PID
 `0f160100` Modbus multifunction sensors, PID `34150100` Modbus water meters,
-PID `ed140100` Modbus electricity meters, PID `d10f0100` DLT645 electricity
+PID `40160100` Modbus smart breakers, PID `ed140100` Modbus electricity meters, PID `d10f0100` DLT645 electricity
 meters, PID `2b160100` RF water-cooled air-conditioner panels, PID `9b100100`
 433 MHz eAC1 smart air-conditioner panels, PID `b5120100` first-generation
 eSensor-2000 sensors, and PID `43160100` second-generation eSensor-2000
@@ -109,9 +109,11 @@ with confirmed power, mode, fan-speed, and target-temperature writes.
 Multifunction sensors expose temperature, carbon dioxide, humidity, and
 illuminance measurements. Water meters expose cumulative consumption and
 instantaneous volume flow when reported by the device. Electricity meters
-expose active energy, phase and line voltage, phase current, active and
-reactive power, power factor, harmonic current, frequency, overload, and
-reviewed Modbus diagnostics. DLT645 electricity meters expose the documented
+expose the active energy, voltage, current, power, power factor, harmonic
+current, frequency, overload, and Modbus diagnostic fields that the gateway
+actually reports. Values stay in the engineering units already scaled by the
+iBG. Smart breakers expose one switch: HA writes `pwr` and reads the
+firmware-mapped `pwr_state` on the next poll. DLT645 electricity meters expose the documented
 active energy, phase voltage/current, active power, power factor, harmonic
 current, overload, electrical-parameter, and address fields. Both
 electricity-meter profiles are read-only.

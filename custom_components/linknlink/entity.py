@@ -31,6 +31,7 @@ SUBDEVICE_MODELS = {
     "00000000000000000000000020110100": "Single-channel light switch",
     "00000000000000000000000021110100": "Two-channel light switch",
     "00000000000000000000000022110100": "Three-channel light switch",
+    "00000000000000000000000040160100": "Smart breaker",
 }
 
 

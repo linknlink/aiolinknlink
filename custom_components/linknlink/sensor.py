@@ -38,6 +38,7 @@ from aiolinknlink import (
     PID_MODBUS_ELECTRICITY_METER,
     PID_MODBUS_MULTI_SENSOR,
     PID_MODBUS_WATER_METER,
+    PID_SMART_BREAKER,
     PID_SR3_SENSOR,
     TYPE_EMOTION,
     TYPE_EMOTION_WIRE,
@@ -645,6 +646,44 @@ DTU_ANALOG_INPUTS = tuple(
     for channel in range(1, 4)
 )
 
+
+SMART_BREAKER_SENSORS = (
+    SensorEntityDescription(
+        key="devicename",
+        name="Reported device name",
+        translation_key="reported_device_name",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        icon="mdi:label-outline",
+    ),
+    SensorEntityDescription(
+        key="address",
+        name="Modbus address",
+        translation_key="modbus_address",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        icon="mdi:numeric",
+    ),
+    SensorEntityDescription(
+        key="modbusreadresult",
+        name="Modbus read result",
+        translation_key="modbus_read_result",
+        device_class=SensorDeviceClass.ENUM,
+        options=["success", "failure", "partial_success"],
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+    ),
+    SensorEntityDescription(
+        key="modbuswriteresult",
+        name="Modbus write result",
+        translation_key="modbus_write_result",
+        device_class=SensorDeviceClass.ENUM,
+        options=["success", "failure", "partial_success"],
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+    ),
+)
+
 SENSORS_BY_PID = {
     PID_SR3_SENSOR: SR3_SENSORS,
     PID_ESENSOR_2000_GEN1: ESENSOR_2000_GEN1_SENSORS,
@@ -655,6 +694,7 @@ SENSORS_BY_PID = {
     PID_MODBUS_MULTI_SENSOR: MODBUS_MULTI_SENSORS,
     PID_MODBUS_WATER_METER: MODBUS_WATER_SENSORS,
     PID_MODBUS_ELECTRICITY_METER: MODBUS_ELECTRICITY_METER_SENSORS,
+    PID_SMART_BREAKER: SMART_BREAKER_SENSORS,
     PID_DLT645_ELECTRICITY_METER: DLT645_ELECTRICITY_METER_SENSORS,
     PID_EAC1_PANEL: EAC1_SENSORS,
 }
@@ -712,11 +752,15 @@ async def async_setup_entry(
         )
         async_add_entities([*environment_entities, *position_entities])
         return
-    entities = [
-        IbgSensor(coordinator, device.did, description)
-        for device in coordinator.data.subdevices
-        for description in SENSORS_BY_PID.get(device.pid, ())
-    ]
+    entities = []
+    for device in coordinator.data.subdevices:
+        descriptions = SENSORS_BY_PID.get(device.pid, ())
+        state = coordinator.data.states.get(device.did)
+        reported = set(state.values) if state is not None else None
+        for description in descriptions:
+            if reported is not None and description.key not in reported:
+                continue
+            entities.append(IbgSensor(coordinator, device.did, description))
     entities.extend(
         IbgDtuAnalogInputSensor(coordinator, device.did, description)
         for device in coordinator.data.subdevices

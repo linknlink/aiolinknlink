@@ -16,6 +16,7 @@ from aiolinknlink import (
     PID_DTU,
     PID_EAC1_PANEL,
     PID_SINGLE_CHANNEL_LIGHT_SWITCH,
+    PID_SMART_BREAKER,
     PID_THREE_CHANNEL_LIGHT_SWITCH,
     PID_TWO_CHANNEL_LIGHT_SWITCH,
     SINGLE_CHANNEL_LIGHT_BACKLIGHT_FIELD,
@@ -92,6 +93,14 @@ THREE_CHANNEL_LIGHT_SWITCHES = (
         translation_key="all_switches",
     ),
 )
+SMART_BREAKER_SWITCHES = (
+    SwitchEntityDescription(
+        key="pwr_state",
+        name="Breaker",
+        translation_key="breaker",
+        icon="mdi:electric-switch",
+    ),
+)
 EAC1_SWITCHES = (
     SwitchEntityDescription(
         key=EAC1_KEY_LOCK_FIELD,
@@ -108,6 +117,7 @@ SWITCHES_BY_PID = {
     PID_SINGLE_CHANNEL_LIGHT_SWITCH: SINGLE_CHANNEL_LIGHT_SWITCHES,
     PID_TWO_CHANNEL_LIGHT_SWITCH: TWO_CHANNEL_LIGHT_SWITCHES,
     PID_THREE_CHANNEL_LIGHT_SWITCH: THREE_CHANNEL_LIGHT_SWITCHES,
+    PID_SMART_BREAKER: SMART_BREAKER_SWITCHES,
 }
 
 
@@ -146,12 +156,18 @@ class IbgPowerSwitch(IbgCoordinatorEntity, SwitchEntity):
         value = self._value()
         return value if isinstance(value, bool) else None
 
+    def _command_key(self) -> str:
+        """Return the writable field for this switch."""
+        if self.key == "pwr_state":
+            return "pwr"
+        return self.key
+
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the output on and wait for device confirmation."""
         del kwargs
-        await self.coordinator.async_set_subdevice_state(self.did, {self.key: True})
+        await self.coordinator.async_set_subdevice_state(self.did, {self._command_key(): True})
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the output off and wait for device confirmation."""
         del kwargs
-        await self.coordinator.async_set_subdevice_state(self.did, {self.key: False})
+        await self.coordinator.async_set_subdevice_state(self.did, {self._command_key(): False})

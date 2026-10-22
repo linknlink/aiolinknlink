@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Add PID `40160100` Modbus smart breakers as one switch. HA writes `pwr`,
+  accepts the queued command, and reads the firmware-mapped `pwr_state` on the
+  next poll. Disabled-by-default diagnostics cover the reported name, address,
+  and Modbus result.
+- Keep PID `ed140100` Modbus electricity-meter values in the engineering units
+  already scaled by the iBG, and create only the fields a meter actually
+  reports.
+
 ## 0.19.9 - 2026-10-22
 
 - Release the Home Assistant integration from `feature/hacs-integration` as

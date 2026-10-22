@@ -137,11 +137,15 @@ async def async_setup_entry(
             entities.append(UltraPositionSubscriptionBinarySensor(coordinator))
         async_add_entities(entities)
         return
-    async_add_entities(
-        IbgBinarySensor(coordinator, device.did, description)
-        for device in coordinator.data.subdevices
-        for description in BINARY_SENSORS_BY_PID.get(device.pid, ())
-    )
+    entities = []
+    for device in coordinator.data.subdevices:
+        state = coordinator.data.states.get(device.did)
+        reported = set(state.values) if state is not None else None
+        for description in BINARY_SENSORS_BY_PID.get(device.pid, ()):
+            if reported is not None and description.key not in reported:
+                continue
+            entities.append(IbgBinarySensor(coordinator, device.did, description))
+    async_add_entities(entities)
 
 
 class IbgBinarySensor(IbgCoordinatorEntity, BinarySensorEntity):

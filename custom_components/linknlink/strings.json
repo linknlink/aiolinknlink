@@ -426,6 +426,9 @@
       },
       "panel_backlight": {
         "name": "Panel backlight"
+      },
+      "breaker": {
+        "name": "Breaker"
       }
     }
   }

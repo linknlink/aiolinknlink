@@ -32,6 +32,7 @@ PID_8_CHANNEL_LIGHT_SWITCH = "000000000000000000000000d7140100"
 PID_SINGLE_CHANNEL_LIGHT_SWITCH = "00000000000000000000000020110100"
 PID_TWO_CHANNEL_LIGHT_SWITCH = "00000000000000000000000021110100"
 PID_THREE_CHANNEL_LIGHT_SWITCH = "00000000000000000000000022110100"
+PID_SMART_BREAKER = "00000000000000000000000040160100"
 SUPPORTED_SUBDEVICE_PIDS = frozenset(
     {
         PID_SR3_SENSOR,
@@ -50,6 +51,7 @@ SUPPORTED_SUBDEVICE_PIDS = frozenset(
         PID_SINGLE_CHANNEL_LIGHT_SWITCH,
         PID_TWO_CHANNEL_LIGHT_SWITCH,
         PID_THREE_CHANNEL_LIGHT_SWITCH,
+        PID_SMART_BREAKER,
     }
 )
 BOX7_POWER_FIELDS = frozenset(f"pwr{channel}" for channel in range(1, 8))
@@ -78,6 +80,9 @@ THREE_CHANNEL_LIGHT_WRITABLE_FIELDS = THREE_CHANNEL_LIGHT_POWER_FIELDS | {
     THREE_CHANNEL_LIGHT_MASTER_POWER_FIELD,
     THREE_CHANNEL_LIGHT_BACKLIGHT_FIELD,
 }
+SMART_BREAKER_POWER_FIELD = "pwr"
+SMART_BREAKER_STATE_FIELD = "pwr_state"
+SMART_BREAKER_WRITABLE_FIELDS = frozenset({SMART_BREAKER_POWER_FIELD})
 DTU_POWER_FIELDS = frozenset(f"pwr{channel}" for channel in range(1, 3))
 DTU_VOLTAGE_OUTPUT_FIELD = "voltage"
 DTU_WRITABLE_FIELDS = DTU_POWER_FIELDS | {DTU_VOLTAGE_OUTPUT_FIELD}
@@ -363,6 +368,7 @@ class IbgClient:
             PID_SINGLE_CHANNEL_LIGHT_SWITCH,
             PID_TWO_CHANNEL_LIGHT_SWITCH,
             PID_THREE_CHANNEL_LIGHT_SWITCH,
+            PID_SMART_BREAKER,
             PID_DTU,
             PID_MODBUS_AC,
             PID_WATER_AC_PANEL,
@@ -383,6 +389,8 @@ class IbgClient:
             writable_fields = TWO_CHANNEL_LIGHT_WRITABLE_FIELDS
         elif pid == PID_THREE_CHANNEL_LIGHT_SWITCH:
             writable_fields = THREE_CHANNEL_LIGHT_WRITABLE_FIELDS
+        elif pid == PID_SMART_BREAKER:
+            writable_fields = SMART_BREAKER_WRITABLE_FIELDS
         elif pid == PID_DTU:
             writable_fields = DTU_WRITABLE_FIELDS
         elif pid == PID_MODBUS_AC:
@@ -404,6 +412,7 @@ class IbgClient:
                 or key in SINGLE_CHANNEL_LIGHT_WRITABLE_FIELDS
                 or key in TWO_CHANNEL_LIGHT_WRITABLE_FIELDS
                 or key in THREE_CHANNEL_LIGHT_WRITABLE_FIELDS
+                or key == SMART_BREAKER_POWER_FIELD
                 or key in DTU_POWER_FIELDS
                 or key in {MODBUS_AC_POWER_FIELD, WATER_AC_PANEL_POWER_FIELD, EAC1_POWER_FIELD}
                 or key == EAC1_KEY_LOCK_FIELD
@@ -464,6 +473,14 @@ class IbgClient:
         _require_success(payload)
         _validate_state_identity(device, payload)
         values = normalize_subdevice_state(device.pid, payload)
+        if pid == PID_SMART_BREAKER and SMART_BREAKER_POWER_FIELD in expected_values:
+            # dna-mdbs queues the write and answers with the previous snapshot
+            # plus the requested pwr field. pwr_state is published only after
+            # the next Modbus poll, so a successful command is the confirmation.
+            write_result = values.get("modbuswriteresult")
+            if write_result not in (None, "success"):
+                raise IbgProtocolError("iBG smart breaker write was not successful")
+            expected_values = {}
         for key, expected in expected_values.items():
             confirmed = values.get(key)
             if (isinstance(expected, bool) and confirmed is not expected) or (
@@ -556,6 +573,8 @@ def normalize_subdevice_state(pid: str, payload: dict[str, Any]) -> dict[str, An
         return _normalize_two_channel_light_switch_state(payload)
     if pid.lower() == PID_THREE_CHANNEL_LIGHT_SWITCH:
         return _normalize_three_channel_light_switch_state(payload)
+    if pid.lower() == PID_SMART_BREAKER:
+        return _normalize_smart_breaker_state(payload)
     if pid.lower() != PID_SR3_SENSOR:
         return {}
     values: dict[str, int | float | bool] = {}
@@ -812,45 +831,77 @@ def _normalize_modbus_water_meter_state(payload: dict[str, Any]) -> dict[str, in
     return values
 
 
+def _normalize_smart_breaker_state(payload: dict[str, Any]) -> dict[str, bool | int | str]:
+    """Normalize a Modbus smart breaker after firmware mapping."""
+    values: dict[str, bool | int | str] = {}
+    # PLC firmware maps the physical register before reporting: 0 is off and
+    # 1 is on. Writes use pwr; the following poll reports pwr_state.
+    state = payload.get(SMART_BREAKER_STATE_FIELD)
+    if isinstance(state, bool):
+        values[SMART_BREAKER_STATE_FIELD] = state
+    elif isinstance(state, int) and not isinstance(state, bool) and state in {0, 1}:
+        values[SMART_BREAKER_STATE_FIELD] = bool(state)
+
+    address = payload.get("address")
+    if isinstance(address, int) and not isinstance(address, bool) and 0 <= address <= 255:
+        values["address"] = address
+
+    result_states = {0: "success", 1: "failure", 2: "partial_success"}
+    for key in ("modbusreadresult", "modbuswriteresult"):
+        raw = payload.get(key)
+        if isinstance(raw, int) and not isinstance(raw, bool) and raw in result_states:
+            values[key] = result_states[raw]
+
+    name = payload.get("devicename")
+    if isinstance(name, str):
+        text = name.strip()
+        if text and len(text) <= 1_024:
+            values["devicename"] = text
+    return values
+
+
 def _normalize_modbus_electricity_meter_state(
     payload: dict[str, Any],
 ) -> dict[str, int | float | bool | str]:
-    """Normalize the reviewed read-only Modbus electricity-meter profile."""
+    """Normalize a Modbus electricity meter after firmware scaling."""
     values: dict[str, int | float | bool | str] = {}
+    # The iBG PLC service applies each field multiplier before publishing the
+    # DNA status. HA therefore keeps engineering units instead of dividing the
+    # generic profile scale a second time.
     scaled_fields = {
-        "Combenergy": (0, 999_999_999, 100),
-        "totalconsum": (0, 4_294_967_295, 100),
-        "Reverenergy": (0, 999_999_999, 100),
-        "Aphasevolt": (0, 65_535, 10),
-        "Bphasevolt": (0, 65_535, 10),
-        "Cphasevolt": (0, 65_535, 10),
-        "Aphasecurrent": (-999_999, 999_999, 1_000),
-        "Bphasecurrent": (-999_999, 999_999, 1_000),
-        "Cphasecurrent": (-999_999, 999_999, 1_000),
-        "power": (-2_147_483_648, 2_147_483_647, 10),
-        "Aphasepower": (-2_147_483_648, 2_147_483_647, 10),
-        "Bphasepower": (-2_147_483_648, 2_147_483_647, 10),
-        "Cphasepower": (-2_147_483_648, 2_147_483_647, 10),
-        "Combpowerfactor": (-9_999, 9_999, 1_000),
-        "Apowerfactor": (-9_999, 9_999, 1_000),
-        "Bpowerfactor": (-9_999, 9_999, 1_000),
-        "Cpowerfactor": (-9_999, 9_999, 1_000),
-        "Aphasehmccurrent": (0, 999_999, 1_000),
-        "Bphasehmccurrent": (0, 999_999, 1_000),
-        "Cphasehmccurrent": (0, 999_999, 1_000),
-        "frequency": (0, 10_000, 100),
-        "AB_linevoltage": (0, 65_535, 10),
-        "BC_linevoltage": (0, 65_535, 10),
-        "AC_linevoltage": (0, 65_535, 10),
-        "Aphase_reactivepower": (-2_147_483_648, 2_147_483_647, 10),
-        "Bphase_reactivepower": (-2_147_483_648, 2_147_483_647, 10),
-        "Cphase_reactivepower": (-2_147_483_648, 2_147_483_647, 10),
-        "Total_reactivepower": (-2_147_483_648, 2_147_483_647, 10),
+        "Combenergy": (0, 999_999_999),
+        "totalconsum": (0, 4_294_967_295),
+        "Reverenergy": (0, 999_999_999),
+        "Aphasevolt": (0, 65_535),
+        "Bphasevolt": (0, 65_535),
+        "Cphasevolt": (0, 65_535),
+        "Aphasecurrent": (-999_999, 999_999),
+        "Bphasecurrent": (-999_999, 999_999),
+        "Cphasecurrent": (-999_999, 999_999),
+        "power": (-2_147_483_648, 2_147_483_647),
+        "Aphasepower": (-2_147_483_648, 2_147_483_647),
+        "Bphasepower": (-2_147_483_648, 2_147_483_647),
+        "Cphasepower": (-2_147_483_648, 2_147_483_647),
+        "Combpowerfactor": (-9_999, 9_999),
+        "Apowerfactor": (-9_999, 9_999),
+        "Bpowerfactor": (-9_999, 9_999),
+        "Cpowerfactor": (-9_999, 9_999),
+        "Aphasehmccurrent": (0, 999_999),
+        "Bphasehmccurrent": (0, 999_999),
+        "Cphasehmccurrent": (0, 999_999),
+        "frequency": (0, 10_000),
+        "AB_linevoltage": (0, 65_535),
+        "BC_linevoltage": (0, 65_535),
+        "AC_linevoltage": (0, 65_535),
+        "Aphase_reactivepower": (-2_147_483_648, 2_147_483_647),
+        "Bphase_reactivepower": (-2_147_483_648, 2_147_483_647),
+        "Cphase_reactivepower": (-2_147_483_648, 2_147_483_647),
+        "Total_reactivepower": (-2_147_483_648, 2_147_483_647),
     }
-    for key, (minimum, maximum, divisor) in scaled_fields.items():
+    for key, (minimum, maximum) in scaled_fields.items():
         raw = _number(payload.get(key))
         if raw is not None and minimum <= raw <= maximum:
-            values[key] = raw / divisor
+            values[key] = raw
 
     for key in ("Aphaseoverload", "Bphaseoverload", "Cphaseoverload"):
         raw = payload.get(key)

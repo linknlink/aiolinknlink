@@ -183,7 +183,8 @@
       "switch_7": {"name": "开关7"},
       "all_switches": {"name": "全部开关"},
       "key_lock": {"name": "按键锁定"},
-      "panel_backlight": {"name": "面板背光"}
+      "panel_backlight": {"name": "面板背光"},
+      "breaker": {"name": "空开"}
     }
   }
 }

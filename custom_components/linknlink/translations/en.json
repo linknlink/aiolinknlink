@@ -183,7 +183,8 @@
       "switch_7": {"name": "Switch 7"},
       "all_switches": {"name": "All switches"},
       "key_lock": {"name": "Key lock"},
-      "panel_backlight": {"name": "Panel backlight"}
+      "panel_backlight": {"name": "Panel backlight"},
+      "breaker": {"name": "Breaker"}
     }
   }
 }

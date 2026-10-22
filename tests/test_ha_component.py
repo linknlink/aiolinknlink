@@ -37,6 +37,7 @@ from aiolinknlink import (  # noqa: E402
     PID_MODBUS_MULTI_SENSOR,
     PID_MODBUS_WATER_METER,
     PID_SINGLE_CHANNEL_LIGHT_SWITCH,
+    PID_SMART_BREAKER,
     PID_THREE_CHANNEL_LIGHT_SWITCH,
     PID_TWO_CHANNEL_LIGHT_SWITCH,
     PID_WATER_AC_PANEL,
@@ -84,6 +85,7 @@ from custom_components.linknlink.sensor import (  # noqa: E402
     ESENSOR_2000_GEN1_SENSORS,
     MODBUS_AC_SENSORS,
     MODBUS_ELECTRICITY_METER_SENSORS,
+    SMART_BREAKER_SENSORS,
     MODBUS_MULTI_SENSORS,
     MODBUS_WATER_SENSORS,
     SENSORS_BY_PID,
@@ -97,6 +99,7 @@ from custom_components.linknlink.switch import (  # noqa: E402
     EAC1_SWITCHES,
     LIGHT8_SWITCHES,
     SINGLE_CHANNEL_LIGHT_SWITCHES,
+    SMART_BREAKER_SWITCHES,
     SWITCHES_BY_PID,
     THREE_CHANNEL_LIGHT_SWITCHES,
     TWO_CHANNEL_LIGHT_SWITCHES,
@@ -810,6 +813,16 @@ def test_entity_catalogs_are_pid_specific() -> None:
     assert len(SINGLE_CHANNEL_LIGHT_SWITCHES) == 2
     assert len(TWO_CHANNEL_LIGHT_SWITCHES) == 4
     assert len(THREE_CHANNEL_LIGHT_SWITCHES) == 5
+    assert len(SMART_BREAKER_SWITCHES) == 1
+    assert SMART_BREAKER_SWITCHES[0].key == "pwr_state"
+    assert len(SMART_BREAKER_SENSORS) == 4
+    assert {description.key for description in SMART_BREAKER_SENSORS} == {
+        "devicename",
+        "address",
+        "modbusreadresult",
+        "modbuswriteresult",
+    }
+    assert all(description.entity_registry_enabled_default is False for description in SMART_BREAKER_SENSORS)
     assert len(DTU_SWITCHES) == 2
     assert len(EAC1_SWITCHES) == 1
     assert len(DTU_ELECTRICAL_SENSORS) == 8
@@ -831,6 +844,7 @@ def test_entity_catalogs_are_pid_specific() -> None:
     assert SENSORS_BY_PID[PID_MODBUS_MULTI_SENSOR] == MODBUS_MULTI_SENSORS
     assert SENSORS_BY_PID[PID_MODBUS_WATER_METER] == MODBUS_WATER_SENSORS
     assert SENSORS_BY_PID[PID_MODBUS_ELECTRICITY_METER] == MODBUS_ELECTRICITY_METER_SENSORS
+    assert SENSORS_BY_PID[PID_SMART_BREAKER] == SMART_BREAKER_SENSORS
     assert SENSORS_BY_PID[PID_DLT645_ELECTRICITY_METER] == DLT645_ELECTRICITY_METER_SENSORS
     assert SENSORS_BY_PID[PID_EAC1_PANEL] == EAC1_SENSORS
     assert PID_ESENSOR_2000 == PID_ESENSOR_2000_GEN2
@@ -843,6 +857,7 @@ def test_entity_catalogs_are_pid_specific() -> None:
     assert SWITCHES_BY_PID[PID_SINGLE_CHANNEL_LIGHT_SWITCH] == SINGLE_CHANNEL_LIGHT_SWITCHES
     assert SWITCHES_BY_PID[PID_TWO_CHANNEL_LIGHT_SWITCH] == TWO_CHANNEL_LIGHT_SWITCHES
     assert SWITCHES_BY_PID[PID_THREE_CHANNEL_LIGHT_SWITCH] == THREE_CHANNEL_LIGHT_SWITCHES
+    assert SWITCHES_BY_PID[PID_SMART_BREAKER] == SMART_BREAKER_SWITCHES
     assert MODBUS_WATER_SENSORS[0].device_class == SensorDeviceClass.WATER
     assert MODBUS_WATER_SENSORS[0].native_unit_of_measurement == UnitOfVolume.CUBIC_METERS
     assert MODBUS_WATER_SENSORS[0].state_class == SensorStateClass.TOTAL_INCREASING
@@ -903,7 +918,7 @@ def test_modbus_electricity_meter_entity_uses_stable_inventory_and_reported_name
         {
             device.did: IbgSubDeviceState(
                 device,
-                {"power": 5052.4, "devicename": "第一路三相电表"},
+                {"power": 220.5, "devicename": "第一路三相电表"},
                 datetime.now(UTC),
             )
         },
@@ -914,7 +929,7 @@ def test_modbus_electricity_meter_entity_uses_stable_inventory_and_reported_name
     )
     entity = IbgSensor(coordinator, device.did, power_description)
 
-    assert entity.native_value == 5052.4
+    assert entity.native_value == 220.5
     assert entity.device_info["name"] == "PLC-20 第一路三相电表"
     assert entity.unique_id == f"{GATEWAY.id}_{device.did}_power"
 
@@ -955,6 +970,7 @@ def test_entity_translations_cover_parameter_derived_names() -> None:
         assert all(description.translation_key in switch_names for description in SINGLE_CHANNEL_LIGHT_SWITCHES)
         assert all(description.translation_key in switch_names for description in TWO_CHANNEL_LIGHT_SWITCHES)
         assert all(description.translation_key in switch_names for description in THREE_CHANNEL_LIGHT_SWITCHES)
+        assert all(description.translation_key in switch_names for description in SMART_BREAKER_SWITCHES)
         assert all(description.translation_key in switch_names for description in EAC1_SWITCHES)
         assert "voltage_output" in number_names
         assert "fault_code" in sensor_names
