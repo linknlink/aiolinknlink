@@ -95,7 +95,7 @@ THREE_CHANNEL_LIGHT_SWITCHES = (
 )
 SMART_BREAKER_SWITCHES = (
     SwitchEntityDescription(
-        key="pwr_state",
+        key="state",
         name="Breaker",
         translation_key="breaker",
         icon="mdi:electric-switch",
@@ -158,7 +158,7 @@ class IbgPowerSwitch(IbgCoordinatorEntity, SwitchEntity):
 
     def _command_key(self) -> str:
         """Return the writable field for this switch."""
-        if self.key == "pwr_state":
+        if self.key == "state":
             return "pwr"
         return self.key
 

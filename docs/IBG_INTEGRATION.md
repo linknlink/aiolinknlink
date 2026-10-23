@@ -100,10 +100,10 @@ while registry identifiers remain based on gateway ID, DID, and field name so
 multiple meters cannot collide.
 
 PID `00000000000000000000000040160100` Modbus smart breakers expose one
-switch. HA writes `pwr` as `0` or `1` and reads `pwr_state` on the next poll.
+switch. HA writes `pwr` as `0` or `1` and reads `state` on the next poll.
 The gateway mapping already means `0` is off and `1` is on. The SET response is
 the previous snapshot plus the queued command, so HA accepts a successful write
-and does not require `pwr_state` in that same response. Disabled-by-default
+and does not require `state` in that same response. Disabled-by-default
 diagnostics cover the reported device name, Modbus address, and read/write
 result when the firmware includes them.
 

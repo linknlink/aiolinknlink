@@ -814,7 +814,7 @@ def test_entity_catalogs_are_pid_specific() -> None:
     assert len(TWO_CHANNEL_LIGHT_SWITCHES) == 4
     assert len(THREE_CHANNEL_LIGHT_SWITCHES) == 5
     assert len(SMART_BREAKER_SWITCHES) == 1
-    assert SMART_BREAKER_SWITCHES[0].key == "pwr_state"
+    assert SMART_BREAKER_SWITCHES[0].key == "state"
     assert len(SMART_BREAKER_SENSORS) == 4
     assert {description.key for description in SMART_BREAKER_SENSORS} == {
         "devicename",

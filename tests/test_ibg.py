@@ -644,12 +644,30 @@ def test_smart_breaker_state_uses_firmware_mapped_output() -> None:
     )
 
     assert values == {
-        "pwr_state": True,
+        "state": True,
         "address": 27,
         "modbusreadresult": "success",
         "modbuswriteresult": "failure",
         "devicename": "继电器1",
     }
+
+
+def test_smart_breaker_state_accepts_current_plc_state_field() -> None:
+    values = normalize_subdevice_state(
+        PID_SMART_BREAKER,
+        {
+            "pwr": 0,
+            "state": 1,
+            "address": 1,
+            "modbusreadresult": 1,
+            "modbuswriteresult": 0,
+            "devicename": "继电器1",
+        },
+    )
+
+    assert values["state"] is True
+    assert values["modbusreadresult"] == "failure"
+    assert values["modbuswriteresult"] == "success"
 
 
 def test_smart_breaker_state_rejects_unmapped_values() -> None:
@@ -1038,7 +1056,7 @@ async def test_smart_breaker_accepts_queued_write_without_immediate_state() -> N
         exchange=exchange,
     )
 
-    assert state.values["pwr_state"] is False
+    assert state.values["state"] is False
     assert state.values["devicename"] == "继电器1"
 
 

@@ -81,7 +81,8 @@ THREE_CHANNEL_LIGHT_WRITABLE_FIELDS = THREE_CHANNEL_LIGHT_POWER_FIELDS | {
     THREE_CHANNEL_LIGHT_BACKLIGHT_FIELD,
 }
 SMART_BREAKER_POWER_FIELD = "pwr"
-SMART_BREAKER_STATE_FIELD = "pwr_state"
+SMART_BREAKER_STATE_FIELDS = ("state", "pwr_state")
+SMART_BREAKER_STATE_FIELD = SMART_BREAKER_STATE_FIELDS[0]
 SMART_BREAKER_WRITABLE_FIELDS = frozenset({SMART_BREAKER_POWER_FIELD})
 DTU_POWER_FIELDS = frozenset(f"pwr{channel}" for channel in range(1, 3))
 DTU_VOLTAGE_OUTPUT_FIELD = "voltage"
@@ -834,13 +835,16 @@ def _normalize_modbus_water_meter_state(payload: dict[str, Any]) -> dict[str, in
 def _normalize_smart_breaker_state(payload: dict[str, Any]) -> dict[str, bool | int | str]:
     """Normalize a Modbus smart breaker after firmware mapping."""
     values: dict[str, bool | int | str] = {}
-    # PLC firmware maps the physical register before reporting: 0 is off and
-    # 1 is on. Writes use pwr; the following poll reports pwr_state.
-    state = payload.get(SMART_BREAKER_STATE_FIELD)
-    if isinstance(state, bool):
-        values[SMART_BREAKER_STATE_FIELD] = state
-    elif isinstance(state, int) and not isinstance(state, bool) and state in {0, 1}:
-        values[SMART_BREAKER_STATE_FIELD] = bool(state)
+    # Current PLC profiles publish the physical switch as state. Older reviewed
+    # profiles used pwr_state. Writes always use pwr.
+    for key in SMART_BREAKER_STATE_FIELDS:
+        state = payload.get(key)
+        if isinstance(state, bool):
+            values[SMART_BREAKER_STATE_FIELD] = state
+            break
+        if isinstance(state, int) and not isinstance(state, bool) and state in {0, 1}:
+            values[SMART_BREAKER_STATE_FIELD] = bool(state)
+            break
 
     address = payload.get("address")
     if isinstance(address, int) and not isinstance(address, bool) and 0 <= address <= 255:

@@ -1,9 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.19.10 - 2026-10-23
 
 - Add PID `40160100` Modbus smart breakers as one switch. HA writes `pwr`,
-  accepts the queued command, and reads the firmware-mapped `pwr_state` on the
+  accepts the queued command, and reads the firmware-mapped `state` on the
   next poll. Disabled-by-default diagnostics cover the reported name, address,
   and Modbus result.
 - Keep PID `ed140100` Modbus electricity-meter values in the engineering units
