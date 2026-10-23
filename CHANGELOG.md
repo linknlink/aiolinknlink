@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.19.11 - 2026-10-23
+
+- Keep a smart breaker on after a successful `pwr` command when the gateway's
+  Modbus feedback read fails. A successful `pwr_state` or legacy `state` read
+  still overrides the retained command.
+
 ## 0.19.10 - 2026-10-23
 
 - Add PID `40160100` Modbus smart breakers as one switch. HA writes `pwr`,

@@ -81,8 +81,9 @@ THREE_CHANNEL_LIGHT_WRITABLE_FIELDS = THREE_CHANNEL_LIGHT_POWER_FIELDS | {
     THREE_CHANNEL_LIGHT_BACKLIGHT_FIELD,
 }
 SMART_BREAKER_POWER_FIELD = "pwr"
-SMART_BREAKER_STATE_FIELDS = ("state", "pwr_state")
-SMART_BREAKER_STATE_FIELD = SMART_BREAKER_STATE_FIELDS[0]
+SMART_BREAKER_FEEDBACK_FIELDS = ("pwr_state", "state")
+SMART_BREAKER_STATE_FIELDS = (*SMART_BREAKER_FEEDBACK_FIELDS, SMART_BREAKER_POWER_FIELD)
+SMART_BREAKER_STATE_FIELD = "state"
 SMART_BREAKER_WRITABLE_FIELDS = frozenset({SMART_BREAKER_POWER_FIELD})
 DTU_POWER_FIELDS = frozenset(f"pwr{channel}" for channel in range(1, 3))
 DTU_VOLTAGE_OUTPUT_FIELD = "voltage"
@@ -476,8 +477,8 @@ class IbgClient:
         values = normalize_subdevice_state(device.pid, payload)
         if pid == PID_SMART_BREAKER and SMART_BREAKER_POWER_FIELD in expected_values:
             # dna-mdbs queues the write and answers with the previous snapshot
-            # plus the requested pwr field. pwr_state is published only after
-            # the next Modbus poll, so a successful command is the confirmation.
+            # plus the requested pwr field. This gateway's pwr_state read is
+            # currently failing, so a successful command is the confirmation.
             write_result = values.get("modbuswriteresult")
             if write_result not in (None, "success"):
                 raise IbgProtocolError("iBG smart breaker write was not successful")
@@ -835,8 +836,9 @@ def _normalize_modbus_water_meter_state(payload: dict[str, Any]) -> dict[str, in
 def _normalize_smart_breaker_state(payload: dict[str, Any]) -> dict[str, bool | int | str]:
     """Normalize a Modbus smart breaker after firmware mapping."""
     values: dict[str, bool | int | str] = {}
-    # Current PLC profiles publish the physical switch as state. Older reviewed
-    # profiles used pwr_state. Writes always use pwr.
+    # Writes and the retained command both use pwr. A successful physical
+    # feedback read (pwr_state, then legacy state) replaces it. A failed poll
+    # leaves those fields at their default and must not override pwr.
     for key in SMART_BREAKER_STATE_FIELDS:
         state = payload.get(key)
         if isinstance(state, bool):
@@ -851,10 +853,22 @@ def _normalize_smart_breaker_state(payload: dict[str, Any]) -> dict[str, bool | 
         values["address"] = address
 
     result_states = {0: "success", 1: "failure", 2: "partial_success"}
+    read_result: str | None = None
     for key in ("modbusreadresult", "modbuswriteresult"):
         raw = payload.get(key)
         if isinstance(raw, int) and not isinstance(raw, bool) and raw in result_states:
             values[key] = result_states[raw]
+            if key == "modbusreadresult":
+                read_result = values[key]
+
+    # A failed physical-state poll leaves pwr_state/state at their default.
+    # Restore the last confirmed command instead of reporting the breaker as off.
+    if read_result == "failure" and "pwr" in payload:
+        command = payload.get("pwr")
+        if isinstance(command, bool):
+            values[SMART_BREAKER_STATE_FIELD] = command
+        elif isinstance(command, int) and not isinstance(command, bool) and command in {0, 1}:
+            values[SMART_BREAKER_STATE_FIELD] = bool(command)
 
     name = payload.get("devicename")
     if isinstance(name, str):

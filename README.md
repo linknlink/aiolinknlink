@@ -112,8 +112,9 @@ instantaneous volume flow when reported by the device. Electricity meters
 expose the active energy, voltage, current, power, power factor, harmonic
 current, frequency, overload, and Modbus diagnostic fields that the gateway
 actually reports. Values stay in the engineering units already scaled by the
-iBG. Smart breakers expose one switch: HA writes `pwr` and reads the
-firmware-mapped `state` on the next poll. DLT645 electricity meters expose the documented
+iBG. Smart breakers expose one switch: HA writes `pwr` and reads a successful
+firmware-mapped feedback value on the next poll. If that Modbus read fails, HA
+keeps the last confirmed `pwr` command instead of a stale default. DLT645 electricity meters expose the documented
 active energy, phase voltage/current, active power, power factor, harmonic
 current, overload, electrical-parameter, and address fields. Both
 electricity-meter profiles are read-only.
