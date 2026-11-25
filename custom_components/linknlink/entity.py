@@ -66,6 +66,7 @@ class IbgCoordinatorEntity(CoordinatorEntity[IbgDataUpdateCoordinator]):
             name=name,
             manufacturer="LinknLink",
             model=SUBDEVICE_MODELS.get(self._subdevice.pid, f"iBG subdevice {self._subdevice.pid[-8:]}"),
+            model_id=self._subdevice.pid,
             via_device=(DOMAIN, self.coordinator.device.id),
         )
 

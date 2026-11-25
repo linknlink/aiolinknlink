@@ -195,6 +195,10 @@ def test_entity_availability_and_safe_value() -> None:
 
     assert entity.available
     assert entity._value() == 25.5
+    assert entity.device_info["identifiers"] == {
+        ("linknlink", f"{GATEWAY.id}_{SUBDEVICE.did}")
+    }
+    assert entity.device_info["model_id"] == SUBDEVICE.pid
     assert entity.device_info["via_device"] == ("linknlink", GATEWAY.id)
 
     coordinator.data = IbgCoordinatorData((SUBDEVICE,), {SUBDEVICE.did: None})

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.19.12 - 2026-11-25
+
+- Store each iBG subdevice's full PID in the Home Assistant device registry
+  `model_id` without changing its existing device identifier.
+
 ## 0.19.11 - 2026-10-23
 
 - Keep a smart breaker on after a successful `pwr` command when the gateway's
